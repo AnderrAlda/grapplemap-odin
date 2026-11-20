@@ -11,7 +11,7 @@ Un PR nunca se abre ni se marca ready sin **label + milestone** y con el **check
 2. Áreas tocadas: `git diff --stat origin/main...HEAD`.
 
 ## 2. Revisión
-3. Lanza `code-reviewer` con `model: opus` si toca `src/core`, `src/render`, shaders o ADRs/arquitectura; `model: sonnet` en el resto. Guarda qué modelo se usó.
+3. **Todo PR se revisa, sin excepción por tamaño** (ni «n/a» en la casilla). Lanza `code-reviewer` con `model: opus` si toca `src/core`, `src/render`, shaders o ADRs/arquitectura; `model: sonnet` en el resto. Guarda qué modelo se usó.
 4. Corrige los bloqueantes y vuelve a lanzar la revisión hasta que no queden. Los hallazgos no bloqueantes que no se apliquen pasan a issues (con label y milestone).
 
 ## 3. Metadatos (obligatorios)
@@ -35,4 +35,5 @@ Un PR nunca se abre ni se marca ready sin **label + milestone** y con el **check
 
 ## 5. Reglas
 - Sin ninguna mención a Claude/Anthropic ni «Generated with» en título o cuerpo; el PR figura como hecho por el usuario.
+- Nunca marques ready sin: CI verde en el último commit, `code-reviewer` sin bloqueantes sobre ese mismo commit y checklist completo. Si el commit cambia después, repite la revisión.
 - Pide confirmación y abre con `gh pr create --draft`. Marca ready solo con CI verde y revisión sin bloqueantes. NO hagas merge.

@@ -40,6 +40,7 @@ capturas si hay cambios visuales. Nunca "hecho" sin evidencia (salida de tests/c
 - Desactivar `-vet`/`-strict-style` o silenciar warnings.
 - Tocar `reference/` o regenerar golden images sin que lo pida.
 - TODO sin issue (`// TODO(#12): …`). Refactors no pedidos mezclados con features.
+- Saltarse el `code-reviewer` por el tamaño del PR: TODO PR se revisa (mínimo `sonnet`), también los de una línea. Sin revisión sin bloqueantes, el PR sigue en draft.
 - Suponer formato del original o APIs de Odin/raylib: comprobar el código o la documentación.
 
 ## Autoría
