@@ -1,0 +1,14 @@
+build/
+*.pdb
+*.dSYM/
+*.exe
+*.bin
+*.o
+*.obj
+*.dll
+*.so
+*.dylib
+.DS_Store
+.env*
+.claude/settings.local.json
+tests/golden/_actual/
