@@ -79,7 +79,11 @@ Files (the same names in the full dump and in the sample):
 - `between.ndjson`: `between(a, b, s)` for consecutive positions.
 - `playback.ndjson`: frames from the frame-based path `frames()` (`src/paths.cpp:23`) / `follow()`
   (`src/graph_util.cpp:60`), with the default `frames-per-pos` of 11 (`src/makevideo.cpp:34`), halved for
-  `detailed` transitions (`src/paths.cpp:42`), plus `smoothen`. The time-based `Playback::progress`
+  `detailed` transitions (`src/paths.cpp:42`). `follow()` emits `frames-per-pos + 1` positions per segment, so
+  segment boundaries repeat; `frames()` drops the last frame of each transition (`src/paths.cpp:44`). Per
+  transition the dump stores the **raw** frames and the frames after `smoothen` (`src/paths.cpp:8-21`, applied by
+  callers such as `src/makevideo.cpp:93`; it is stateful and starts from that transition's first frame). The
+  time-based `Playback::progress`
   (`src/playback.cpp:129-130`) is **not** dumped; it is described in section 6 and the viewer checks it as
   `between` over the oracle positions.
 - `body.json`: `jointDefs`, segments (ends, length, mid radius, visible), colors per player and any constant from
@@ -88,8 +92,8 @@ Files (the same names in the full dump and in the sample):
 
 **Full dump** (`--full`, CI only, never committed): every block; `ops` for every position; `between` for every
 consecutive pair with `s ∈ {0.25, 0.5, 0.75}`; `playback` for every transition; `spring` for every named
-position. Estimated size: about **0.3 GB** of text, with ~2.6 KB per position in doubles: `playback` ~175 MB
-(6,237 segments × ~12 frames), `ops` ~87 MB (8,323 positions × 4 transforms), `between` ~49 MB (6,237 pairs × 3
+position. Estimated size: about **0.3–0.5 GB** of text, with ~2.6 KB per position in doubles: `playback` ~175–390 MB
+(6,237 segments × ~12 frames, ~6 for `detailed`, raw + smoothed), `ops` ~87 MB (8,323 positions × 4 transforms), `between` ~49 MB (6,237 pairs × 3
 values of `s`), the rest ~8 MB. That is why only its hashes are committed.
 
 ### Representative sample (what is committed)
@@ -115,12 +119,12 @@ transitions and 1 bidirectional one. `spring` covers 10 positions. `body.json` i
 | `graph.ndjson` (sampled transitions and nodes) | ~30 KB |
 | `ops.ndjson` (~55 positions × 4 transforms × 2.6 KB) | ~570 KB |
 | `between.ndjson` (~65 interpolations × 2.6 KB) | ~170 KB |
-| `playback.ndjson` (~45 frames × 2.6 KB) | ~120 KB |
+| `playback.ndjson` (~45 frames, raw + smoothed, × 2.6 KB) | ~235 KB |
 | `spring.ndjson` + `body.json` + `meta.json` | ~40 KB |
 | `images/` (6 PNGs, 480×360) | ~250 KB |
-| **Total** | **~1.4 MB** of working copy (git compresses the text; the pack should be well under 1 MB) |
+| **Total** | **~1.5 MB** of working copy (git compresses the text; the pack should be well under 1 MB) |
 
-That is about 0.45% of the full dump, and it covers every documented class. The size is driven by the transform
+That is about 0.3–0.5% of the full dump, and it covers every documented class. The size is driven by the transform
 results in doubles (2.6 KB per position is a lower bound; ~2.9 KB with brackets and commas still fits), so it is
 cut by covering one position per transition, not every position. **Hard limit:
 2 MB.** If the real dump is larger, the sample is reduced (fewer normal transitions, never fewer anomaly classes)
@@ -141,7 +145,8 @@ Checkout uses `submodules: true`. The regular `ci` jobs do not depend on it.
 
 1. Build the image (with a layer cache) and the dumper.
 2. `--sample`: regenerate the sample and fail if `git status --porcelain tests/fixtures/oracle` is not empty
-   (provenance and determinism; also catches new untracked files). `--sample` never writes `images/` (only `--images` does), so the PNGs are not regenerated here (see edge cases).
+   (provenance and determinism; also catches new untracked files). `--sample` never writes `images/` (only
+   `--images` does), so the PNGs are not regenerated here (see edge cases).
 3. `--full`: generate the full dump, check it against `FULL.sha256` (the full data matches what was committed
    without storing it), and upload it as an artifact (compressed, short retention).
 4. From phase 2 on, the fidelity job downloads the latest full-dump artifact from `main` (nightly or the last run
@@ -223,10 +228,14 @@ round-trip, fidelity (sample locally, full dump in CI) and golden. Links to the 
 - **Reference images**: `grapplemap-mkpospages` renders 480×360 PNGs (`src/mkpospages.cpp:584-585`) but walks
   the whole DB (its help warns the first run takes "many hours"; not measured). `--images` instead calls the
   original's `ImageMaker::png` (`src/images.hpp:198`, `src/images.cpp:340`) for the 6 chosen positions only,
-  reproducing what `mkpospages` does before the call (canonical orientation with mirror, `ymax`). `ImageMaker`
-  needs an OSMesa context, a `Graph` and a `res_dir` with a `store/` subdirectory, and names files by position
-  hash, so the dumper renames them. This part links `images.o`, `rendering.o` and `playerdrawer.o` plus
-  OSMesa/ftgl/gvc/png (`src/SConstruct:48-52`). If these cannot be built in the image, the oracle timebox applies.
+  reproducing what `mkpospages` does before the call (`src/mkpospages.cpp:578-582`: canonical orientation with
+  mirror, `ymax`) and choosing an `ImageView`. `ImageMaker` creates its own OSMesa context
+  (`src/images.cpp:525`); the dumper provides a `Graph` and an existing `res_dir` and `res_dir/store/`
+  (`src/images.cpp:529-532`). `png` writes `store/<hash>…png`, where the hash is `boost::hash_value` and depends on
+  the Boost version, and a symlink `res_dir/<base_linkname><view><w>x<h>.png` (`src/images.cpp:329-352`): the
+  dumper passes a deterministic `base_linkname` and copies the file the symlink points to. This part links
+  `images.o` and `rendering.o` (`rendering.cpp` + `playerdrawer.cpp`) with OSMesa, GLU, ftgl, png,
+  boost_filesystem, boost_system, pthread, gvc and cgraph (`src/SConstruct:48-50`). If these cannot be built in the image, the oracle timebox applies.
 - **OSMesa**: PNGs can change between Mesa versions. They are regenerated by hand (`./build.sh oracle --images`),
   have their own hash in `MANIFEST.sha256`, and the Mesa version is recorded in `meta.json`. CI does not compare
   them pixel by pixel.
@@ -247,12 +256,12 @@ round-trip, fidelity (sample locally, full dump in CI) and golden. Links to the 
 | Decision | Chosen | Why / cost |
 |---|---|---|
 | Oracle | Docker, Linux | Reproducible on macOS and in CI. Cost: Docker is needed to regenerate |
-| Committed data | Sample of ~1.4 MB (limit 2 MB) + `FULL.sha256` | The repo stays light. The full DB is still checked through its hashes. Cost: local fidelity tests only cover the sample |
+| Committed data | Sample of ~1.5 MB (limit 2 MB) + `FULL.sha256` | The repo stays light. The full DB is still checked through its hashes. Cost: local fidelity tests only cover the sample |
 | Full coverage | Full dump in CI, published as an artifact | Exact fidelity over the whole DB from phase 2. Cost: Docker CI time, limited to oracle-related changes, manual runs and a nightly run |
 | Oracle risk | Timebox: stop and ask if it does not build | Building a 2020 C++ code base can sink time. The docs track does not depend on it |
 | Sample format | Input quantized to integers, computed results as `%.17g` doubles | ~4 times smaller with no loss. Doubles only where the original computes them |
 | Node matching | Document the algorithm + dump the assignment | Phase 2 reimplements it and must match 100%. The editor (phase 6) needs it to match new nodes |
-| Pin | Submodule at `032c8f9` | The latest master. Data is read from the submodule; `data/` is left for our own graph. `loadGraph(filename)` and the SConstruct write `GrappleMap.txt.index` next to the DB, and with an index present the graph is built through another path (`find_or_add_indexed`, `src/graph.cpp:304-346`). So the dumper always uses `loadGraph(istream)` (`src/persistence.cpp:171`, no index), and `grapplemap-indexer` runs separately on a copy of the DB to produce the `.index` that goes into `graph.ndjson`; the submodule is never dirtied |
+| Pin | Submodule at `032c8f9` | The latest master. Data is read from the submodule; `data/` is left for our own graph. `loadGraph(filename)` and the SConstruct write `GrappleMap.txt.index` next to the DB, and with an index present the graph is built through another path (`find_or_add_indexed`, `src/graph.cpp:304-348`, chosen when the md5 matches and the index is not empty, `src/persistence.cpp:201-228`). So the dumper always uses `loadGraph(istream)` (`src/persistence.cpp:171`, no index), and `grapplemap-indexer` runs separately on a copy of the DB to produce the `.index` that goes into `graph.ndjson`; the submodule is never dirtied |
 | Language | English (this spec, `original.md`, `architecture.md`, new ADRs) | Matches README, CHANGELOG and the code. The new ADRs translate the headings of `docs/adr/TEMPLATE.md` (Status, Context, Decision, Alternatives, Consequences); the template itself is left for #18 |
 | Split | One issue per deliverable | Small, reviewable PRs |
 
