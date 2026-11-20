@@ -1,0 +1,72 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/setup
+        with: { odinfmt: "true" }
+      - run: ./build.sh fmt-check
+      - run: ./build.sh check
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/setup
+      - run: ./build.sh test
+
+  golden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/setup
+      - run: xvfb-run -a ./build.sh test-golden
+      - name: Upload actual images and diffs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: golden-actual
+          path: tests/golden/_actual/
+          if-no-files-found: ignore
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        target: [debug, release]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/setup
+      - run: ./build.sh ${{ matrix.target }}
+      - name: Smoke test (headless)
+        if: matrix.target == 'debug' && matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a ./build/grapplemap-debug --headless --frames 30
+
+  bench:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/setup
+      - name: Run benchmarks (informational)
+        run: xvfb-run -a ./build.sh bench | tee bench.txt
+      - name: Summary
+        run: |
+          { echo '### Benchmarks'; echo '```'; cat bench.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
