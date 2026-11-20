@@ -27,8 +27,7 @@ Every issue and PR gets labels (`type:`, `area:`, `phase-1`) and the milestone "
 |---|---|---|
 | 1 | Submodule | `.gitmodules`, `reference/GrappleMap` @ `032c8f91809786b7b784852abd07cf3e10c0ea35` (master, 2020-03-14); `reference/CLAUDE.md` (read-only, how to bump the pin) |
 | 2 | Oracle image | `tools/oracle/Dockerfile` (Ubuntu base pinned by digest, a compiler that accepts `-std=c++1y`), `tools/oracle/README.md`. It builds `grapplemap-indexer`, `grapplemap-dbtojs` and `grapplemap-mkpospages` from the submodule **without modifying it** (out-of-tree build: a copy or a SCons `variant_dir`) |
-| 3 | Dumper (full dump) | `tools/oracle/dump/*.cpp`, linked against the original's `common` objects; `tools/oracle/dump/testdata/` (a small hand-written `.txt`); `./build.sh oracle [--sample\|--full\|--images\|--update-full-hashes]` (new target; `--images` and
-`--update-full-hashes` land with deliverable 4). `--full` writes the full dump to `build/oracle/full/` (git-ignored) |
+| 3 | Dumper (full dump) | `tools/oracle/dump/*.cpp`, linked against the original's `common` objects; `tools/oracle/dump/testdata/` (a small hand-written `.txt`); `./build.sh oracle [--sample\|--full\|--images\|--update-full-hashes]` (new target; `--images` and `--update-full-hashes` land with deliverable 4). `--full` writes the full dump to `build/oracle/full/` (git-ignored) |
 | 4 | Data inventory + sample | `tools/oracle/sample.tsv` (selected sequences and class), `tests/fixtures/oracle/` (sample), `tests/fixtures/oracle/MANIFEST.sha256` (sample), `tests/fixtures/oracle/FULL.sha256` (hashes of the full dump), `tests/fixtures/oracle/images/*.png`, `.gitattributes` (`-diff linguist-generated` for generated files) |
 | 5 | Oracle CI | `.github/workflows/oracle.yml`: a **separate workflow** (see "CI"); `ci.yml` is not changed |
 | 6.. | `docs/original.md`, by section (see below); one PR per section or small group | `docs/original.md` |
@@ -53,9 +52,9 @@ Also in every PR: CHANGELOG (Unreleased), and the root `CLAUDE.md` if commands (
 
 ### Database facts (measured on the pinned `GrappleMap.txt`)
 - 2,086 blocks, 8,323 positions. A block with a single position is a **named position**; the loader removes it
-  from the sequences (`persistence.cpp`, `loadGraph`): 601 named positions and 1,485 transitions with 7,722
+  from the sequences (`src/persistence.cpp:154-169`, `loadGraph`): 601 named positions and 1,485 transitions with 7,722
   positions.
-- Graph nodes are the named positions **plus anonymous nodes** that `Graph::find_or_add` (`graph.cpp:235`) creates
+- Graph nodes are the named positions **plus anonymous nodes** that `Graph::find_or_add` (`src/graph.cpp:235`) creates
   for transition endpoints that match no named position. The total node count is not known yet; the dumper
   records it in `meta.json`.
 - Transition length (positions): 2 → 89, 3–5 → 898, 6–10 → 428, 11–14 → 54, ≥15 → 16 (max 22).
@@ -78,8 +77,11 @@ Files (the same names in the full dump and in the sample):
   them, plus the `.index` produced by `grapplemap-indexer`.
 - `ops.ndjson`: `mirror`, `swap_players`, `orient_canonically_with_mirror/without_mirror`, `heading`, `center`.
 - `between.ndjson`: `between(a, b, s)` for consecutive positions.
-- `playback.ndjson`: frames produced by the player (default `frames-per-pos` 11, halved for `detailed`
-  transitions; `smoothen`).
+- `playback.ndjson`: frames from the frame-based path `frames()` (`src/paths.cpp:23`) / `follow()`
+  (`src/graph_util.cpp:60`), with the default `frames-per-pos` of 11 (`src/makevideo.cpp:34`), halved for
+  `detailed` transitions (`src/paths.cpp:42`), plus `smoothen`. The time-based `Playback::progress`
+  (`src/playback.cpp:129-130`) is **not** dumped; it is described in section 6 and the viewer checks it as
+  `between` over the oracle positions.
 - `body.json`: `jointDefs`, segments (ends, length, mid radius, visible), colors per player and any constant from
   `playerdrawer.cpp`/`rendering.cpp` that affects geometry.
 - `spring.ndjson`: `spring(p)` (input for phase 6).
@@ -87,7 +89,7 @@ Files (the same names in the full dump and in the sample):
 **Full dump** (`--full`, CI only, never committed): every block; `ops` for every position; `between` for every
 consecutive pair with `s ∈ {0.25, 0.5, 0.75}`; `playback` for every transition; `spring` for every named
 position. Estimated size: about **0.3 GB** of text, with ~2.6 KB per position in doubles: `playback` ~175 MB
-(6,237 segments × ~11 frames), `ops` ~87 MB (8,323 positions × 4 transforms), `between` ~49 MB (6,237 pairs × 3
+(6,237 segments × ~12 frames), `ops` ~87 MB (8,323 positions × 4 transforms), `between` ~49 MB (6,237 pairs × 3
 values of `s`), the rest ~8 MB. That is why only its hashes are committed.
 
 ### Representative sample (what is committed)
@@ -124,12 +126,13 @@ cut by covering one position per transition, not every position. **Hard limit:
 2 MB.** If the real dump is larger, the sample is reduced (fewer normal transitions, never fewer anomaly classes)
 before merge, and the PR says so. Lowering the limit or keeping something over it needs Ander's OK.
 
-### CI (`oracle` job)
+### CI (`oracle` workflow)
 **Where and when it runs**: in its own workflow, `.github/workflows/oracle.yml`, not in `ci.yml`. In GitHub
 Actions `paths` filters the whole workflow's `push`/`pull_request` triggers (not a job), and `schedule` takes no
 `paths`; putting them in `ci.yml` would skip or duplicate the regular jobs. Triggers of `oracle.yml`:
-- `pull_request` and `push` to `main` with `paths: [tools/oracle/**, reference/**, tests/fixtures/oracle/**,
-  .github/workflows/oracle.yml]` (`reference/**` catches the submodule pointer);
+- `pull_request` and `push` to `main` with `paths: [tools/oracle/**, reference/GrappleMap, tests/fixtures/oracle/**,
+  .github/workflows/oracle.yml]` (`reference/GrappleMap` is the submodule pointer; docs in `reference/` do not
+  trigger it);
 - `workflow_dispatch`;
 - a nightly `schedule` (runs on the default branch).
 
@@ -138,7 +141,7 @@ Checkout uses `submodules: true`. The regular `ci` jobs do not depend on it.
 
 1. Build the image (with a layer cache) and the dumper.
 2. `--sample`: regenerate the sample and fail if `git status --porcelain tests/fixtures/oracle` is not empty
-   (provenance and determinism; also catches new untracked files). The PNGs are excluded from this check (see edge cases).
+   (provenance and determinism; also catches new untracked files). `--sample` never writes `images/` (only `--images` does), so the PNGs are not regenerated here (see edge cases).
 3. `--full`: generate the full dump, check it against `FULL.sha256` (the full data matches what was committed
    without storing it), and upload it as an artifact (compressed, short retention).
 4. From phase 2 on, the fidelity job downloads the latest full-dump artifact from `main` (nightly or the last run
@@ -159,7 +162,7 @@ Every claim cites `file:line` of the pinned submodule. Nothing is assumed: anyth
 5. **Transforms**: `mirror`, `swap_players`, `Reorientation`/`PositionReorientation`, `compose`, `inverse`,
    canonical orientation.
 6. **Interpolation and playback**: `between`, speed (segments per second: 5, or 10 for `detailed`,
-   `playback.cpp:129`), `frames-per-pos` (halved for `detailed`, `paths.cpp:42`),
+   `src/playback.cpp:129-130`), `frames-per-pos` (halved for `detailed`, `src/paths.cpp:42`),
    `smoothen`, the "chaser" (`between(chaser, target, 0.2)`), behaviour at the ends and across chained transitions.
 7. **Rendering and camera**: `playerdrawer` (spheres/cylinders, radii, icosphere subdivision), the
    `triangle.*shader` shaders, colors, lights, floor, camera (`camera.hpp`) and its controls.
@@ -204,20 +207,26 @@ round-trip, fidelity (sample locally, full dump in CI) and golden. Links to the 
   files written and their hashes.
 - `./build.sh oracle --update-full-hashes` rewrites `FULL.sha256`. It is only used when the dumper changes, and
   the PR explains why.
-- `./build.sh ci` does **not** run the oracle, so it does not need Docker locally. The `oracle` job in CI does.
+- `./build.sh ci` does **not** run the oracle, so it does not need Docker locally. The `oracle` workflow in CI does.
 - The fixtures are read-only for tests. Protecting `tests/fixtures/oracle/` against direct edits by the agent
   (hook + `Edit(...)` deny; `./build.sh oracle` still regenerates them) is proposed in PR 4 and not turned on
   without Ander's OK.
 
 ## Edge cases
 - **Determinism**: fixed output order, `C` locale, the same compiler flags (the SConstruct's `-O3`, without
-  `-ffast-math`). The image is pinned to `--platform linux/amd64` (an Apple Silicon Mac would otherwise build
-  `arm64`, and GCC on aarch64 fuses multiply-adds by default) and the dumper is built with `-ffp-contract=off`, so
-  hashes made locally match the x86_64 CI runner. If two builds give different doubles, `FULL.sha256` catches it. The cause is documented and
-  decided in ADR 0003.
-- **Reference images**: `grapplemap-mkpospages` renders 480×360 PNGs (`mkpospages.cpp:585`) but walks the whole DB
-  (hours). `--images` instead calls the original's `ImageMaker::png` (`images.hpp`) for the 6 chosen positions only.
-  If OSMesa/ftgl/graphviz cannot be built in the image, the oracle timebox applies.
+  `-ffast-math`, no `-march=native`). The image is pinned to `--platform linux/amd64`: an Apple Silicon Mac would
+  otherwise build `arm64`, where GCC fuses multiply-adds by default. This matters because the arithmetic
+  (`between`, transforms, `spring`) lives in the original's `common` objects, built with the SConstruct's flags.
+  Baseline x86-64 emits no FMA; the dumper's own code also uses `-ffp-contract=off`. The compiler and libm come
+  from the base image pinned by digest. If two builds give different doubles, `FULL.sha256` catches it; the cause
+  is documented and decided in ADR 0003.
+- **Reference images**: `grapplemap-mkpospages` renders 480×360 PNGs (`src/mkpospages.cpp:584-585`) but walks
+  the whole DB (its help warns the first run takes "many hours"; not measured). `--images` instead calls the
+  original's `ImageMaker::png` (`src/images.hpp:198`, `src/images.cpp:340`) for the 6 chosen positions only,
+  reproducing what `mkpospages` does before the call (canonical orientation with mirror, `ymax`). `ImageMaker`
+  needs an OSMesa context, a `Graph` and a `res_dir` with a `store/` subdirectory, and names files by position
+  hash, so the dumper renames them. This part links `images.o`, `rendering.o` and `playerdrawer.o` plus
+  OSMesa/ftgl/gvc/png (`src/SConstruct:48-52`). If these cannot be built in the image, the oracle timebox applies.
 - **OSMesa**: PNGs can change between Mesa versions. They are regenerated by hand (`./build.sh oracle --images`),
   have their own hash in `MANIFEST.sha256`, and the Mesa version is recorded in `meta.json`. CI does not compare
   them pixel by pixel.
@@ -243,7 +252,7 @@ round-trip, fidelity (sample locally, full dump in CI) and golden. Links to the 
 | Oracle risk | Timebox: stop and ask if it does not build | Building a 2020 C++ code base can sink time. The docs track does not depend on it |
 | Sample format | Input quantized to integers, computed results as `%.17g` doubles | ~4 times smaller with no loss. Doubles only where the original computes them |
 | Node matching | Document the algorithm + dump the assignment | Phase 2 reimplements it and must match 100%. The editor (phase 6) needs it to match new nodes |
-| Pin | Submodule at `032c8f9` | The latest master. Data is read from the submodule; `data/` is left for our own graph. `loadGraph(filename)` and the SConstruct write `GrappleMap.txt.index` next to the DB, so the oracle works on a **copy** of the DB inside the container (or uses `loadGraph(istream)`); the submodule is never dirtied |
+| Pin | Submodule at `032c8f9` | The latest master. Data is read from the submodule; `data/` is left for our own graph. `loadGraph(filename)` and the SConstruct write `GrappleMap.txt.index` next to the DB, and with an index present the graph is built through another path (`find_or_add_indexed`, `src/graph.cpp:304-346`). So the dumper always uses `loadGraph(istream)` (`src/persistence.cpp:171`, no index), and `grapplemap-indexer` runs separately on a copy of the DB to produce the `.index` that goes into `graph.ndjson`; the submodule is never dirtied |
 | Language | English (this spec, `original.md`, `architecture.md`, new ADRs) | Matches README, CHANGELOG and the code. The new ADRs translate the headings of `docs/adr/TEMPLATE.md` (Status, Context, Decision, Alternatives, Consequences); the template itself is left for #18 |
 | Split | One issue per deliverable | Small, reviewable PRs |
 
@@ -259,9 +268,9 @@ du -sh tests/fixtures/oracle                                                  # 
 jq -r .counts tests/fixtures/oracle/meta.json                                 # 2,086 blocks, 8,323 positions; nodes as the original's Graph builds them
 ./build.sh ci                                                                 # green, without Docker
 ```
-- The `oracle` job runs only for its paths, `workflow_dispatch` and the nightly schedule (check: a docs-only PR does
+- The `oracle` workflow runs only for its paths, `workflow_dispatch` and the nightly schedule (check: a docs-only PR does
   not trigger it).
-- CI is green on the last PR, including the `oracle` job (sample with no diff, full dump matching `FULL.sha256`,
+- CI is green on the last PR, including the `oracle` workflow (sample with no diff, full dump matching `FULL.sha256`,
   artifact published).
 - Every class in `sample.tsv` has at least one example, and every anomaly class in section 10 is in the sample.
 - `docs/original.md` covers the 10 sections with `file:line` references. `code-reviewer` (opus, core area) checks
