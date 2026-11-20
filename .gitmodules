@@ -1,0 +1,3 @@
+[submodule "reference/GrappleMap"]
+	path = reference/GrappleMap
+	url = https://github.com/Eelis/GrappleMap.git
