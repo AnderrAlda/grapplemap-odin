@@ -1,0 +1,15 @@
+name: Bug
+description: Algo no funciona como debería
+labels: ["type:fix"]
+body:
+  - type: textarea
+    id: what
+    attributes: { label: Qué ocurre, description: Comportamiento observado vs esperado }
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes: { label: Pasos para reproducir }
+    validations: { required: true }
+  - type: input
+    id: env
+    attributes: { label: Entorno, description: SO, versión de Odin, commit }

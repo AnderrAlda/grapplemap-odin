@@ -1,0 +1,12 @@
+name: Feature
+description: Nueva funcionalidad
+labels: ["type:feat"]
+body:
+  - type: textarea
+    id: what
+    attributes: { label: Qué y por qué }
+    validations: { required: true }
+  - type: textarea
+    id: accept
+    attributes: { label: Criterios de aceptación, description: Checklist verificable }
+    validations: { required: true }
