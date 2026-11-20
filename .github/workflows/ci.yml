@@ -57,6 +57,8 @@ jobs:
       - run: ./build.sh ${{ matrix.target }}
       - name: Smoke test (headless)
         if: matrix.target == 'debug' && matrix.os == 'ubuntu-latest'
+        env:
+          LSAN_OPTIONS: suppressions=${{ github.workspace }}/tests/lsan.supp
         run: xvfb-run -a ./build/grapplemap-debug --headless --frames 30
 
   bench:

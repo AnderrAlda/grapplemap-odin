@@ -9,9 +9,12 @@ OUT="build"
 BIN="$OUT/grapplemap"
 TEST_PKGS=(src src/core src/ui src/editor)
 
+# AddressSanitizer: Linux and macOS. Skipped on macOS CI runners, where the Odin-bundled
+# LLVM and Apple's ASan runtime disagree on the ASan ABI version (link error).
 sanitize_flag() {
 	case "$(uname -s)" in
-	Linux | Darwin) echo "-sanitize:address" ;;
+	Linux) echo "-sanitize:address" ;;
+	Darwin) [ -n "${CI:-}" ] || echo "-sanitize:address" ;;
 	*) echo "" ;;
 	esac
 }
