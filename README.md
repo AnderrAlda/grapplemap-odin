@@ -15,8 +15,11 @@ A modern viewer (and, later, editor) for graphs of grappling positions, reimplem
 
 ## Build, run, test
 
+The original GrappleMap lives in `reference/GrappleMap` as a pinned, read-only submodule. Clone with
+`--recurse-submodules`, or run `git submodule update --init` (`./build.sh setup` does it too).
+
 ```sh
-./build.sh setup        # activate git hooks (core.hooksPath=.githooks)
+./build.sh setup        # activate git hooks (core.hooksPath=.githooks) and init the reference submodule
 ./build.sh debug        # debug build (+ AddressSanitizer on Linux/macOS)
 ./build.sh release      # optimized build
 ./build.sh run          # build debug and run

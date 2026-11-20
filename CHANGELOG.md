@@ -9,8 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 - Phase 1 spec (`docs/specs/phase-1-original-research.md`): pinned original as a submodule, Docker oracle with a
   committed fixture sample and a full dump checked in CI, and the plan for `docs/original.md`, `docs/architecture.md`
   and the initial ADRs (#3).
+- Original GrappleMap as a read-only submodule `reference/GrappleMap`, pinned at `032c8f9`, with `reference/CLAUDE.md`
+  (read-only and pin-bump rules) (#32).
 
 ### Changed
+- Write protection narrowed from `reference/` to the submodule `reference/GrappleMap/`; `./build.sh setup` and `worktree`
+  (and `build.bat setup`) initialize the submodule (#32).
 - `/pr` skill: at most one round of non-blocking review findings is applied per PR; the rest go to issues.
 - `CLAUDE.md`: every issue and PR gets labels and its phase milestone when created (#29).
 

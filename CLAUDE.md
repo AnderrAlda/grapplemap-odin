@@ -7,6 +7,7 @@ render moderno; UX simple; base para editar mi propio grafo. Nativo primero, was
 ## Comandos
 `./build.sh setup|check|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <rama>`
 Toolchain: Odin fijado en `.odin-version`; `odinfmt`/`ols` en `~/.local/bin`; `jq` requerido por los hooks.
+Tras clonar: `git submodule update --init` (lo hace `./build.sh setup`) para tener `reference/GrappleMap`.
 
 ## Mapa
 - `src/core` datos, parser, grafo, interpolación (sin deps de render/ui) · `src/render` · `src/ui` · `src/editor`
@@ -39,7 +40,7 @@ capturas si hay cambios visuales. Nunca "hecho" sin evidencia (salida de tests/c
 ## Prohibiciones
 - Modificar, borrar o saltarse tests para que pasen; subir tolerancias/umbrales sin pedírmelo y justificarlo en el PR.
 - Desactivar `-vet`/`-strict-style` o silenciar warnings.
-- Tocar `reference/` o regenerar golden images sin que lo pida.
+- Tocar `reference/GrappleMap` o regenerar golden images sin que lo pida.
 - TODO sin issue (`// TODO(#12): …`). Refactors no pedidos mezclados con features.
 - Saltarse el `code-reviewer` por el tamaño del PR: TODO PR se revisa (mínimo `sonnet`), también los de una línea. Sin revisión sin bloqueantes, el PR sigue en draft.
 - Suponer formato del original o APIs de Odin/raylib: comprobar el código o la documentación.

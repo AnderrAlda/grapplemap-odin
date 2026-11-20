@@ -25,6 +25,7 @@ cmd_setup() {
 	git config core.hooksPath .githooks
 	chmod +x .githooks/* .claude/hooks/*.sh 2>/dev/null || true
 	echo "Git hooks activated (core.hooksPath=.githooks)."
+	git submodule update --init || echo "WARN: could not init submodules (offline?); run: git submodule update --init"
 	command -v odin >/dev/null || echo "WARN: odin not found; install $(cat .odin-version) (see README)."
 	command -v odinfmt >/dev/null || echo "WARN: odinfmt not found (build it from github.com/DanielGavin/ols)."
 	command -v jq >/dev/null || echo "WARN: jq not found (needed by Claude Code hooks)."
@@ -95,6 +96,7 @@ cmd_worktree() {
 	local dir="../grapplemap-odin-wt/${branch//\//-}"
 	mkdir -p ../grapplemap-odin-wt
 	git worktree add -b "$branch" "$dir" origin/main 2>/dev/null || git worktree add "$dir" "$branch"
+	git -C "$dir" submodule update --init || echo "WARN: could not init submodules in $dir (offline?)"
 	echo "Worktree ready: $dir"
 }
 

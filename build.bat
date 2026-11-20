@@ -21,6 +21,7 @@ exit /b 2
 :setup
 git config core.hooksPath .githooks || exit /b 1
 echo hooks activated
+git submodule update --init
 exit /b 0
 
 :check
