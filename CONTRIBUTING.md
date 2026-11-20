@@ -23,6 +23,6 @@ No hay branch protection de GitHub (repo privado sin plan Pro): `main` está pro
 
 ## Rules
 - Never weaken or skip tests, raise tolerances, or disable `-vet`/`-strict-style` to get green.
-- `reference/` is read-only. Golden images change only via `./build.sh test-golden --update`, visible in the PR.
+- `reference/GrappleMap` (submodule pinned to the original) is read-only. Golden images change only via `./build.sh test-golden --update`, visible in the PR.
 - No TODO without an issue: `// TODO(#12): …`.
 - Architecture decisions get an ADR in `docs/adr/`.

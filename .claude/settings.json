@@ -43,7 +43,7 @@
       "Bash(gh pr merge *)",
       "Bash(rm -rf *)",
       "Bash(sudo *)",
-      "Edit(./reference/**)",
+      "Edit(./reference/GrappleMap/**)",
       "Edit(./tests/golden/**)",
       "Read(./.env)",
       "Read(./.env.*)",
