@@ -29,7 +29,7 @@ A modern viewer (and, later, editor) for graphs of grappling positions, reimplem
 ./build.sh worktree <branch>   # git worktree in ../grapplemap-odin-wt/
 ```
 
-Windows: `build.bat` offers the same targets.
+Windows: `build.bat` offers a subset (setup, check, fmt, debug, release, run, test, ci); the rest needs `build.sh` (WSL/Git Bash).
 
 ## Contributing
 

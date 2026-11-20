@@ -6,16 +6,51 @@ set VET=-vet -strict-style -warnings-as-errors
 set OUT=build
 if not exist %OUT% mkdir %OUT%
 
-if "%1"=="setup"        ( git config core.hooksPath .githooks & echo hooks activated & exit /b 0 )
-if "%1"=="check"        ( odin check src %COLLECTION% %VET% & exit /b %errorlevel% )
-if "%1"=="fmt"          ( odinfmt -w src & exit /b %errorlevel% )
-if "%1"=="fmt-check"    ( echo fmt-check: run on Linux/macOS CI & exit /b 0 )
-if "%1"=="debug"        ( odin build src %COLLECTION% %VET% -debug -out:%OUT%\grapplemap-debug.exe & exit /b %errorlevel% )
-if "%1"=="release"      ( odin build src %COLLECTION% %VET% -o:speed -out:%OUT%\grapplemap.exe & exit /b %errorlevel% )
-if "%1"=="run"          ( call %0 debug && %OUT%\grapplemap-debug.exe & exit /b %errorlevel% )
-if "%1"=="test"         ( odin test src %COLLECTION% %VET% -debug -out:%OUT%\test-main.exe & exit /b %errorlevel% )
-if "%1"=="test-golden"  ( echo golden tests arrive in phase 3 & exit /b 0 )
-if "%1"=="bench"        ( echo no benchmarks yet & exit /b 0 )
-if "%1"=="ci"           ( call %0 check && call %0 test && call %0 debug && call %0 release & exit /b %errorlevel% )
-echo usage: build.bat {setup^|check^|fmt^|fmt-check^|debug^|release^|run^|test^|test-golden^|bench^|ci}
+if "%1"=="setup" goto setup
+if "%1"=="check" goto check
+if "%1"=="fmt" goto fmt
+if "%1"=="debug" goto debug
+if "%1"=="release" goto release
+if "%1"=="run" goto run
+if "%1"=="test" goto test
+if "%1"=="ci" goto ci
+echo usage: build.bat {setup^|check^|fmt^|debug^|release^|run^|test^|ci}
+echo Not available on Windows (use build.sh via WSL/Git Bash): fmt-check, test-golden, bench, worktree.
 exit /b 2
+
+:setup
+git config core.hooksPath .githooks || exit /b 1
+echo hooks activated
+exit /b 0
+
+:check
+odin check src %COLLECTION% %VET% || exit /b 1
+exit /b 0
+
+:fmt
+odinfmt -w src || exit /b 1
+exit /b 0
+
+:debug
+odin build src %COLLECTION% %VET% -debug -out:%OUT%\grapplemap-debug.exe || exit /b 1
+exit /b 0
+
+:release
+odin build src %COLLECTION% %VET% -o:speed -out:%OUT%\grapplemap.exe || exit /b 1
+exit /b 0
+
+:run
+call "%~f0" debug || exit /b 1
+%OUT%\grapplemap-debug.exe %2 %3 %4 %5
+exit /b %errorlevel%
+
+:test
+odin test src %COLLECTION% %VET% -debug -out:%OUT%\test-main.exe || exit /b 1
+exit /b 0
+
+:ci
+call "%~f0" check || exit /b 1
+call "%~f0" test || exit /b 1
+call "%~f0" debug || exit /b 1
+call "%~f0" release || exit /b 1
+exit /b 0
