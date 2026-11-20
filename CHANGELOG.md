@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
   and the initial ADRs (#3).
 
 ### Changed
+- `/pr` skill: at most one round of non-blocking review findings is applied per PR; the rest go to issues.
 - `CLAUDE.md`: every issue and PR gets labels and its phase milestone when created (#29).
 
 ### Fixed
