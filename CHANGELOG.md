@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+### Added
+- Phase 1 spec (`docs/specs/phase-1-original-research.md`): pinned original as a submodule, Docker oracle with a
+  committed fixture sample and a full dump checked in CI, and the plan for `docs/original.md`, `docs/architecture.md`
+  and the initial ADRs (#3).
+
 ### Changed
 - `CLAUDE.md`: every issue and PR gets labels and its phase milestone when created (#29).
 
