@@ -28,6 +28,12 @@ Excepción: cambios describibles en una frase van directos, con PR pequeño.
 - El `Stop` hook respeta `stop_hook_active` para no hacer bucles. Claude Code fuerza la parada tras 8 bloqueos seguidos
   (`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`): si ocurre, el resumen debe decirlo y la tarea NO se da por buena.
 
+## Protección de `main` (sin branch protection de GitHub)
+El repo es privado sin plan Pro, así que GitHub no puede proteger `main`. La protección depende **solo de los hooks locales** y exige haber ejecutado `./build.sh setup` en cada clon/worktree (activa `core.hooksPath=.githooks`):
+- git `pre-commit`: bloquea commits en `main`. git `pre-push`: bloquea cualquier push cuyo destino sea `refs/heads/main` (también `git push origin feat:main`).
+- Guard de Claude (`.claude/hooks/guard-bash.sh` + reglas `deny`): bloquea commit/push estando en `main`, pushes con destino `main` desde cualquier rama, `--force`, `--no-verify` y `gh pr merge`.
+- Los merges se hacen **solo desde GitHub** (squash). Un `git push --no-verify` manual o un clon sin `setup` saltan los hooks git: no hay defensa del lado del servidor hasta activar GitHub Pro o hacer el repo público.
+
 ## Worktrees (varios agentes)
 `./build.sh worktree <rama>` crea `../grapplemap-odin-wt/<rama>`. Un worktree por rama/agente; nunca dos agentes en la misma rama.
 
