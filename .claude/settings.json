@@ -32,8 +32,7 @@
       "Bash(brew install *)",
       "Bash(npm install *)",
       "Bash(pip install *)",
-      "Edit(./.github/workflows/**)",
-      "Write(./.github/workflows/**)"
+      "Edit(./.github/workflows/**)"
     ],
     "deny": [
       "Bash(git push --force*)",
@@ -45,9 +44,7 @@
       "Bash(rm -rf *)",
       "Bash(sudo *)",
       "Edit(./reference/**)",
-      "Write(./reference/**)",
       "Edit(./tests/golden/**)",
-      "Write(./tests/golden/**)",
       "Read(./.env)",
       "Read(./.env.*)",
       "Read(./**/*.pem)",

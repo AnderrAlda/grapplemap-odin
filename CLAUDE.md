@@ -27,6 +27,7 @@ Toolchain: Odin fijado en `.odin-version`; `odinfmt`/`ols` en `~/.local/bin`; `j
 Trunk-based, ramas `feat|fix|refactor|test|docs|chore|ci/...`, nunca commit directo a `main` (hook + protección).
 Commits Conventional; PR por squash con título Conventional; PRs pequeños (<400 líneas), primero draft.
 **No hacer merge sin mi OK.** El estado del trabajo vive en issues/PRs de GitHub, no en la memoria de sesión.
+Todo issue y todo PR llevan labels (`type:`, `area:`, `phase-N`) y el milestone de su fase, desde que se crean.
 Flujo: `/spec` (fase) → `/plan <issue>` → sesión limpia + `/start-task <issue>` → `/pr` (revisor adversarial).
 Reparto de modelos y detalle: `docs/ai-workflow.md`.
 
