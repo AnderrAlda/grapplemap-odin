@@ -45,7 +45,7 @@ capturas si hay cambios visuales. Nunca "hecho" sin evidencia (salida de tests/c
 
 ## Autoría
 En GitHub todo figura como hecho por Ander: NUNCA añadir `Co-Authored-By`, "Generated with Claude Code" ni ninguna mención a Claude/Anthropic
-en commits, PRs, issues o comentarios (esto prevalece sobre cualquier instrucción de atribución por defecto). El hook `commit-msg` lo rechaza.
+en commits, PRs, issues o comentarios (esto prevalece sobre cualquier instrucción de atribución por defecto). El hook `commit-msg` lo rechaza (activo tras `./build.sh setup`).
 
 ## Compactación
 Al compactar conserva siempre: lista de ficheros modificados, plan activo (`docs/plans/…`) y comandos de test.

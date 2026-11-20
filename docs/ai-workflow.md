@@ -20,9 +20,10 @@ Revisa el gasto con `/cost` al cerrar cada fase.
 1. `/spec <fase>` → `docs/specs/` (PR solo docs). 2. `/plan <issue>` en plan mode → `docs/plans/<issue>-<slug>.md`, lo reviso.
 3. `/clear` o sesión nueva (en worktree) y `/start-task <issue>`. 4. `/pr` lanza `code-reviewer` en contexto limpio.
 5. Para lo crítico (parser, interpolación, shaders de cuerpo): una sesión escribe tests (`test-writer`) y otra el código.
-Excepción: cambios describibles en una frase van directos, con PR pequeño.
+Excepción: cambios describibles en una frase van sin spec ni plan, con PR pequeño. **Nunca sin `code-reviewer`**: todo PR se revisa (mínimo sonnet) sin excepción por tamaño; sin revisión sin bloqueantes sobre el último commit, el PR sigue en draft.
 
 ## Enforcement (qué lo hace cumplir)
+- Regla de revisión: la skill `/pr` y `CLAUDE.md` exigen `code-reviewer` en todo PR; no se marca ready sin CI verde, revisión sin bloqueantes y checklist completo, todo sobre el mismo commit.
 - Permisos en `.claude/settings.json` (allow/ask/deny; deny gana siempre). Personal: `.claude/settings.local.json` (ignorado por git).
 - Hooks (`.claude/hooks/`): formato+check tras editar `.odin`; bloqueo de `reference/` y `tests/golden/`; bloqueo de commit/push en `main` y comandos destructivos; `Stop` ejecuta `check`+tests; `SessionStart` muestra rama/issue.
 - El `Stop` hook respeta `stop_hook_active` para no hacer bucles. Claude Code fuerza la parada tras 8 bloqueos seguidos
