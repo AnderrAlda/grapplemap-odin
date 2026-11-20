@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+msg=$(head -n1 "$1")
+re='^(feat|fix|refactor|test|docs|chore|ci|perf|build|revert)(\([a-z0-9_-]+\))?!?: .{1,100}$'
+case "$msg" in
+Merge* | Revert*) exit 0 ;;
+esac
+if ! [[ "$msg" =~ $re ]]; then
+	echo "commit-msg: not a Conventional Commit: '$msg'" >&2
+	echo "expected: type(scope)?: description  (types: feat fix refactor test docs chore ci perf)" >&2
+	exit 1
+fi
