@@ -10,6 +10,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
   committed fixture sample and a full dump checked in CI, and the plan for `docs/original.md`, `docs/architecture.md`
   and the initial ADRs (#3).
 
+### Changed
+- `CLAUDE.md`: every issue and PR gets labels and its phase milestone when created (#29).
+
+### Fixed
+- Claude Code permission rules: removed `Write(...)` path rules, which have no effect; the existing `Edit(...)` rules
+  protect `reference/`, `tests/golden/` and `.github/workflows/` for every file-writing tool (#29).
+
 ## [0.1.0] - 2026-11-20
 
 Phase 0: repository, infrastructure and AI-assisted workflow. No viewer yet.
