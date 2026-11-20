@@ -1,3 +1,10 @@
 #!/usr/bin/env bash
+# Block any push that updates main (merges happen only on GitHub), then run the tests.
 set -euo pipefail
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+	if [ "$remote_ref" = "refs/heads/main" ]; then
+		echo "pre-push: pushing to main is blocked. Open a PR and merge it on GitHub." >&2
+		exit 1
+	fi
+done
 ./build.sh test
