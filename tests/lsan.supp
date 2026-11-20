@@ -1,0 +1,5 @@
+# LeakSanitizer suppressions for third-party GL/GLX driver initialisation (Mesa under xvfb).
+# These leaks happen inside the driver on first GL use, not in our code (our allocations are
+# checked separately by the Odin tracking allocator). Keep this list minimal; justify each entry.
+leak:extensionSupportedGLX
+leak:rlDrawRenderBatch

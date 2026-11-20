@@ -1,0 +1,10 @@
+name: Tarea
+description: Tarea pequeña enlazada a una épica de fase
+body:
+  - type: input
+    id: epic
+    attributes: { label: Épica, placeholder: "#N" }
+  - type: textarea
+    id: what
+    attributes: { label: Descripción y criterio de hecho }
+    validations: { required: true }

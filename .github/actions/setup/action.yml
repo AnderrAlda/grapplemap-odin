@@ -1,0 +1,48 @@
+name: Setup toolchain
+description: Install the pinned Odin, odinfmt and Linux system deps
+inputs:
+  odinfmt:
+    description: Build and install odinfmt
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - name: Read pinned Odin version
+      id: ver
+      shell: bash
+      run: echo "odin=$(cat .odin-version)" >> "$GITHUB_OUTPUT"
+    - uses: laytan/setup-odin@v2.12.2
+      with:
+        release: ${{ steps.ver.outputs.odin }}
+        llvm-version: "22"
+        token: ${{ github.token }}
+    - name: Linux system packages
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev jq
+    - name: Pin ols commit
+      id: ols
+      shell: bash
+      # odinfmt output must match local formatting; bump this together with .odin-version.
+      run: echo "sha=9b9711592bed66266311c361dd7a307ecc87025b" >> "$GITHUB_OUTPUT"
+    - name: Cache odinfmt
+      if: inputs.odinfmt == 'true'
+      id: fmtcache
+      uses: actions/cache@v6.1.0
+      with:
+        path: ~/.local/bin/odinfmt
+        key: odinfmt-${{ runner.os }}-${{ runner.arch }}-${{ steps.ols.outputs.sha }}
+    - name: Build odinfmt
+      if: inputs.odinfmt == 'true' && steps.fmtcache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        git init -q "$RUNNER_TEMP/ols"
+        git -C "$RUNNER_TEMP/ols" fetch -q --depth 1 https://github.com/DanielGavin/ols.git "${{ steps.ols.outputs.sha }}"
+        git -C "$RUNNER_TEMP/ols" checkout -q FETCH_HEAD
+        (cd "$RUNNER_TEMP/ols" && ./odinfmt.sh)
+        mkdir -p ~/.local/bin && cp "$RUNNER_TEMP/ols/odinfmt" ~/.local/bin/
+    - name: Add ~/.local/bin to PATH
+      shell: bash
+      run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
