@@ -11,6 +11,7 @@ WINDOW_HEIGHT :: 720
 WINDOW_TITLE :: "grapplemap-odin"
 TARGET_FPS :: 60
 TRACK_LEAKS :: ODIN_DEBUG
+EXIT_MEMORY_ERROR :: 3
 BACKGROUND :: rl.Color{24, 26, 32, 255}
 
 // App_State holds all mutable application state; it is passed explicitly.
@@ -35,20 +36,27 @@ main :: proc() {
 	run(&state)
 
 	if TRACK_LEAKS {
-		report_leaks(&track)
+		has_problems := report_leaks(&track)
 		mem.tracking_allocator_destroy(&track)
+		if has_problems {
+			os.exit(EXIT_MEMORY_ERROR)
+		}
 	}
 }
 
 // report_leaks prints every live allocation and bad free to stderr.
+// It returns true if there was at least one leak or bad free.
 @(private)
-report_leaks :: proc(track: ^mem.Tracking_Allocator) {
+report_leaks :: proc(track: ^mem.Tracking_Allocator) -> (has_problems: bool) {
 	for _, leak in track.allocation_map {
 		fmt.eprintfln("leak: %v bytes at %v", leak.size, leak.location)
+		has_problems = true
 	}
 	for bad in track.bad_free_array {
 		fmt.eprintfln("bad free at %v", bad.location)
+		has_problems = true
 	}
+	return
 }
 
 // parse_args reads `--headless` and `--frames N` from the command line.
