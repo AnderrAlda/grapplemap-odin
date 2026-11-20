@@ -44,19 +44,24 @@ main :: proc() {
 	}
 }
 
+// has_memory_problems reports whether the tracker holds a live allocation or a bad free.
+// It does not print anything.
+@(private)
+has_memory_problems :: proc(track: ^mem.Tracking_Allocator) -> bool {
+	return len(track.allocation_map) > 0 || len(track.bad_free_array) > 0
+}
+
 // report_leaks prints every live allocation and bad free to stderr.
 // It returns true if there was at least one leak or bad free.
 @(private)
-report_leaks :: proc(track: ^mem.Tracking_Allocator) -> (has_problems: bool) {
+report_leaks :: proc(track: ^mem.Tracking_Allocator) -> bool {
 	for _, leak in track.allocation_map {
 		fmt.eprintfln("leak: %v bytes at %v", leak.size, leak.location)
-		has_problems = true
 	}
 	for bad in track.bad_free_array {
 		fmt.eprintfln("bad free at %v", bad.location)
-		has_problems = true
 	}
-	return
+	return has_memory_problems(track)
 }
 
 // parse_args reads `--headless` and `--frames N` from the command line.
