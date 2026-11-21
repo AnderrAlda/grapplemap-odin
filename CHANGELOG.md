@@ -17,6 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
   (and `build.bat setup`) initialize the submodule (#32).
 - `/pr` skill: at most one round of non-blocking review findings is applied per PR; the rest go to issues.
 - `CLAUDE.md`: every issue and PR gets labels and its phase milestone when created (#29).
+- `CLAUDE.md`: non-blocking review findings become issues labeled `tech-debt` in the `Backlog` milestone, unless `priority:high`.
 
 ### Fixed
 - Claude Code permission rules: removed `Write(...)` path rules, which have no effect; the existing `Edit(...)` rules
