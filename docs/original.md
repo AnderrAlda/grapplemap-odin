@@ -7,8 +7,8 @@ again**. Source of truth: the submodule `reference/GrappleMap`, pinned at `032c8
 - A citation `src/x.cpp:L` or `src/x.cpp:A-B` is relative to `reference/GrappleMap` at the pin. On a pin bump every
   citation must be re-checked (`reference/CLAUDE.md`).
 - `GrappleMap.txt` means `reference/GrappleMap/GrappleMap.txt`; its line numbers are cited as `GrappleMap.txt:L`.
-- **[unverified]** marks a claim derived by reading code whose runtime behaviour has not been observed (it needs the
-  oracle/dumper). Each one says why. Claims without the marker were checked against the cited lines.
+- **[unverified]** marks a claim that depends on UB, compiler behaviour or a multi-step chain deduced from the code, whose
+  runtime behaviour has not been observed (it needs the oracle/dumper; to be linked to the dumper issue when it exists). Each one says why. Claims without the marker were checked against the cited lines.
 
 ## Contents
 1. [Data format](#1-data-format)
@@ -29,7 +29,7 @@ again**. Source of truth: the submodule `reference/GrappleMap`, pinned at `032c8
 ### 1.1 File layout
 
 `GrappleMap.txt` is plain UTF-8 text with `\n` line endings, read whole into memory and parsed by `readSeqs`
-(`src/persistence.cpp:58-116`) from a `[b, e)` byte range (`loadGraph`, `src/persistence.cpp:154-176`).
+(`src/persistence.cpp:58-116`) from a `[b, e)` byte range (`loadGraph`, `src/persistence.cpp:154-176` for streams; the file overload reads in binary mode, `src/persistence.cpp:186-213`). The parser works on bytes and does not validate UTF-8.
 
 The parser looks at **one byte per line**: if the first byte is a space (`' '`), what follows is a *position block*;
 anything else is a *description line* (`src/persistence.cpp:71`). There is no other classification: a blank line, a line
@@ -45,19 +45,19 @@ Consequences visible in the code:
 - Description lines that are **not followed by a position block** (end of file) are silently dropped: `desc` is only
   consumed when a position starts (`src/persistence.cpp:75-86`) and is not looked at after the loop.
 - Line endings: only `'\n'` ends a description line (`src/persistence.cpp:99`). `'\r'` is not stripped, so it would
-  become part of the last character of the line. The DB has no `'\r'` and no tab (`tr -cd`, §1.8).
+  become the last character of the line. The DB has no `'\r'` and no tab (`tr -cd`, §1.8).
 - The writer always emits `'\n'` and opens the file in binary mode (`src/persistence.cpp:237`, `118-144`).
 
 ### 1.2 Description lines
 
 The first description line is the **name** of the block (`description.front()` is used as the name throughout, e.g.
 `src/graph.hpp:16-18`, `src/graph_util.cpp:176`). Remaining lines are free-form, except for the prefixes below. A prefix
-only counts at **column 0**, and is matched by a plain `substr` comparison.
+only counts at **column 0**, and is matched by a plain, case-sensitive `substr` comparison.
 
 | Line | Who reads it | Details |
 |---|---|---|
 | `tags: a b c` | `tags_in_desc`, `src/graph_util.cpp:147-164`; wrappers `src/metadata.hpp:19-20` | Prefix `tags:`, then the rest is split on whitespace (`istringstream >>`); every token is a tag; multiple `tags:` lines are unioned into a `set`. |
-| `properties: a b c` | `properties_in_desc`, `src/metadata.cpp:37-54` | Same parsing. Only on sequences: `detailed` and `bidirectional` are read while loading (`src/persistence.cpp:78,84-85`) and on `set_description` (`src/graph.cpp:370-371`). Other tokens are not interpreted by the loader and are passed to JS (`src/js_conversions.cpp:114,263`). |
+| `properties: a b c` | `properties_in_desc`, `src/metadata.cpp:37-54` | Same parsing. Only on sequences: `detailed` and `bidirectional` are read while loading (`src/persistence.cpp:78,84-85`) and on `set_description` (`src/graph.cpp:370-371`). Other tokens are not interpreted by the C++ loader and are passed to JS (`src/js_conversions.cpp:114,263`), where e.g. `top`/`bottom` color transitions (`src/search.js:669-670`, `src/explorer.js:83-84`). |
 | `ref: …` | nothing | No parser support: no string `"ref:"` in `src/`. Documented as the source-material line (`doc/native-editor.md:67`). The JS composer shows it as ordinary text (`src/composer.js:339-346`). |
 | `note: …`, `todo: …` | nothing | Same: no code recognizes them; they are plain description lines (shown as text by `src/composer.js:339-346`). |
 
@@ -137,7 +137,7 @@ What is and is not preserved on a load → save round trip:
 - Everything else in description lines (including `ref:`, `note:`, `todo:`, `\n` markers) is written back verbatim.
 - Writer asserts `i >= 0` and `i < 4000` (`src/persistence.cpp:125-126`), but the encodable maximum is **3843**
   (`61·62+61`): values 3844-3999 pass the assert and index past the alphabet (`i/62 = 62` reads the string's NUL
-  terminator). Both asserts are compiled out in release builds (§1.7), so out-of-range values are not detected.
+  terminator for 3844-3905; above that the index is out of bounds, UB; a negative `i` is UB too). Both asserts are compiled out in release builds (§1.7), so out-of-range values are not detected.
 
 ### 1.6 Grammar
 
@@ -150,7 +150,7 @@ block_item  = desc_line | pos_block ;
 desc_line   = nonspace , { not_newline } , ( "\n" | EOF )     (* first byte != ' ' *)
             | "\n" ;                                          (* the empty line is a desc_line too *)
 pos_block   = " " , 295 * byte ;                              (* exactly 296 bytes consumed, see 1.7 *)
-nonspace    = byte - " " ;
+nonspace    = byte - " " - "\n" ;
 not_newline = byte - "\n" ;
 ```
 
@@ -162,7 +162,7 @@ sequence    = desc_line , { desc_line } , pos_block , { pos_block } ;   (* desc_
 - Within a `pos_block`, `decodePosition` takes the first 276 base62 digits, skipping any `isspace` before each one.
 - Block with one `pos_block` → named position; two or more → transition.
 
-What the **writer** emits (the canonical form, and what the DB contains, §1.8):
+What the **writer** emits for well-formed data (and what the DB contains, §1.8; the writer does not enforce it):
 
 ```ebnf
 file        = { block } ;
@@ -182,18 +182,20 @@ every `assert` below is **compiled out** in the shipped binaries.
 | A byte that is not `[a-zA-Z0-9]` where a digit is expected | `fromBase62` calls `error("not a base 62 digit: " + c)`, which throws `runtime_error` (`src/util.hpp:68`). `readSeqs` catches it and rethrows `"at line N: not a base 62 digit: c"` where `N` is `line_nr` at that moment: the number of lines consumed **before** the failing position block (the block's first line is `N+1`, 1-based). Only the first bad digit is reported. | `src/persistence.cpp:16-23,110-113` |
 | Position block shorter than 296 bytes left in the file (truncated, or **file without the final `'\n'`**: the last block is then 295 bytes) | `abort()`: process termination, not an exception, so the `catch` does not see it and no message is printed by the code. | `src/persistence.cpp:89` |
 | Position block before any description line (the file starts with `' '`) | `assert(!desc.empty())` fires only in debug builds. With `NDEBUG` the sequence is created with an **empty description** and `line_nr = 0`; later code that calls `description.front()` on it would be UB (e.g. `src/graph_util.cpp:176`). **[unverified]** runtime effect; needs the dumper. | `src/persistence.cpp:77,83`, `src/SConstruct:4` |
-| Position lines indented differently (more/less/no spaces), or digits split across lines differently | The *decoder* tolerates it (skips `isspace`), but the *caller* always advances exactly 296 bytes. If the block's real byte length ≠ 296, the next read starts mid-block (a position suffix becomes a "description line", or the next block is entered misaligned). No diagnostic. | `src/persistence.cpp:37-41,93` |
-| CRLF line endings | Same mechanism: each position line has +1 byte, so a block is 300 bytes; `decodePosition` succeeds but the cursor lands inside the last line of the block, the remainder is parsed as a description line, and `'\r'` stays in all description lines. **[unverified]** end-to-end result; derived from the code. | `src/persistence.cpp:39,93,99` |
+| Position lines indented differently (more/less/no spaces), or digits split across lines differently | The *decoder* tolerates it (skips `isspace`), but the *caller* always advances exactly 296 bytes. If the block's real byte length ≠ 296, the next read starts mid-block. There is no specific diagnostic; depending on where the cursor lands: leftover text becomes a bogus description line (which also ends the merging of consecutive positions, splitting a transition into 1-position nodes, which `Graph` can then reject with `multiple positions named`, `src/graph.cpp:284-285`), or text that starts with a space is decoded as a position and throws a misleading `not a base 62 digit`, or `abort()` near the end of the file. **[unverified]** which of these happens for a given input; derived from the code. | `src/persistence.cpp:37-41,93` |
+| CRLF line endings | Same mechanism: each position line has +1 byte, so a block is 300 bytes; `decodePosition` succeeds but the cursor lands inside the last line of the block, the remainder (last 2 digits + `'\r'`) is parsed as a description line, so every transition is split into 1-position nodes named like `XY\r` and `Graph` likely fails with `multiple positions named` (`src/graph.cpp:284-285`); `'\r'` also stays in all description lines. The file is opened in binary mode, so no CRLF translation happens even on Windows (`src/persistence.cpp:188`). **[unverified]** end-to-end result; derived from the code. | `src/persistence.cpp:39,93,99` |
 | Tab or other whitespace inside the digits | Skipped by `isspace` like a space (see above); byte count rules still apply. | `src/persistence.cpp:39` |
-| A *description* line that starts with a space | Classified as a position block (first-byte rule) and consumes 296 bytes. The writer never emits one for a name, but a hand-edited note with a leading space is a trap. | `src/persistence.cpp:71` |
+| A *description* line that starts with a space | Classified as a position block (first-byte rule) and consumes 296 bytes. The writer does not guard against it (it writes description lines verbatim), so an edited line with a leading space is emitted and then misread. | `src/persistence.cpp:71` |
 | Empty file | `b < e` is false, no sequences, empty `vector<Sequence>`. What `Graph` does with no nodes is section 2. | `src/persistence.cpp:69,115` |
 | Description lines at the end with no positions after | Dropped silently (§1.1). | `src/persistence.cpp:75-86` |
 | Two blocks with no description between them | They merge into one sequence (positions appended). | `src/persistence.cpp:75,91` |
 | Blank line between blocks | It is a description line (`""`), so it either becomes part of the next block's description (as the *first* line, hence an empty name) or is dropped at EOF. | `src/persistence.cpp:96-105` |
 | Description-only edits (`set_description`) | `lines()` splits on `'\n'`; `detailed`/`bidirectional` recomputed. | `src/graph.cpp:350-354,366-373` |
 
-The parser performs **no** validation of: name uniqueness, tag/property vocabulary, coordinate sanity, number of
-positions per block, or count of lines. Everything not in the table above is accepted.
+`readSeqs` performs **no** validation of: name uniqueness, tag/property vocabulary, coordinate sanity, number of
+positions per block, or count of lines. Everything not in the table above is accepted by `readSeqs`. The `Graph`
+constructor then rejects two named positions with identical full descriptions (`src/graph.cpp:284-285`); that and
+the rest of graph building are section 2.
 
 ### 1.8 Observed in the DB at the pin
 
@@ -207,9 +209,11 @@ grep -c '^$' GrappleMap.txt                                           # 0 empty 
 tr -cd '\t' <GrappleMap.txt | wc -c; tr -cd '\r' <GrappleMap.txt | wc -c   # 0 tabs, 0 CRs
 awk '/^ /{r++;next}{if(r){if(r%4)b++;r=0}}END{if(r%4)b++;print b+0}' GrappleMap.txt  # 0 runs not multiple of 4
 grep -c '\\n' GrappleMap.txt                                          # 1282 lines with a literal \n
-grep -c '^tags:' GrappleMap.txt   # 919 · '^properties:' 1244 · '^ref:' 1208 · '^todo:' 303 · '^note:' 4
+grep -c '^tags:' GrappleMap.txt   # 919 · '^properties:' 1244 · '^ref:' 1208 · '^todo:' 302 · '^note:' 4
 tail -c 1 GrappleMap.txt | xxd                                        # 0a: final newline present
 wc -l GrappleMap.txt                                                  # 39098 lines
+grep '^properties:' GrappleMap.txt | sed 's/^properties://' | tr ' ' '\n' | grep -v '^$' | sort | uniq -c   # §1.2 counts
+grep '^ ' GrappleMap.txt | sed 's/^    //' | fold -w1 | sort -u | wc -l      # 62 distinct position characters
 ```
 
 - Position alphabet in the file: the 62 base62 characters all occur and nothing else, so every coordinate is within
