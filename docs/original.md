@@ -16,7 +16,7 @@ again**. Source of truth: the submodule `reference/GrappleMap`, pinned at `032c8
 3. [Player model](#3-player-model)
 4. [Units and axes](#4-units-and-axes)
 5. [Transforms](#5-transforms)
-6. Interpolation and playback: *pending*
+6. [Interpolation and playback](#6-interpolation-and-playback)
 7. Rendering and camera: *pending*
 8. Editor: *pending*
 9. Controls and UI: *pending*
@@ -951,3 +951,200 @@ Must match semantically (the port may choose its own representation as long as t
   compare with a tolerance (needs a decision, phase 2).
 - `compose`/`inverse` are not dumped directly; adding them to `ops.ndjson` (e.g. `inverse(reorientation_from)` and
   `compose` of the two endpoint reorientations of each edge) would check §5.4 directly. To be proposed on #34.
+
+## 6. Interpolation and playback
+
+The original has two independent ways of animating a path: **frame-based** (`frames()` + `smoothen()`: a fixed list of
+positions, one per rendered frame; used by `makevideo`, `glfw_playback` and the oracle) and **time-based**
+(`Playback`: a cursor advanced by wall-clock seconds plus a per-frame "chaser"; used by the editors). They share only
+`between`. Notation as in §5 (`u(p)` applies a `PositionReorientation`, §5.3).
+
+### 6.1 `between`
+
+`between(a, b, s = 0.5)` (`src/positions.hpp:42-47`): for every one of the 46 `PlayerJoint`s,
+`r[j] = a[j] + (b[j] − a[j]) * s`, with the `V3` operators acting per component (`src/math.hpp:135,143,151`). So, per
+coordinate, `a + ((b − a) · s)`: one subtraction, one multiplication, one addition, each rounded separately (no FMA,
+§5.3). This form, not `a·(1 − s) + b·s`, is what must be reproduced.
+- Every joint of both players is interpolated independently and linearly in Cartesian space; there is no rotation
+  interpolation, no limb-length preservation and no player-level logic.
+- `s` is **not clamped**: the `/* [0,1] */` comment is the only constraint. Outside `[0, 1]` the result is a linear
+  extrapolation. Inside the original every caller keeps `s ∈ [0, 1]` (§6.2, §6.4), except `Playback` with negative
+  elapsed seconds, which the GLFW clock does not produce.
+- End points: `s = 0` gives `a + (b − a)·0`, equal to `a` except that `−0` becomes `+0`; `s = 1` gives `a + (b − a)`,
+  which is **not** bit-equal to `b` in general (observed in `tools/oracle/dump/testdata/basic/playback.ndjson`: frames
+  5 and 6 of block 1, see §6.2).
+- Not to be confused with the two-argument `between(V3, V3)` / `between(V2, V2)` midpoints, `(a + b) / 2`
+  (`src/math.hpp:193-195`), a different formula.
+- Oracle: `between.ndjson` holds `between(a, b, s)` for every consecutive pair of every transition and `s` = 0.25, 0.5,
+  0.75; one value cross-checked here against the formula above in Python doubles (bit-equal).
+
+### 6.2 Frame-based path: `follow` and `frames`
+
+**`follow(g, n, s, fpp)`** (`src/graph_util.cpp:60-110`) walks sequence `s` starting from the reoriented node `n`:
+- Direction is chosen by **node equality, not by the step's `reverse` flag**: forwards if `*g[s].from == *n`
+  (tested first), else backwards if `*g[s].to == *n`, else it throws (`src/graph_util.cpp:65,83,101-102`). A step whose
+  two endpoints are the same node is therefore always walked forwards. **[unverified]** whether such a transition
+  exists in the DB (section 10).
+- Frame of reference: `r = compose(inverse(E), N)` with `E` the edge's reorientation at the entry end and `N` the
+  view of `n` (§5.4).
+- For each segment (consecutive pair `A`, `B` of keyframes, in walking order) it emits `fpp + 1` frames,
+  `between(r(A), r(B), k / double(fpp))` for `k = 0 … fpp` (`src/graph_util.cpp:69-78,87-96`). The reorientation is
+  applied to the **keyframes first**, then interpolated (contrast §6.4). `k / double(fpp)` is a correctly rounded
+  division, exactly `1` at `k = fpp`.
+- Segment boundaries are therefore **repeated**: the last frame of a segment, `between(r(A), r(B), 1)`, and the first
+  of the next, `between(r(B), r(C), 0)`, are both ≈ `r(B)` but not bit-equal (§6.1).
+- It returns the frames and the node reached, viewed with `compose(Et, r)` (`src/graph_util.cpp:80-81,98-99`). The
+  `basicallySame` asserts at `src/graph_util.cpp:104-105` are compiled out (§1.7).
+
+**`frames(g, path, fpp)`** (`src/paths.cpp:23-52`), with `path` a `deque<Reversible<SeqNum>>` (`src/paths.hpp:8`):
+- Start node: `from(path.front(), g)` (`src/paths.cpp:37`), which for a `Reversible` is the edge's own endpoint `to` if
+  reversed, else `from`, **with the edge's own reorientation** (`src/locations.hpp:166-172`, `src/graph_util.hpp:135-143`).
+  The first step's `r` is thus `compose(inverse(E), E)` ≈ identity: the first transition plays in its stored frame
+  (bit-equal to the raw keyframes in the `basic` test DB, not guaranteed in general). Each following step starts from
+  the node `follow` returned, so the chain carries the reorientation (§5.4): consecutive transitions connect without
+  jumps (up to `basicallySame`, §2.3).
+- Per step: `follow(g, n, *step, fpp / (detailed ? 2 : 1))` (`src/paths.cpp:41-42`). **Integer** division: `fpp = 11`
+  gives 5 for a `detailed` transition (6 frames per segment, not 5.5); `fpp = 1` gives 0, and then `k / double(0)` is
+  `0/0 = NaN`: one NaN frame per segment **[unverified]** (deduced from the code; no caller uses `fpp < 2`).
+- `pop_back()` drops the **last frame of each step** (`src/paths.cpp:44`), so a step of `n` segments yields
+  `n · (fpp′ + 1) − 1` frames, `fpp′` the per-segment value. The dropped frame ≈ the first frame of the next step.
+  The last step of the path also loses its final frame: the path never shows its exact end keyframe.
+- Caption per step: first description line; if it is exactly `...` and the end node `*g[seq].to` (the stored `to`,
+  regardless of direction) has a description, its first line; then literal `\n` → space (`src/paths.cpp:27-34`).
+- `frames(g, script, fpp)` (`src/paths.cpp:54-59`) just concatenates the `frames` of each path; each path restarts
+  from its own first edge's endpoint (no reorientation carried between paths).
+- Checked by the oracle: `playback.ndjson` (`fpp = 11`; in `basic`: 2 + 2 segments → 11 + 23 frames, matching
+  `n · (fpp′ + 1) − 1`; both frame lists re-derived here from the keyframes with §6.1's formula, bit-equal).
+
+Default `fpp` is 11 (`src/makevideo.cpp:34`, `src/playback.cpp:25`). The web position pages use a separate path
+builder: `frames_for_sequence` (`src/mkpospages.cpp:124-149`), with 5 / 3 (detailed) frames per position, `k` from 0 to
+`fpp − 1` (no repeated boundary), 10 copies of the first and last keyframe as padding, no reorientation, and a reversed
+step played by reversing the frame list. Section 7.
+
+### 6.3 `smoothen`
+
+`smoothen(Frames f)` (`src/paths.cpp:8-21`) is a per-joint exponential filter over **all frames of all steps in one
+pass** (`foreach` iterates by reference, `src/util.hpp:66`):
+
+```
+last = f[0].second[0]
+for every frame p, in order, for every PlayerJoint j:
+    lag     = std::min(0.83, 0.6 + p[j].y)       // p[j] is the raw (unsmoothed) value
+    p[j]    = last[j] = last[j] * lag + p[j] * (1 − lag)
+```
+
+- Per coordinate: `(last · lag) + (raw · (1 − lag))`, with `1 − lag` computed once per joint. `std::min(a, b)` returns
+  `b` only if `b < a`, so `lag = 0.83` once `0.6 + y ≥ 0.83` (`y` ≳ 0.23 m) and `0.6 + y` below; joints near the
+  floor lag less (`0.6` at `y = 0`). Verified bit for bit against `basic/playback.ndjson` (frame 1 of block 1).
+- The state crosses step boundaries: every caller passes a whole script (`src/makevideo.cpp:93,105`,
+  `src/playback.cpp:77,89`, `src/paths.cpp:261`); the per-transition `smooth` of the oracle is a dumper choice and differs
+  from the chained one (`basic`: the first smoothed frame of `seq 1` is not the same alone and in the `chain` line).
+- The first frame becomes `p·lag + p·(1 − lag)`, ≈ `p` (bit-equal in `basic`, not guaranteed).
+- It is frame-count based: the time constant is a number of frames, so the visible lag depends on `fpp` and the frame
+  rate. An empty `Frames` (or an empty first step) is UB (`f[0].second[0]`); no caller produces one.
+- Padding added by the callers before smoothing: random scenes get `fpp · 5` (`glfw_playback`, `src/playback.cpp:86`)
+  or `fpp · 15` (`makevideo`, `src/makevideo.cpp:102`) copies of the first frame and `fpp · 15` of the last
+  (`src/playback.cpp:87`, `src/makevideo.cpp:103`); `demoFrames` adds 70 copies of the last frame and a 70-frame caption
+  `"      "` with the first smoothed frame before each scene (`src/paths.cpp:246-267`). Scripts get no padding.
+- `mkpospages` has its own `smoothen` on a flat frame list with `std::min(0.55, 0.3 + y)` (`src/mkpospages.cpp:319-331`).
+
+Consumers play one frame per buffer swap with vsync on (`src/glfw_playback.cpp:66-111,152`), so `glfw_playback` speed
+is `fpp` frames per segment at the monitor's rate (11 frames at 60 Hz ≈ 5.5 segments/s). `makevideo` only counts
+frames: its PNG writer is commented out (`src/makevideo.cpp:124-139`).
+
+### 6.4 Time-based playback: `Playback`
+
+State (`src/playback.hpp:25-38`): an `OrientedPath` (`deque<Reoriented<Reversible<SeqNum>>>`, `src/paths.hpp:10`), the
+iterator `i`, `segment`, `howFar`, `wait`, `atEnd`, `chaser`; `pause_before = pause_after = 0.8` s.
+
+- **Location**: `Location{{**i, segment}, howFar}` viewed with `i->reorientation` (`src/playback.hpp:45-52`).
+  `howFar` is always measured from keyframe `segment` towards `segment + 1`, also when playing in reverse. The shown
+  target is `at(location) = u(between(A, B, howFar))` (`src/graph_util.hpp:260-268`): interpolate **then** reorient, the
+  opposite order of §6.2, so equal only up to rounding.
+- **Reorientation is not computed by `Playback`**: each element of the path carries its own, set by the caller. The
+  editor plays either the current sequence in the current view (`nonreversed(sequence(location))`) or the selection
+  (`src/editor.cpp:411-417`), whose reorientations `reorient_from` keeps consistent through `gp_connect`, which is
+  `compose(inverse(E), N)` as in §6.2 (`src/paths.cpp:309-330`, `src/graph_util.cpp:232-245`). Section 8.
+- **`reset()`** (`src/playback.cpp:102-112`): `i` = first step; `segment` = 0 forwards, or the last segment
+  (`positions.size() − 2`, `src/graph_util.hpp:84-88`) in reverse; `howFar` = 0 forwards, 1 in reverse
+  (`from_loc`, `src/reoriented.hpp:56-58,74-75`); `wait = 0`, `atEnd = false`. The constructor calls `reset()` and
+  sets `chaser` to the exact start (`src/playback.cpp:95-100`): no pause before the first run.
+- **Speed** (`src/playback.cpp:129-131`): `detailed ? 10 : 5` **segments per second**, of the step being played; the
+  same values as the editor's `segmentsPerSecond` (`src/editor.cpp:28-31`). A step of `n` segments lasts `n / 5` s
+  (`n / 10` if detailed), independent of frame rate.
+
+**`progress(seconds)`** (`src/playback.cpp:114-176`), recursive, consumes `seconds` exactly:
+1. Pause: if `wait > seconds`, `wait −= seconds` and return. Otherwise `seconds −= wait`, `wait = 0`.
+2. If `atEnd` (set at the end of the previous pass): `reset()`, `wait = pause_before`, return. The **remaining seconds
+   are discarded**, and `chaser` is not reset, so the jump back to the start is smoothed by the chaser (§6.5).
+3. Forwards: `howFar += seconds · speed`; if `< 1` return. Else the leftover is `seconds = (howFar − 1) / speed`; then
+   next segment with `howFar = 0`, or, on the last segment, `howFar = 1` and the step is finished. Reverse:
+   `howFar −= seconds · speed`; if `> 0` return; leftover `(−howFar) / speed`; previous segment with `howFar = 1`, or on
+   segment 0 `howFar = 0` and finished. Hitting exactly `1` (forwards) or `0` (reverse) counts as crossing.
+4. Finished step: if it was the last one, `atEnd = true`, `wait = pause_after`, return (**leftover discarded**; the
+   end is held at exactly `howFar` 1 / 0, i.e. the last keyframe through `between(·, ·, 1)` / `(·, ·, 0)`). Otherwise
+   `++i` and start the next step at its own first segment (`segment` last / `howFar = 1` if reversed, else 0 / 0),
+   `src/playback.cpp:156-173`.
+5. `progress(seconds)` again with the leftover, which is then advanced at the **new** segment's speed: a `detailed`
+   step followed by a normal one is timed correctly across the boundary.
+
+Consequences: with `seconds ≥ 0`, `howFar ∈ [0, 1]` whenever `progress` returns, so `between` is never extrapolated.
+There is no bidirectional "ping-pong": the path plays once in the direction of each step, pauses 0.8 s, restarts
+from the first step after another 0.8 s, forever. The boundary between two steps is shown once (no repeated frame,
+unlike §6.2), but `Playback` holds no frames: what is seen depends on when frames are sampled.
+
+### 6.5 The chaser
+
+`frame(secondsElapsed)` (`src/playback.cpp:178-184`):
+
+```
+chaser = between(chaser, at(location(), graph), 0.2);   // todo: the 0.2 should depend on secondsElapsed
+progress(secondsElapsed);
+```
+
+- The shown position is `chaser` (`getPosition`, `src/playback.hpp:56`; used by `Editor::current_position`,
+  `src/editor.hpp:41`), an exponential follower of the target with factor 0.2 **per frame**: the remaining error is
+  multiplied by 0.8 each frame (half-life ≈ 3.1 frames, ≈ 52 ms at 60 Hz). Frame-rate dependent, as the source's own
+  `todo` says.
+- The target is sampled **before** `progress`, i.e. at the previous frame's time: one frame of extra lag.
+- Unlike `smoothen` (§6.3), the factor does not depend on joint height, and the formula is `between`'s
+  (`c + (t − c)·0.2`), not `c·lag + t·(1 − lag)`.
+- Elapsed time: wall-clock between frames, `glfwGetTime()` after the buffer swap with vsync on
+  (`src/glfw_editor.cpp:537-538,568,570`, `src/editor_canvas.cpp:584-588`). Playback only runs while the editor is in playback
+  mode (`src/editor.cpp:419-428`).
+
+### 6.6 Chained transitions
+
+- Frame-based: chaining is done by `frames` itself, carrying the node's reorientation through `follow` (§6.2);
+  boundaries: the last frame of each step dropped, `smoothen` state carried across (§6.3).
+- Time-based: chaining relies on the reorientations stored in the `OrientedPath` (§6.4); the change of step happens
+  inside one `progress` call with the leftover time carried over. Any residual mismatch at the junction
+  (`basicallySame`, §2.3) is absorbed by the chaser.
+- Editor display helpers `timeInSequence`, `duration` and `timeIn` (`src/editor.cpp:33-62`) compute a time from the
+  same speeds; `duration` is `num_segments / segmentsPerSecond` in **integer** arithmetic (`uint_fast8_t` and
+  `unsigned`), so it truncates (e.g. 7 segments → 1 s instead of 1.4 s). Section 8.
+
+### 6.7 Input for phases 2/3
+
+Must match the original **bit for bit** (f64, same operation order, no FMA; checked by the oracle):
+- `between` as `a + (b − a)·s`, no clamping (§6.1). Oracle: `between.ndjson`.
+- `frames`: start node with the edge's own reorientation, direction by node equality, `fpp / 2` by integer division for
+  `detailed`, reorient keyframes then interpolate, `fpp + 1` frames per segment with repeated boundaries, last frame of
+  each step dropped, reorientation chained with `compose` (§6.2). Oracle: `playback.ndjson` (`raw`, both per
+  transition and `chain`).
+- `smoothen` with `min(0.83, 0.6 + y)` on the raw `y`, in the term order of §6.3, state carried over the whole script.
+  Oracle: `playback.ndjson` (`smooth`; the `chain` line for the carried state).
+
+Must match semantically (no dump; time-based):
+- `Playback::progress`: segments per second 5 / 10, leftover seconds carried across segments and steps at the new
+  speed, `howFar` measured from the lower keyframe in both directions, interpolate-then-reorient, 0.8 s pauses at the
+  end and before restarting, leftover discarded at the end, loop forever (§6.4).
+- The chaser at 0.2 per frame, sampled before `progress` (§6.5).
+
+### 6.8 Open points
+
+- The chaser and `smoothen` are frame-rate / frame-count dependent. Whether the port keeps 0.2 per frame (faithful)
+  or makes it time-based (`1 − 0.8^(60·dt)` at 60 Hz equivalence, the original's own `todo`) is a decision for phase 3
+  (ADR); it changes nothing that the oracle checks.
+- Bit equality of `at(Reoriented<Location>)` (§6.4) is not dumped; `playback.ndjson` only covers the §6.2 order.
+- Self-loop transitions and the direction rule of `follow` (§6.2): to be checked on the DB (section 10).
