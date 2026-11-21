@@ -39,7 +39,19 @@ Si dos issues tocan los mismos ficheros, no los lances a la vez: encadénalos.
 ## 4. Cerrar el PR
 Con CI verde, `code-reviewer` sin bloqueantes y checklist completo, todo sobre el mismo commit (`gh pr view N --json headRefOid,statusCheckRollup`):
 `gh pr ready N` sin preguntar (memoria `auto-ready-prs`) y dímelo. Si algo falla, el PR sigue en draft y se lo mandas al worker.
-**Nunca `gh pr merge`.** Tras mi merge: `herdr worktree remove --workspace <id guardado>` (nunca `--force`; no está en `allow`, así que te lo pedirá) y libera el agente.
+**Nunca `gh pr merge`.** Tras mi merge, limpia (paso 4b).
+
+## 4b. Limpiar lo terminado
+En cada inventario, y siempre que te diga que he mergeado, busca worktrees y ramas locales cuyo PR esté `MERGED` y límpialos sin preguntar, **solo si se cumplen las tres comprobaciones**:
+1. `gh pr view N --json state,headRefOid` da `MERGED`.
+2. El commit local de la rama (`git rev-parse <rama>`) es igual al `headRefOid` del PR (si no, hay trabajo sin publicar: escala).
+3. `git -C <worktree> status --short` está vacío.
+Entonces, desde la raíz y con `main` al día (`git pull --ff-only`):
+- Worktree: usa `./build.sh worktree-remove <rama>` cuando exista (#54). Mientras no exista, `git worktree remove <ruta>`; si git se niega solo por tener submódulos, `--force` es aceptable **únicamente** tras las tres comprobaciones (no está en `allow`: te lo pedirá). Luego `git worktree prune`.
+- Rama local: `git branch -D <rama>` (un squash no hace la rama «mergeada» para git, por eso `-D` y no `-d`; las comprobaciones de arriba son la garantía). Borra también las ramas de respaldo (`pre-rebase-*`) de ese issue.
+- Remoto: GitHub borra la rama al mergear (`delete_branch_on_merge`); solo `git fetch --prune`. Nunca `git push --delete`.
+- Libera el agente/sesión del worker.
+Si alguna comprobación falla, no borres nada y escala con el motivo.
 
 ## 5. Escalar (lista cerrada)
 Pregúntame solo si ocurre alguno de estos casos; lo demás se resuelve y se resume al final en pocas líneas:

@@ -54,6 +54,9 @@ y los subcomandos `herdr` que usa la skill (`pane current`, `worktree create`, `
 `.claude/settings.json`. `herdr pane run`, `pane send-*`, `agent send-keys`, `worktree remove` y `update` NO están en `allow`: ejecutarían comandos
 en otro pane sin pasar por `deny` ni por el guard. Los `deny` (merge, force-push, push a `main`) siguen igual y el guard de push bloquea además
 `--mirror`, `--all` y `+refspec`.
+Limpieza: tras cada merge MAIN elimina el worktree, borra la rama local (`-D`, por el squash) y hace `git fetch --prune` (GitHub ya borra la remota),
+solo si el PR está `MERGED`, el commit local es el `headRefOid` del PR y el árbol está limpio. Un worktree con submódulos exige `--force` en git plano
+(pide confirmación) hasta que exista `./build.sh worktree-remove` (#54).
 MAIN nunca responde a un diálogo de permisos de otro agente. `herdr worktree create` no ejecuta `./build.sh setup`: lo hace el worker.
 
 ## Propuestas pendientes de tu OK (no activadas)
