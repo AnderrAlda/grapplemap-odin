@@ -12,6 +12,7 @@ Tras clonar: `git submodule update --init` (lo hace `./build.sh setup`) para ten
 ## Mapa
 - `src/core` datos, parser, grafo, interpolación (sin deps de render/ui) · `src/render` · `src/ui` · `src/editor`
 - `reference/GrappleMap` original, SOLO LECTURA · `tests/golden` imágenes de referencia · `tests/fixtures`
+- `tools/oracle` Dockerfile que compila el original (oráculo, amd64) · ver su README
 - `docs/` (`original.md`, `architecture.md`, `ai-workflow.md`, `ASSETS.md`, `adr/`, `specs/`, `plans/`)
 - Import con collection: `import "app:core"`.
 
