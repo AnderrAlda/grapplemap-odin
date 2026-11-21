@@ -21,6 +21,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
   `grapplemap-indexer`, `-dbtojs` and `-mkpospages` out of tree, plus the object files for `--images` (#33).
 
 ### Changed
+- Worker flow: `/orchestrate` launches each worker with `claude "/start-task N <plan path>"` as the initial prompt (a slash command sent with `hc send` arrives wrapped as text and is not executed). `/start-task` runs setup, copies and commits the approved plan, implements and invokes `/pr`; `/pr` is now invocable by workers and waits for CI before marking ready; `hc send|kill|rm` in `allow` are scoped to terminals named `w-*` (#71, #69).
 - `/orchestrate` now drives Herdr through `hc` (herdr-core), which is what the Herdr app runs its terminals on; the old `herdr` CLI could not see them. Workers are launched with `hc run --bg --outlive-parent` labelled into MAIN's space (recommended on the server, so it keeps going while the laptop sleeps), and the allow rules use `hc ls|get|read|wait|send|run --bg` instead of `herdr ...`; `hc send --force` is denied, and the residual risk of `hc send`/`run --bg` is documented (#68).
 - Agent autonomy rules (create issues/branches/PRs without asking, mark ready when CI is green, review has no blockers and the checklist is
   complete) now live in `CLAUDE.md`; `/pr` no longer asks for confirmation before opening the draft and `/orchestrate` no longer points to
