@@ -106,7 +106,7 @@ cmd_worktree() {
 cmd_worktree_remove() {
 	local branch="${1:?usage: ./build.sh worktree-remove <branch>}" wt="" path="" line
 	case "$branch" in
-	main | main/* | master) echo "error: refusing to remove protected branch '$branch'" >&2; return 1 ;;
+	main* | master*) echo "error: refusing to remove protected branch '$branch'" >&2; return 1 ;;
 	esac
 	while IFS= read -r line; do
 		case "$line" in
@@ -127,11 +127,11 @@ cmd_worktree_remove() {
 		return 1
 	fi
 	case "$PWD/" in
-	"$wt"/*) echo "error: current directory is inside '$wt'; run this from another worktree. Nothing removed" >&2; return 1 ;;
+	"$wt"/*) echo "error: build.sh was run from inside '$wt'; run this from another worktree. Nothing removed" >&2; return 1 ;;
 	esac
 	local dirty sub_dirty
-	dirty=$(git -C "$wt" status --short) || return 1
-	sub_dirty=$(git -C "$wt" submodule foreach --recursive --quiet 'git status --short | sed "s|^|$displaypath: |"') || return 1
+	dirty=$(git -C "$wt" status --short --untracked-files=all --ignore-submodules=none) || return 1
+	sub_dirty=$(git -C "$wt" submodule foreach --recursive --quiet 'git status --short --untracked-files=all | sed "s|^|$displaypath: |"') || return 1
 	if [ -n "$dirty$sub_dirty" ]; then
 		echo "error: worktree '$wt' has uncommitted changes; nothing removed:" >&2
 		[ -z "$dirty" ] || printf '%s\n' "$dirty" >&2

@@ -63,7 +63,7 @@ Limpieza: tras cada merge MAIN elimina el worktree, borra la rama local (`-D`, p
 solo si el PR está `MERGED`, el HEAD del worktree (no solo la rama) es el `headRefOid` del PR, el árbol está limpio (incluidos ignorados no regenerables)
 y las ramas `pre-rebase-*` son ancestro del PR. `git branch -D main*` está en `deny`; `--force` solo en `git worktree remove`, nunca en push. Un worktree con submódulos exige `--force` en git plano;
 `./build.sh worktree-remove <rama>` (#54) lo encapsula: comprueba que el worktree y sus submódulos están limpios (`git status --short`, incluye untracked; ignora los ignorados),
-y si no, no borra nada, muestra el estado y sale con error; si sí, ejecuta `git worktree remove --force`, `git worktree prune` y `git branch -D` (rechaza `main*`, el worktree principal y el directorio actual).
+y si no, no borra nada, muestra el estado y sale con error; si sí, ejecuta `git worktree remove --force`, `git worktree prune` y `git branch -D` (rechaza `main*`/`master*`, el worktree principal y el directorio actual).
 MAIN nunca responde a un diálogo de permisos de otro agente. `./build.sh worktree` no ejecuta `./build.sh setup`: lo hace el worker.
 
 ## Propuestas pendientes de tu OK (no activadas)
