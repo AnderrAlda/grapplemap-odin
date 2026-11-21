@@ -15,6 +15,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
   (read-only and pin-bump rules) (#32).
 - `/orchestrate` skill: the MAIN session coordinates worktrees through Herdr (launch workers, watch them, take PRs to ready);
   merge and plan approval stay with the user (#55).
+- `tools/oracle`: Docker image (Ubuntu 18.04 pinned by digest, linux/amd64) that builds the original
+  `grapplemap-indexer`, `-dbtojs` and `-mkpospages` out of tree, plus the object files for `--images` (#33).
 
 ### Changed
 - Claude Code permissions: `git push`, `gh pr create/ready/edit/comment`, `gh issue create/edit/comment` and the specific
