@@ -729,9 +729,11 @@ Users:
   with `y *= 0.7` when no joint is chosen and not playing back (`src/editor_canvas.cpp:539-544`; the GLFW editor
   also requires not being in edit mode, `src/glfw_editor.cpp:526-531`). The position images use neither:
   `ImageMaker::png` with a heading view (`src/images.cpp:340-370` → `302-313`, called by `mkpospages`,
-  `src/mkpospages.cpp:584-587`) sets a fixed target `{0, ymax − 0.57, 0}`, zoom 0.55, yaw = heading and pitch
-  `(ymax − 0.6)/2`; player views are first-person (`src/rendering.cpp:345-352`). Frame rate and the rest of the
-  camera: section 7.
+  `src/mkpospages.cpp:584-587`) sets the target outright to `{0, ymax − 0.57, 0}` (`hardSetOffset`) and then
+  *adds* to the default orientation `{yaw 0, pitch −0.6, distance 1.7}` (`src/camera.hpp:12,52-70`): distance
+  `+= 0.55`, yaw `+= angle(heading) = pi()·0.5·heading` (`src/headings.hpp:65-68`), pitch `+= (ymax − 0.6)/2`
+  (clamped to `±pi()/2`); fov 45 (`src/images.cpp:309-315`). Player views are first-person (`src/rendering.cpp:345-352`).
+  Frame rate and the rest of the camera: section 7.
 
 ### 4.4 Input for ADR 0004 (mapping to raylib)
 
