@@ -727,8 +727,11 @@ Users:
   `setOffset` every frame (`src/glfw_playback.cpp:47,72`, `src/makevideo.cpp:116,123`), which smooths as
   `offset = 0.97·offset + 0.03·target` (`src/camera.hpp:46-50`). The editor does **not** use it: it targets `center`
   with `y *= 0.7` when no joint is chosen and not playing back (`src/editor_canvas.cpp:539-544`; the GLFW editor
-  also requires not being in edit mode, `src/glfw_editor.cpp:526-531`). The image generator (`src/images.cpp:310-312`, used by `mkpospages --images`, i.e. the oracle)
-  uses neither: it sets a fixed target `{0, ymax − 0.57, 0}`. Frame rate and the rest of the camera: section 7.
+  also requires not being in edit mode, `src/glfw_editor.cpp:526-531`). The position images use neither:
+  `ImageMaker::png` with a heading view (`src/images.cpp:340-370` → `302-313`, called by `mkpospages`,
+  `src/mkpospages.cpp:584-587`) sets a fixed target `{0, ymax − 0.57, 0}`, zoom 0.55, yaw = heading and pitch
+  `(ymax − 0.6)/2`; player views are first-person (`src/rendering.cpp:345-352`). Frame rate and the rest of the
+  camera: section 7.
 
 ### 4.4 Input for ADR 0004 (mapping to raylib)
 
