@@ -38,4 +38,4 @@ Un PR nunca se abre ni se marca ready sin **label + milestone** y con el **check
 ## 5. Reglas
 - Sin ninguna mención a Claude/Anthropic ni «Generated with» en título o cuerpo; el PR figura como hecho por el usuario.
 - Nunca marques ready sin: CI verde en el último commit, `code-reviewer` sin bloqueantes sobre ese mismo commit y checklist completo. Si el commit cambia después, repite la revisión.
-- Pide confirmación y abre con `gh pr create --draft`. Marca ready solo con CI verde y revisión sin bloqueantes. NO hagas merge.
+- Abre con `gh pr create --draft` sin pedir confirmación. Cuando se cumplan las tres condiciones de arriba (CI verde, revisión sin bloqueantes y checklist completo, sobre el mismo commit), pasa a ready con `gh pr ready` sin preguntar y avísame. NO hagas merge.
