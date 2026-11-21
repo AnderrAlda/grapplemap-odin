@@ -93,7 +93,7 @@ cmd_test() {
 	bash tests/hooks/guard-bash.test.sh
 	bash tests/hooks/protect-paths.test.sh
 	bash tests/changelog/fragments.test.sh
-	bash tests/build/worktree.test.sh
+	bash tests/worktree/worktree.test.sh
 	local pkg
 	for pkg in "${TEST_PKGS[@]}"; do
 		[ -d "$pkg" ] || continue
