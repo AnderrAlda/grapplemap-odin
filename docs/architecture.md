@@ -11,7 +11,7 @@ What exists or is decided today. Pieces that arrive later are marked with their 
 | `src/core` | data model, `GrappleMap.txt` parser, graph, transforms, interpolation, playback. No raylib, no file system: parsers take `[]byte`/`string` (`src/core/CLAUDE.md`) | 2 |
 | `src/render` | draws `core` structures read-only, never mutates them (`src/render/CLAUDE.md`) | 3 |
 | `src/ui` | navigation, history, filters, camera presets; logic separated from drawing (`src/ui/CLAUDE.md`) | 3+ |
-| `src/editor` | editing of our own graph (own JSON format), commands with undo/redo (`src/editor/CLAUDE.md`) | 6 |
+| `src/editor` | editing of our own graph (own JSON format, [ADR 0005](adr/0005-json-format.md)), commands with undo/redo (`src/editor/CLAUDE.md`) | 6 |
 
 ```
 main ──► ui ──► render ──► core
@@ -38,7 +38,8 @@ GrappleMap.txt (bytes) ──► parser ──► graph (arena) ──► transf
 4. **Transforms and interpolation** (phase 2): `mirror`, `swap_players`, reorientations, canonical orientation,
    `between`, playback frames (`docs/original.md` §5, §6). Computed in `f64` ([ADR 0003](adr/0003-numeric-precision.md)).
 5. **Render** (phase 3): converts the positions of the current frame to `f32` when uploading them to raylib.
-   How the original's axes map to raylib's is ADR 0004 (#44).
+   The original's axes are used as-is, with no swap or flip ([ADR 0004](adr/0004-axes-and-units.md)); how the
+   body is drawn is [ADR 0006](adr/0006-body-rendering.md).
 
 ## Memory strategy
 
@@ -74,4 +75,6 @@ GrappleMap.txt (bytes) ──► parser ──► graph (arena) ──► transf
 - [0001](adr/0001-registro-de-decisiones.md) Architecture decision records.
 - [0002](adr/0002-oracle.md) Oracle: the original built in Docker as the source of truth.
 - [0003](adr/0003-numeric-precision.md) Numeric precision.
-- 0004–0006 (axes and units, own JSON format, body rendering): #44.
+- [0004](adr/0004-axes-and-units.md) Axes and units.
+- [0005](adr/0005-json-format.md) Own JSON format.
+- [0006](adr/0006-body-rendering.md) Body rendering technique.
