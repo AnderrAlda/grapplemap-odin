@@ -50,7 +50,10 @@ La sesión `MAIN` (raíz del repo, en `main`, sin editar código) coordina los w
    editar workflows de CI, worker `blocked`, CI rojo tras 2 intentos, tope del Stop hook, conflicto entre workers o una acción
    irreversible no cubierta por `allow`.
 Para que los workers no se detengan a pedir permiso, `git push`, `gh pr create/ready/edit/comment`, `gh issue create/edit/comment`
-y `herdr *` están en `allow` en `.claude/settings.json`; los `deny` (merge, force-push, push a `main`) y los hooks siguen igual.
+y los subcomandos `herdr` que usa la skill (`pane current`, `worktree create`, `agent list|start|prompt|wait|read`) están en `allow` en
+`.claude/settings.json`. `herdr pane run`, `pane send-*`, `agent send-keys`, `worktree remove` y `update` NO están en `allow`: ejecutarían comandos
+en otro pane sin pasar por `deny` ni por el guard. Los `deny` (merge, force-push, push a `main`) siguen igual y el guard de push bloquea además
+`--mirror`, `--all` y `+refspec`.
 MAIN nunca responde a un diálogo de permisos de otro agente. `herdr worktree create` no ejecuta `./build.sh setup`: lo hace el worker.
 
 ## Propuestas pendientes de tu OK (no activadas)

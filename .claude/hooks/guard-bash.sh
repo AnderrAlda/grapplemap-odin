@@ -11,7 +11,7 @@ fi
 if printf '%s' "$cmd" | grep -Eq 'git[[:space:]]+push([[:space:]].*)?[[:space:]:](refs/heads/)?main([[:space:]]|$)'; then
 	deny_pretool "Pushing to main is blocked. Push a feature branch and merge the PR on GitHub."
 fi
-if printf '%s' "$cmd" | grep -Eq 'git[[:space:]]+push[[:space:]].*(--force|-f\b|--delete)|git[[:space:]]+reset[[:space:]]+--hard|git[[:space:]]+clean[[:space:]]+-[a-z]*f|rm[[:space:]]+-[a-z]*r[a-z]*f|rm[[:space:]]+-[a-z]*f[a-z]*r|(^|[;&|[:space:]])sudo[[:space:]]|gh[[:space:]]+pr[[:space:]]+merge|--no-verify'; then
+if printf '%s' "$cmd" | grep -Eq 'git[[:space:]]+push[[:space:]].*(--force|-f\b|--delete|--mirror|--all|[[:space:]]\+[^[:space:]])|git[[:space:]]+reset[[:space:]]+--hard|git[[:space:]]+clean[[:space:]]+-[a-z]*f|rm[[:space:]]+-[a-z]*r[a-z]*f|rm[[:space:]]+-[a-z]*f[a-z]*r|(^|[;&|[:space:]])sudo[[:space:]]|gh[[:space:]]+pr[[:space:]]+merge|--no-verify'; then
 	deny_pretool "Destructive or forbidden command blocked (force push, reset --hard, clean -f, rm -rf, sudo, gh pr merge, --no-verify)."
 fi
 exit 0

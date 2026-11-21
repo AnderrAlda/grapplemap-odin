@@ -10,6 +10,7 @@ Spec: docs/ai-workflow.md (Worktrees)
 n/a (configuration and docs). Checks: `jq . .claude/settings.json`; the guard hook still denies pushes to main and PR merges; `./build.sh ci`.
 ## Riesgos
 - `herdr worktree create` does not run `./build.sh setup`, so git hooks are inactive until the worker runs it (the skill says so).
+- `herdr` can run commands in other panes, bypassing `deny` and the guard, so only the subcommands the skill needs are in `allow`.
 - A broader `allow` means workers push and open PRs unprompted; `deny` rules and hooks still block main, forced pushes and merges.
 ## Criterio de hecho
 `./build.sh ci` green, guard dry-run denies the main push and the merge, and a real `/orchestrate` run on a small issue reaches a draft PR.
