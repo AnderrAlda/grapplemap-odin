@@ -19,17 +19,35 @@ norm_path() {
 		realpath -m -- "$p"
 		return
 	fi
-	# Lexical fallback (no symlink resolution), e.g. macOS without GNU realpath.
+	# Fallback (macOS without GNU realpath): walk the components, resolving symlinks with readlink.
 	local -a out=()
-	local seg IFS=/
-	for seg in $p; do
+	local seg cur hops=0 rest=$p tgt
+	while [ -n "$rest" ]; do
+		seg=${rest%%/*}
+		[[ $rest == */* ]] && rest=${rest#*/} || rest=""
 		case $seg in
-		'' | .) ;;
-		..) [ ${#out[@]} -gt 0 ] && unset 'out[${#out[@]}-1]' ;;
-		*) out+=("$seg") ;;
+		'' | .) continue ;;
+		..)
+			[ ${#out[@]} -gt 0 ] && unset 'out[${#out[@]}-1]'
+			continue
+			;;
 		esac
+		cur="/$(IFS=/ && printf '%s' "${out[*]-}")"
+		cur="${cur%/}/$seg"
+		if [ -L "$cur" ] && [ $hops -lt 40 ]; then
+			hops=$((hops + 1))
+			tgt=$(readlink "$cur")
+			if [[ $tgt == /* ]]; then
+				out=()
+				rest="${tgt#/}${rest:+/$rest}"
+			else
+				rest="$tgt${rest:+/$rest}"
+			fi
+			continue
+		fi
+		out+=("$seg")
 	done
-	printf '/%s\n' "${out[*]}"
+	printf '/%s\n' "$(IFS=/ && printf '%s' "${out[*]-}")"
 }
 
 # is_protected_path <path> [base]: succeeds when the path is inside reference/GrappleMap/ or tests/golden/ of the
