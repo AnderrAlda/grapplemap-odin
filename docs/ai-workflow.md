@@ -24,6 +24,7 @@ Excepción: cambios describibles en una frase van sin spec ni plan, con PR peque
 
 ## Enforcement (qué lo hace cumplir)
 - Regla de revisión: la skill `/pr` y `CLAUDE.md` exigen `code-reviewer` en todo PR; no se marca ready sin CI verde, revisión sin bloqueantes y checklist completo, todo sobre el mismo commit. Como mucho una ronda de no bloqueantes aplicados por PR; el resto va a issues.
+  Los hallazgos no bloqueantes del revisor que van a issue se crean con label `tech-debt` y milestone `Backlog`, salvo que sean `priority:high` (esos van al milestone de la fase en curso).
 - Permisos en `.claude/settings.json` (allow/ask/deny; deny gana siempre). Las reglas de ruta para ficheros se escriben como `Edit(...)`: cubren todas las herramientas que escriben ficheros (Edit, Write, NotebookEdit; no las escrituras por Bash, ver #21); `Write(...)` no tiene efecto. Personal: `.claude/settings.local.json` (ignorado por git).
 - Hooks (`.claude/hooks/`): formato+check tras editar `.odin`; bloqueo de `reference/GrappleMap/` y `tests/golden/`; bloqueo de commit/push en `main` y comandos destructivos; `Stop` ejecuta `check`+tests; `SessionStart` muestra rama/issue.
 - El `Stop` hook respeta `stop_hook_active` para no hacer bucles. Claude Code fuerza la parada tras 8 bloqueos seguidos
