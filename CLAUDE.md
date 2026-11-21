@@ -28,8 +28,8 @@ Tras clonar: `git submodule update --init` (lo hace `./build.sh setup`) para ten
 ## Flujo Git
 Trunk-based, ramas `feat|fix|refactor|test|docs|chore|ci/...`, nunca commit directo a `main` (hook + protección).
 Commits Conventional; PR por squash con título Conventional; PRs pequeños (<400 líneas), primero draft.
-**No hacer merge sin mi OK.** El estado del trabajo vive en issues/PRs de GitHub, no en la memoria de sesión.
-Autonomía: Claude crea issues, ramas, worktrees y PRs en draft sin pedir confirmación. Un PR pasa a ready sin preguntarme cuando, sobre el mismo commit, la CI está verde, `code-reviewer` no deja bloqueantes y el checklist está completo; se me avisa. Solo me pregunta en las escalaciones de `docs/ai-workflow.md` (planes, merge, ambigüedad, dependencias, `reference/`/golden, CI workflows, bloqueos). Estas reglas viven en el repo, no en la memoria de ninguna máquina.
+**El merge es siempre mío: Claude nunca ejecuta `gh pr merge`.** El estado del trabajo vive en issues/PRs de GitHub, no en la memoria de sesión.
+**Autonomía:** Claude crea issues, ramas y PRs en draft sin pedir confirmación (los worktrees de `/orchestrate`, tras un plan aprobado). Un PR pasa a ready sin preguntarme cuando, sobre el HEAD actual del PR (`headRefOid`), la CI está verde, `code-reviewer` no deja bloqueantes y el checklist está completo; se me avisa. Solo me pregunta en las escalaciones de `docs/ai-workflow.md` (planes, merge, ambigüedad, dependencias, `reference/`/golden, CI workflows, bloqueos) y en lo que una skill pida explícitamente (p. ej. el milestone si no se puede determinar).
 Todo issue y todo PR llevan labels (`type:`, `area:`, `phase-N`) y el milestone de su fase, desde que se crean.
 Los hallazgos no bloqueantes del revisor que van a issue se crean con label `tech-debt` y milestone `Backlog`, salvo que sean `priority:high` (esos van al milestone de la fase en curso).
 Flujo: `/spec` (fase) → `/plan <issue>` → sesión limpia + `/start-task <issue>` → `/pr` (revisor adversarial).

@@ -22,7 +22,7 @@ Un PR nunca se abre ni se marca ready sin **label + milestone** y con el **check
    - `area:`: `src/core`→`area:core`, `src/render` y shaders→`area:render`, `src/ui`→`area:ui`, `src/editor`→`area:editor`, el resto (CI, scripts, `.claude`, docs generales)→`area:infra`. Si toca varias, pon todas.
    - `phase-N`: la fase del issue/épica enlazado.
 6. **Milestone**: el de la fase del issue/épica enlazado (`gh issue view N --json milestone`). Si no se puede determinar, pregunta; nunca lo dejes vacío.
-7. Aplícalos al crear: `gh pr create --draft --label ... --milestone "..."`. Antes de pedir confirmación, comprueba con `gh pr view --json labels,milestone` que no están vacíos.
+7. Aplícalos al crear: `gh pr create --draft --label ... --milestone "..."`. Antes de abrir el PR y antes de marcarlo ready, comprueba con `gh pr view --json labels,milestone` que no están vacíos.
 
 ## 4. Cuerpo y checklist
 8. Rellena `.github/pull_request_template.md`: qué y por qué, plan enlazado, `Closes #N` (o `Refs #N` si no debe cerrarlo), cómo probarlo, capturas si hay cambios visuales. Título Conventional Commit.
