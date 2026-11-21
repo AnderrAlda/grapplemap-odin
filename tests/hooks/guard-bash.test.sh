@@ -17,7 +17,11 @@ total=0
 check() {
 	local want=$1 branch=$2 cmd=$3 out got
 	git -C "$TMP/repo" switch -q "$branch"
-	out=$(jq -n --arg c "$cmd" '{tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$TMP/repo" bash "$HOOK")
+	out=$(jq -n --arg c "$cmd" '{tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$TMP/repo" bash "$HOOK" 2>&1)
+	# Any output that is not a deny decision (e.g. a crash message) must not count as allow.
+	if [ -n "$out" ] && ! printf '%s' "$out" | grep -Eq '"permissionDecision": *"(deny|allow)"'; then
+		fail=$((fail + 1)); total=$((total + 1)); echo "FAIL [$branch] hook crashed: $cmd: $out"; return
+	fi
 	if printf '%s' "$out" | grep -Eq '"permissionDecision": *"deny"'; then got=block; else got=allow; fi
 	total=$((total + 1))
 	if [ "$got" != "$want" ]; then
@@ -107,6 +111,26 @@ check block $F 'gh pr merge 3'
 check block $F 'gh pr merge --squash 3'
 check block $F 'git commit --no-verify -m x'
 check block $F 'git push --no-verify origin feat'
+
+check allow $F 'git push -u origin fix/guard-main'
+check allow $F 'git push origin feat 2>&1 | tail -3'
+check block $F 'git --git-dir .git push -f origin x'
+check block $F 'bash -c "git push --force origin x"'
+check block $F "sh -c 'rm -rf x'"
+check block $F 'bash -c "sudo ls"'
+check block $F 'eval "git push origin main"'
+check block $F 'find . -exec rm -rf {} +'
+check block $F 'echo $(git push -f origin x)'
+check block $F 'echo `git push -f origin x`'
+check block $F '/usr/bin/git push -f origin x'
+check block $F '/bin/rm -rf x'
+check block $F 'if true; then git push -f origin x; fi'
+check block $F 'timeout 5 git push -f origin x'
+check block $F 'env -u X git push -f origin x'
+check block $F 'xargs -n1 rm -rf'
+check block $F 'nice sudo ls'
+check block main 'bash -c "git commit -m x"'
+check allow $F 'timeout 5 git log main'
 
 echo "guard-bash: $((total - fail))/$total passed"
 [ "$fail" -eq 0 ]

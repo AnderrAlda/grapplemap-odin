@@ -6,14 +6,19 @@
 # (-C <dir>, -c k=v, --git-dir=..., --no-pager, ...) are skipped before reading the subcommand.
 #
 # Known limit: quotes are NOT parsed. A separator inside a quoted string (e.g. `;` in a commit message)
-# splits the segment and may over-block. Fail-closed is accepted; tests: tests/hooks/guard-bash.test.sh.
+# splits the segment and may over-block; likewise a line of a multi-line message that starts with a dangerous
+# command. Fail-closed is accepted; tests: tests/hooks/guard-bash.test.sh.
 source "$(dirname "$0")/_common.sh"
 cmd=$(jqr '.tool_input.command // empty')
 [ -z "$cmd" ] && exit 0
 branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
 
-# Skipped before the real command: env assignments and transparent wrappers.
-is_wrapper() { [[ $1 == *=* || $1 == env || $1 == command || $1 == exec || $1 == time || $1 == nohup || $1 == xargs ]]; }
+# Skipped before the real command: env assignments, shell keywords and transparent wrappers.
+is_wrapper() {
+	[[ $1 == *=* || $1 == env || $1 == command || $1 == exec || $1 == time || $1 == nohup || $1 == xargs ||
+		$1 == timeout || $1 == nice || $1 == then || $1 == do || $1 == else || $1 == elif || $1 == if ||
+		$1 == while || $1 == until || $1 == '!' || $1 == '{' || $1 == '(' ]]
+}
 
 # check_git <args...>: args after the `git` word.
 check_git() {
@@ -21,7 +26,7 @@ check_git() {
 	# Skip global options.
 	while [ $# -gt 0 ]; do
 		case $1 in
-		-C | -c | --exec-path | --namespace | --super-prefix) shift 2 ;;
+		-C | -c | --git-dir | --work-tree | --config-env | --exec-path | --namespace | --super-prefix) shift 2 ;;
 		-*) shift ;;
 		*) break ;;
 		esac
@@ -88,12 +93,22 @@ check_rm() {
 check_segment() {
 	local -a w
 	read -r -a w <<<"$1"
-	# Drop leading grouping chars and wrappers.
-	while [ ${#w[@]} -gt 0 ] && { [[ ${w[0]} == "(" || ${w[0]} == "{" ]] || is_wrapper "${w[0]}"; }; do
-		w=("${w[@]:1}")
+	# Drop leading wrappers/keywords together with their options (env -u X, xargs -n1, timeout 5, ...).
+	while [ ${#w[@]} -gt 0 ]; do
+		if is_wrapper "${w[0]}"; then
+			w=("${w[@]:1}")
+		elif [[ ${w[0]} == -* || ${w[0]} =~ ^[0-9]+[smhd]?$ ]] && [ "$stripped" = 1 ]; then
+			# Options of the wrapper just removed; those taking a separate argument also drop it.
+			case ${w[0]} in -u | -C | -S | -n | -I | -L | -P | -a | -s | -k) w=("${w[@]:1}") ;; esac
+			w=("${w[@]:1}")
+		else
+			break
+		fi
+		stripped=1
 	done
+	stripped=0
 	[ ${#w[@]} -eq 0 ] && return 0
-	local first=${w[0]#[({]}
+	local first=${w[0]##*/}
 	case $first in
 	sudo) deny_pretool "Privilege escalation blocked (sudo)." ;;
 	git) check_git "${w[@]:1}" ;;
@@ -105,13 +120,18 @@ check_segment() {
 	esac
 	return 0
 }
+stripped=0
 
 set -f # no globbing while splitting words
 # Hook-skipping flag, wherever it appears.
 if printf '%s' "$cmd" | grep -Eq '(^|[[:space:]])--no-verify([[:space:]=]|$)'; then
 	deny_pretool "Skipping git hooks (--no-verify) is blocked."
 fi
+# Segments: split on separators, quotes, backticks and parens so that `bash -c "git push -f"`,
+# `$(git push -f)` and `find -exec rm -rf` expose the inner command. tr (not sed \n) for macOS portability.
+cmd=${cmd// -exec / ; }
+cmd=${cmd// -execdir / ; }
 while IFS= read -r seg; do
 	check_segment "$seg"
-done < <(printf '%s\n' "$cmd" | sed -E 's/&&|\|\||[;|&]/\n/g')
+done < <(printf '%s\n' "$cmd" | tr ';|&`"'"'"'()' '\n')
 exit 0
