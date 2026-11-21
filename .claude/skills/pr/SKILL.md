@@ -32,7 +32,8 @@ Un PR nunca se abre ni se marca ready sin **label + milestone** y con el **check
    - Sin leaks → solo si los tests/smoke en debug lo confirman.
    - CI verde → solo cuando `gh pr checks` lo muestre en el último commit.
    - `code-reviewer` sin bloqueantes → solo tras ejecutarlo; indica modelo y resultado en el cuerpo.
-10. **Mantén el cuerpo al día**: tras la revisión o cuando la CI termine, actualiza las casillas con `gh pr edit --body`. Antes de `gh pr ready` repasa el checklist completo contra la evidencia.
+10. **Mantén el cuerpo al día**: tras la revisión o cuando la CI termine, actualiza las casillas. Parte del cuerpo actual (`gh pr view <N> --json body -q .body > <fichero temporal>`), edita las casillas en ese fichero y aplícalo con `gh pr edit <N> --body-file <fichero temporal>`. Antes de `gh pr ready` repasa el checklist completo contra la evidencia.
+    **Verifica siempre cada edición leyendo el cuerpo de vuelta** con un criterio concreto, p. ej. `gh pr view <N> --json body -q .body | grep -F '[x] CI verde'`: no te fíes de que el comando no haya dado error. Si `gh pr edit` falla (versiones antiguas de `gh`, p. ej. 2.45, dan un error de Projects classic y no aplican el cambio: ver #76), usa la API REST: `gh api -X PATCH repos/{owner}/{repo}/pulls/<N> -F body=@<fichero temporal>` (`{owner}` y `{repo}` los resuelve `gh`; escríbelos tal cual) y vuelve a verificar. Solo ese comando exacto (PATCH sobre `pulls/<N>`) está en `allow`; no uses `gh api` para nada más. Si aun así no te lo permiten, para y dilo en tu último mensaje en lugar de marcar ready.
 
 ## 5. Reglas
 - Sin ninguna mención a Claude/Anthropic ni «Generated with» en título o cuerpo; el PR figura como hecho por el usuario.
@@ -41,4 +42,4 @@ Un PR nunca se abre ni se marca ready sin **label + milestone** y con el **check
 
 ## 6. Esperar la CI y pasar a ready
 11. Tras abrir el draft, espera la CI sobre el último commit con `gh pr checks <N> --watch`, llamándolo con `timeout: 600000` en la herramienta Bash. Si la llamada expira por timeout, repite `--watch` (es idempotente): un timeout NO es un fallo de CI. Justo tras crear el PR puede salir «no checks reported»: espera unos segundos y reintenta. Solo cuenta como fallo un check en `fail`; entonces corrige (como mucho 2 intentos; luego para y cuéntalo) y repite la revisión si el commit cambió.
-12. Con CI verde, marca la casilla de CI en el cuerpo (`gh pr edit --body`) y, si se cumplen las tres condiciones de la sección 5, `gh pr ready <N>`. Termina con un resumen corto: PR, CI, revisión, hallazgos enviados a issues. El merge nunca es tuyo.
+12. Con CI verde, marca la casilla de CI en el cuerpo (paso 10, con la verificación de lectura posterior) y **solo después de ver la casilla marcada** y si se cumplen las tres condiciones de la sección 5, `gh pr ready <N>`. Termina con un resumen corto: PR, CI, revisión, hallazgos enviados a issues. El merge nunca es tuyo.

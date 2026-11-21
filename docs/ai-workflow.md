@@ -52,7 +52,8 @@ La sesión `MAIN` (raíz del repo, en `main`, sin editar código; recomendado en
 4. Solo te pregunta en: aprobar un plan, merge, plan erróneo o alcance ambiguo, dependencia nueva, tocar `reference/` o golden,
    editar workflows de CI, worker `blocked`, CI rojo tras 2 intentos, tope del Stop hook, conflicto entre workers o una acción
    irreversible no cubierta por `allow`.
-Para que los workers no se detengan a pedir permiso, `git push`, `gh pr create/ready/edit/comment`, `gh issue create/edit/comment`
+Para que los workers no se detengan a pedir permiso, `git push`, `gh pr create/ready/edit/comment`, `gh issue create/edit/comment`,
+`gh api -X PATCH repos/{owner}/{repo}/pulls/*` (solo para editar el cuerpo de un PR cuando `gh pr edit` falla en un `gh` antiguo; `gh api` en general NO está en `allow`, porque podría hacer merges por la API)
 y estos subcomandos `hc` están en `allow` en `.claude/settings.json`: `ls|get|read|wait` (solo lectura), `run --bg`, y `send|kill|rm` **solo para terminales llamados `w-*`**,
 con un `deny` de `hc send --force`. `hc exec`, `hc keys`, `hc interrupt` y `hc run` sin `--bg` NO están en `allow`. Riesgo residual asumido: `hc run --bg` puede arrancar cualquier
 programa y ni los `deny` ni el guard analizan ese texto interior; se mitiga por convención (MAIN solo lanza `claude` para sus workers). Los `deny` (merge, force-push, push a `main`) siguen igual y el guard de push bloquea además
