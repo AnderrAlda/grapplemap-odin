@@ -39,7 +39,20 @@ Si dos issues tocan los mismos ficheros, no los lances a la vez: encadénalos.
 ## 4. Cerrar el PR
 Con CI verde, `code-reviewer` sin bloqueantes y checklist completo, todo sobre el mismo commit (`gh pr view N --json headRefOid,statusCheckRollup`):
 `gh pr ready N` sin preguntar (memoria `auto-ready-prs`) y dímelo. Si algo falla, el PR sigue en draft y se lo mandas al worker.
-**Nunca `gh pr merge`.** Tras mi merge: `herdr worktree remove --workspace <id guardado>` (nunca `--force`; no está en `allow`, así que te lo pedirá) y libera el agente.
+**Nunca `gh pr merge`.** Tras mi merge, limpia (paso 4b).
+
+## 4b. Limpiar lo terminado
+En cada inventario, y siempre que te diga que he mergeado, busca worktrees y ramas locales cuyo PR esté `MERGED` y límpialos sin escalar (algunos comandos pedirán confirmación de permisos, ver abajo), **solo si se cumplen las cuatro comprobaciones**:
+1. `gh pr list --head <rama> --state merged --json number,headRefOid` devuelve el PR (así `N` sale de la rama, sin confundirlo con otro PR de una rama reutilizada).
+2. El HEAD **del worktree** es el del PR: `git -C <worktree> rev-parse HEAD` == `headRefOid`, y `git -C <worktree> symbolic-ref --short HEAD` == `<rama>` (HEAD desacoplado, rebase en curso u otra rama implican commits que ninguna ref protege: escala).
+3. `git -C <worktree> status --short --ignored` está vacío salvo ficheros ignorados que reconozcas como regenerables (salidas de build); `--force` los borra.
+4. Para las ramas de respaldo (`pre-rebase-*`): lista cada una con su SHA (`git branch -vv --list 'pre-rebase-*'`) y bórrala solo si es ancestro del `headRefOid` (`git merge-base --is-ancestor <rama> <headRefOid>`); si no, escala.
+Entonces, desde la raíz y con `main` al día (`git pull --ff-only`):
+- Worktree: usa `./build.sh worktree-remove <rama>` cuando exista (#54). Mientras no exista, `git worktree remove <ruta>`; si git se niega solo por tener submódulos, `--force` es aceptable **únicamente** tras las comprobaciones 1-3 y **solo en `git worktree remove`, nunca en un push** (no está en `allow`: pedirá confirmación). Luego `git worktree prune`.
+- Rama local: `git branch -D <rama>` (un squash no hace la rama «mergeada» para git, por eso `-D` y no `-d`; las comprobaciones son la garantía, y `git branch -D main*` está en `deny`).
+- Remoto: GitHub borra la rama al mergear (`delete_branch_on_merge`); solo `git fetch --prune`. Nunca `git push --delete`.
+- Herdr: cierra el workspace del worker con `herdr worktree remove --workspace <id guardado>` (nunca `--force`; no está en `allow`, pedirá confirmación) y libera el agente.
+Si alguna comprobación falla, no borres nada y escala con el motivo.
 
 ## 5. Escalar (lista cerrada)
 Pregúntame solo si ocurre alguno de estos casos; lo demás se resuelve y se resume al final en pocas líneas:
