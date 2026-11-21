@@ -52,6 +52,8 @@ La sesión `MAIN` (raíz del repo, en `main`, sin editar código; recomendado en
    (invocable por workers: revisión, PR draft, espera de CI, ready). Como mucho 3 workers a la vez.
 3. MAIN vigila con `hc wait` / `hc read` (nunca sleep ni polling; el estado está en `.status.state` de `hc get --json`) y verifica el resultado contra la evidencia: CI verde + `code-reviewer`
    sin bloqueantes + checklist completo (mismo commit). Si el worker no lo dejó ready, lo pasa a ready sin preguntar y te avisa. **El merge es siempre tuyo** (`gh pr merge` sigue en `deny`).
+   Tras cada merge tuyo, MAIN pide a los workers con PR abierto que hagan `git merge origin/main` (sin force-push) si hay conflicto en un fichero compartido: CI verde y nueva revisión sobre el nuevo HEAD.
+   Changelog: los PR no editan `CHANGELOG.md`; cada uno añade `changelog.d/<issue>-<slug>.md` (ver `changelog.d/README.md`; `./build.sh check` valida el formato) y la skill `release` los pliega en la sección de la versión.
 4. Solo te pregunta en: aprobar un plan, merge, plan erróneo o alcance ambiguo, dependencia nueva, tocar `reference/` o golden,
    editar workflows de CI, worker `blocked`, CI rojo tras 2 intentos, tope del Stop hook, conflicto entre workers o una acción
    irreversible no cubierta por `allow`.

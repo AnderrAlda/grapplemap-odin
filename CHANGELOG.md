@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+Unreleased changes live in `changelog.d/` until the next release.
+
 ### Added
 - `docs/original.md` section 5: transforms (`mirror`, `swap_players`, `Reorientation`/`PositionReorientation` and their order of application, `compose`/`inverse` with derived formulas, canonical orientation with and without mirror, how the graph uses them, input for phase 2), cited to the pinned original (#40).
 - Oracle dumper part 2: `ops.ndjson` (`mirror`, `swap_players`, both canonical orientations, `heading`, `center` of every position), `between.ndjson` (`s` = 0.25/0.5/0.75 for every consecutive pair), `playback.ndjson` (`frames()` with frames-per-pos 11, 5 for `detailed`, raw and smoothed per transition, plus one 2-transition chain smoothed in one call) and `spring.ndjson` (every named position); files are streamed to temporaries and renamed at the end; full dump ~0.54 GB (#34).

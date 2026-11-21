@@ -14,7 +14,7 @@ Plan: `docs/plans/…` (omitir en cambios de una frase)
 ## Checklist
 - [ ] Tests añadidos o actualizados
 - [ ] `./build.sh check`, `fmt-check` y `test` pasan (`./build.sh ci`)
-- [ ] Docs, CLAUDE.md anidados y CHANGELOG (Unreleased) actualizados
+- [ ] Docs, CLAUDE.md anidados y fragmento en `changelog.d/` (no `CHANGELOG.md`) actualizados
 - [ ] Sin leaks en debug
 - [ ] ADR añadido si hay decisión de arquitectura
 - [ ] Revisado por `code-reviewer` sin bloqueantes
