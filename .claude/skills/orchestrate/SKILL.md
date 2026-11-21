@@ -10,13 +10,14 @@ Solo desde la sesión MAIN (raíz del repo, rama `main`, sin editar código); ot
 La app Herdr corre sus terminales en **herdr-core (`hc`)**: usa `hc` para lanzar, leer, esperar y hablar con los workers. El CLI `herdr` antiguo NO ve esos terminales; no lo uses. `herdr-app` solo coloca ventanas y no existe en el servidor. Referencia: `hc --skill`.
 
 ## 0. Entorno
+- El modelo de la sesión debe ser Opus (conoces tu ID de modelo). Si no lo es, para y pide a Ander que ejecute `/model opus`; no lances nada antes.
 - `echo "$HC_TERMINAL_ID"` no está vacío y `hc get "$HC_TERMINAL_ID" --json` responde. Si no, para y avísame.
 - Cada worker se abre en **su propio space de Herdr** (como un worktree en la app): se lanza con una etiqueta `herdr.space` nueva, que genera `./build.sh space-id <rama>` (`sp` + 32 hex, estable por rama: relanzar un worker de la misma rama cae en el mismo space). La app abre el space con el nombre de la carpeta del worktree. Si `./build.sh space-id` falla, para y avísame (sin etiqueta el worker quedaría oculto).
 - Un worktree por rama/agente; nunca dos agentes en la misma rama. Como mucho 3 workers a la vez. Solo hablas con terminales que lanzaste tú (por su nombre `w-*`); nunca con otros (tus zsh, otros proyectos o máquinas).
 - Lo recomendado es que MAIN corra en el servidor (sigue aunque el portátil duerma), pero la skill lanza los workers en la máquina donde corre MAIN (sin `--on`).
 
 ## 0b. Proponer lote y planes («sigue trabajando»)
-Si la sesión se llama MAIN, está en la raíz en `main` y Ander dice «sigue trabajando» (o similar) sin issues concretos: haz el inventario (paso 1), elige el siguiente lote (≤3 issues de la fase en curso por prioridad, sin ficheros solapados), escribe sus planes (`/plan`) y preséntalos **juntos en una sola petición de aprobación**. Con el OK, sigue con los pasos 2-4 sobre el lote hasta dejar los PR ready, avisa para que Ander mergee, limpia (4b) y propone el siguiente lote. Solo preguntas en las escalaciones del paso 5.
+Si la sesión se llama MAIN, está en la raíz en `main` y Ander dice «sigue trabajando» (o similar) sin issues concretos: haz el inventario (paso 1), elige el siguiente lote (≤3 issues de la fase en curso por prioridad, sin ficheros solapados), escribe sus planes (`/plan`) y preséntalos **juntos en una sola petición de aprobación**. Con el OK, invoca la skill `orchestrate` con los issues del lote (no sigas sus pasos a mano) y sigue con los pasos 2-4 sobre el lote hasta dejar los PR ready, avisa para que Ander mergee, limpia (4b) y propone el siguiente lote. Solo preguntas en las escalaciones del paso 5.
 
 ## 1. Inventario
 `gh issue list`, `gh pr list`, `git worktree list`, `hc ls` (tus workers son los de nombre `w-*`). Clasifica cada issue:
