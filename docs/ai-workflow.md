@@ -6,6 +6,7 @@ Principio: lo crítico lo hacen cumplir permisos, hooks y CI; lo demás va en CL
 | Trabajo | Modelo | Cómo |
 |---|---|---|
 | Specs, planes, ADRs, bugs difíciles | opus | `model: opusplan` en `.claude/settings.json` (Opus en plan mode, Sonnet al ejecutar); skills `/spec`, `/plan`, `/adr` con `model: opus` |
+| Sesión MAIN (inventario, lote, orquestación, verificación) | opus | arrancar con `claude --model opus` o `/model opus` antes de «sigue trabajando» |
 | Implementar plan aprobado, tests, refactors acotados | sonnet por defecto; opus para el C++ del oráculo, fidelidad en core y ADRs | modelo del worker por issue: `/orchestrate` lo lanza con `claude --model <m> ...`; `/start-task` no fija `model:` y hereda el del worker; `/pr` fija sonnet |
 | `code-reviewer` | sonnet; opus en core/render/arquitectura | frontmatter `model: sonnet`; `/pr` lo invoca con `model: opus` según las áreas tocadas |
 | `test-writer`, `render-verifier` | sonnet | frontmatter |
@@ -41,6 +42,7 @@ El repo es privado sin plan Pro, así que GitHub no puede proteger `main`. La pr
 
 ## Orquestación (MAIN + Herdr)
 **«Sigue trabajando»:** si la sesión se llama MAIN, está en la raíz del repo en `main` y dices «sigue trabajando» (o similar), MAIN hace el inventario, elige el siguiente lote (≤3 issues de la fase en curso por prioridad, sin ficheros solapados), escribe sus planes y te los presenta **juntos en una sola petición de aprobación**. Con tu OK ejecuta `/orchestrate` sobre el lote hasta dejar los PR ready, te avisa para que mergees, limpia y propone el siguiente lote. Solo pregunta en las escalaciones de `/orchestrate` §5 (punto 4 de abajo).
+MAIN debe correr en Opus: `opusplan` solo es Opus en plan mode, así que tras aprobar el lote MAIN orquestaría en Sonnet.
 La app Herdr corre sus terminales en herdr-core (`hc`); el CLI `herdr` antiguo no los ve. `herdr-app` solo coloca ventanas (y solo existe en el Mac); `hc` funciona igual en el Mac y en el servidor.
 La sesión `MAIN` (raíz del repo, en `main`, sin editar código; recomendado en el servidor de Hetzner, para que siga aunque el portátil duerma, pero lanza los workers en la máquina donde corre) coordina los workers con `/orchestrate`:
 1. Inventario de issues, PRs, worktrees y agentes (`gh`, `git worktree list`, `hc ls`).

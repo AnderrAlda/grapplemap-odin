@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 ## [Unreleased]
 
 ### Added
+- MAIN must run on Opus: documented in the models table and «Sigue trabajando», and `/orchestrate` refuses to launch workers from a non-Opus session (`opusplan` drops to Sonnet after plan approval) (#90).
 - `tests/hooks/guard-bash.test.sh` (run by `./build.sh test`): table of allowed/blocked commands for the `guard-bash` hook (#20).
 - `./build.sh worktree-remove <branch>`: removes a worktree and its branch only when the worktree and its submodules are clean; otherwise prints the status, deletes nothing and exits non-zero (#54).
 - «Sigue trabajando» flow: MAIN proposes a batch of up to 3 issues with their plans in a single approval request and runs `/orchestrate` on it; `/orchestrate` is now model-invocable and picks the worker model per issue (`claude --model`); `/start-task` inherits it (#83).
