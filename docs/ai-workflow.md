@@ -70,6 +70,12 @@ y las ramas `pre-rebase-*` son ancestro del PR. `git branch -D main*` está en `
 y si no, no borra nada, muestra el estado y sale con error; si sí, ejecuta `git worktree remove --force`, `git worktree prune` y `git branch -D` (rechaza `main*`/`master*`, el worktree principal y el directorio actual).
 MAIN nunca responde a un diálogo de permisos de otro agente. `./build.sh worktree` no ejecuta `./build.sh setup`: lo hace el worker.
 
+### Reanudar MAIN
+- **Cuándo es seguro `/clear`:** con el lote cerrado: sus PR mergeados y limpiados (§4b de `/orchestrate`), ningún plan pendiente de tu aprobación y ningún worker `blocked`/`error`. `/clear` no mata a los workers (van con `--outlive-parent`) y el estado vive en issues, PR y `docs/plans/`, no en la sesión; si queda un worker vivo, MAIN te dice cuál (`hc ls`, `w-*`) para que la sesión nueva lo encuentre.
+- **Dónde:** en la terminal de MAIN, en la raíz del repo y en `main`.
+- **Qué decir:** `/rename MAIN` y después «sigue trabajando».
+- **Aviso:** MAIN termina el cierre de lote (tras la limpieza: normalmente `sí`) y cada propuesta del siguiente lote (con planes pendientes de tu OK: `no`) con el bloque fijo «Momento de /clear: sí|no» (ver `.claude/skills/orchestrate/SKILL.md`).
+
 ## Propuestas pendientes de tu OK (no activadas)
 - **Sandbox**: en `.claude/settings.json` añadir `"sandbox": {"enabled": true, "autoAllowBashIfSandboxed": true, "network": {"allowedDomains": ["github.com", "api.github.com"]}}`. Menos confirmaciones sin salir del repo.
 - **Claude en CI**: `anthropics/claude-code-action@v1` con el plugin `code-review@claude-plugins-official` en `pull_request`; requiere el secreto `ANTHROPIC_API_KEY` (o `CLAUDE_CODE_OAUTH_TOKEN`) que añadirías tú en GitHub. No se ha creado ningún workflow ni secreto.

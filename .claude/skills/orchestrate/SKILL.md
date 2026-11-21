@@ -63,6 +63,18 @@ Entonces, desde la raíz y con `main` al día (`git pull --ff-only`):
 - Remoto: GitHub borra la rama al mergear (`delete_branch_on_merge`); solo `git fetch --prune`. Nunca `git push --delete`.
 Si alguna comprobación falla, no borres nada y escala con el motivo.
 
+## 4c. Momento de /clear
+Al cerrar un lote (tras la limpieza 4b) y siempre que propongas el siguiente lote, termina tu mensaje con este bloque fijo (detalle en `docs/ai-workflow.md`, «Reanudar MAIN»):
+
+```
+Momento de /clear: sí|no
+Motivo: <una línea>
+```
+- Momento del bloque: tras 4b, `sí` si no queda nada abierto; al proponer el siguiente lote, sus planes aún esperan tu OK, así que ahí es `no` (motivo: «planes pendientes de tu OK»).
+- `sí` solo si el lote está cerrado: PR mergeados y limpiados, ningún plan pendiente de aprobación, ningún worker `blocked`/`error`. Si no, `no` y el motivo (qué falta).
+- Si es `sí`, añade las dos líneas a escribir y desde dónde: en la terminal de MAIN, en la raíz del repo y en `main`: `/rename MAIN` y «sigue trabajando».
+- Si queda algún worker vivo, di cuál (`hc ls`, `w-*`) para que la sesión nueva lo encuentre; `/clear` no lo mata (`--outlive-parent`).
+
 ## 5. Escalar (lista cerrada)
 Pregúntame solo si ocurre alguno de estos casos; lo demás se resuelve y se resume al final en pocas líneas:
 - aprobar un plan, el merge, o un plan erróneo/alcance ambiguo;
