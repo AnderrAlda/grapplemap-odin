@@ -222,6 +222,10 @@ check allow $F 'git -C reference/GrappleMap show HEAD:README.md'
 check allow $F 'git -C reference/GrappleMap rev-parse HEAD'
 check allow $F 'git checkout -- src/a.odin'
 check allow $F './build.sh test-golden --update'
+check allow $F 'git commit -m "docs: update tests/golden README"'
+check allow $F 'git commit -m "docs: cite reference/GrappleMap/src/x.cpp"'
+check allow $F 'git stash push -m tests/golden'
+check allow $F 'perl -MList::Util=sum -ne print reference/GrappleMap/src/a.cpp'
 check allow $F 'rm build/x.o'
 
 echo "guard-bash: $((total - fail))/$total passed"

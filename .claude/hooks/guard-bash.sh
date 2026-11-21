@@ -28,7 +28,8 @@ is_wrapper() {
 }
 
 # Directory the command is believed to run in: $PWD, or the target of a preceding `cd` (segments are judged in order).
-vpwd=$PWD
+vpwd=$(jqr '.cwd // empty')
+[ -d "$vpwd" ] || vpwd=$PWD
 
 # protected <token> [ancestors]: the word names reference/GrappleMap/ or tests/golden/ (normalized: `./`, `..`,
 # `$PWD`, symlinks). A `-opt=path` / `of=path` prefix is stripped. With a second argument, `reference` and `tests`
@@ -58,7 +59,7 @@ check_writes() {
 	case $cmd in
 	sed | perl)
 		for t in "$@"; do
-			[[ $t == --in-place* || ($t == -*i* && $t != --*) ]] && inplace=1
+			[[ $t == --in-place* || $t =~ ^-[a-zA-Z]*i ]] && [[ $t != -M* && $t != -I* ]] && inplace=1
 		done
 		[ $inplace = 1 ] || return 0
 		for t in "$@"; do protected "$t" && deny_pretool "$msg"; done
@@ -129,7 +130,7 @@ check_git() {
 		local wmsg="Writes to reference/GrappleMap/ (read-only original) and tests/golden/ are blocked (git $sub)."
 		protected "$gdir" && deny_pretool "$wmsg"
 		case $sub in
-		checkout | restore | rm | mv | clean | reset | apply | stash | switch | commit | merge | rebase | am | cherry-pick | revert)
+		checkout | restore | rm | mv | clean | reset | apply)
 			for t in "$@"; do protected "$t" && deny_pretool "$wmsg"; done
 			;;
 		esac
