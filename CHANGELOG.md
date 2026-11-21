@@ -51,6 +51,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 - `CLAUDE.md`: non-blocking review findings become issues labeled `tech-debt` in the `Backlog` milestone, unless `priority:high`.
 
 ### Fixed
+- `protect-paths` and `guard-bash` hooks close the write paths into `reference/GrappleMap/` and `tests/golden/`: paths are normalized (`./`, `..`, `$PWD`, symlinks), `NotebookEdit` is matched, and Bash writes (redirections, `tee`, `sed -i`, `cp`/`mv`/`rm`, `git checkout`/`restore`, `cd` + write…) are blocked while read-only use stays allowed; tests in `tests/hooks/` (#21).
 - Claude Code permission rules: removed `Write(...)` path rules, which have no effect; the existing `Edit(...)` rules
   protect `reference/`, `tests/golden/` and `.github/workflows/` for every file-writing tool (#29).
 - `guard-bash` hook: judges each command segment separately (no more false positives like `git push origin feat && git log main`) and skips git global options (`-C`, `-c`, `--git-dir`, ...); now also blocks `git push` with grouped force flags (`-fu`), `+`/`:` refspecs, `-d`, and `rm` with split or long recursive/force options (#20).
