@@ -103,8 +103,9 @@ cmd_worktree() {
 # space-id <branch>: stable Herdr space id ("sp" + 32 hex) derived from the branch name, so a worker relaunched for the
 # same branch lands in the same space. Used by /orchestrate as the herdr.space label.
 cmd_space_id() {
-	local branch="${1:?usage: ./build.sh space-id <branch>}"
-	printf 'sp%s\n' "$(printf '%s' "$branch" | git hash-object --stdin | cut -c1-32)"
+	local branch="${1:?usage: ./build.sh space-id <branch>}" hash
+	hash=$(printf '%s' "$branch" | git hash-object --stdin) || return 1
+	printf 'sp%s\n' "${hash:0:32}"
 }
 
 target="${1:-}"
