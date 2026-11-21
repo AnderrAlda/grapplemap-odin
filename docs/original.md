@@ -13,8 +13,8 @@ again**. Source of truth: the submodule `reference/GrappleMap`, pinned at `032c8
 ## Contents
 1. [Data format](#1-data-format)
 2. [Graph model and node matching](#2-graph-model-and-node-matching)
-3. Player model: *pending*
-4. Units and axes: *pending*
+3. [Player model](#3-player-model)
+4. [Units and axes](#4-units-and-axes)
 5. Transforms: *pending*
 6. Interpolation and playback: *pending*
 7. Rendering and camera: *pending*
@@ -530,3 +530,225 @@ Recorded here because they use the matching of §2.3; full editor behaviour is s
 Not verifiable by reading: number of anonymous nodes; self-loops (`from == to`, §2.1); whether any pair of named positions or transition ends are reorientations
 of each other; whether any DB endpoint is within the threshold of two nodes (so that order matters); the `line_nr`
 offset (§1.4); equality of indexed and non-indexed loads; floating-point boundary cases of `basicallySame`.
+
+---
+
+## 3. Player model
+
+### 3.1 Joints
+
+`enum Joint: uint32_t` lists 23 joints through the `JOINTS` macro (`src/players.hpp:8-21`); `joints[]` is the same list
+(`src/players.hpp:23`) and `joint_count = 23` is its size (`src/players.hpp:29`). Display names are `to_string(Joint)`
+(`src/positions.cpp:33-63`). Per-joint data is `JointDef{joint, radius, draggable}` (`src/players.hpp:69`), table
+`jointDefs` (`src/positions.cpp:7-31`), stored in enum order (`PerJoint<T> = array<T, joint_count>`, `src/players.hpp:61`).
+
+| # | `Joint` | `to_string` | `radius` (m) | `draggable` | `mirror` |
+|---|---|---|---|---|---|
+| 0 | LeftToe | left toe | 0.025 | false | RightToe |
+| 1 | RightToe | right toe | 0.025 | false | LeftToe |
+| 2 | LeftHeel | left heel | 0.03 | false | RightHeel |
+| 3 | RightHeel | right heel | 0.03 | false | LeftHeel |
+| 4 | LeftAnkle | left ankle | 0.03 | true | RightAnkle |
+| 5 | RightAnkle | right ankle | 0.03 | true | LeftAnkle |
+| 6 | LeftKnee | left knee | 0.05 | true | RightKnee |
+| 7 | RightKnee | right knee | 0.05 | true | LeftKnee |
+| 8 | LeftHip | left hip | 0.09 | true | RightHip |
+| 9 | RightHip | right hip | 0.09 | true | LeftHip |
+| 10 | LeftShoulder | left shoulder | 0.08 | true | RightShoulder |
+| 11 | RightShoulder | right shoulder | 0.08 | true | LeftShoulder |
+| 12 | LeftElbow | left elbow | 0.045 | true | RightElbow |
+| 13 | RightElbow | right elbow | 0.045 | true | LeftElbow |
+| 14 | LeftWrist | left wrist | 0.02 | false | RightWrist |
+| 15 | RightWrist | right wrist | 0.02 | false | LeftWrist |
+| 16 | LeftHand | left hand | 0.02 | true | RightHand |
+| 17 | RightHand | right hand | 0.02 | true | LeftHand |
+| 18 | LeftFingers | left fingers | 0.02 | false | RightFingers |
+| 19 | RightFingers | right fingers | 0.02 | false | LeftFingers |
+| 20 | Core | core | 0.1 | true | Core |
+| 21 | Neck | neck | 0.05 | false | Neck |
+| 22 | Head | head | 0.11 | true | Head |
+
+Notes:
+- Left/right alternate, so `mirror(j)` (`src/players.hpp:73-101`) swaps indices `2k ↔ 2k+1` for `k < 10` and fixes
+  20-22. `mirror(Position)` uses the explicit `swapLimbs` instead (`src/positions.cpp:77-89,130-136`), same mapping (§2.3).
+- `radius` is used for the joint spheres, pillar ends and fat triangles when drawing (`src/playerdrawer.cpp:117-119,137-139,269,298,323-328`), and as
+  the minimum `y` of each joint in `apply_limits` and `spring` (`src/positions.cpp:177,318`): joints rest *on* the floor,
+  not through it.
+- `draggable` is declared but **read nowhere** in the C++ (grep of `src/` finds only `src/players.hpp:69`). Which joints
+  the editor lets you drag is section 8.
+- `jointDefs[j].joint` repeats the enum value; it is not used for lookup (the table is indexed by position).
+
+### 3.2 Segments (`limbs()`)
+
+`Limb{ends[2], length, midpointRadius (optional, m), visible}` (`src/players.hpp:118-124`); the table is the static
+array in `limbs()` (`src/players.hpp:126-167`), 28 entries in this order (one commented-out shoulder-to-shoulder limb,
+`src/players.hpp:155`, is not part of it):
+
+| # | ends | length (m) | mid radius (m) | visible |
+|---|---|---|---|---|
+| 0 / 12 | L/R Toe – L/R Heel | 0.23 | — | yes |
+| 1 / 13 | L/R Toe – L/R Ankle | 0.18 | — | no |
+| 2 / 14 | L/R Heel – L/R Ankle | 0.09 | — | no |
+| 3 / 15 | L/R Ankle – L/R Knee | 0.43 | 0.055 | yes |
+| 4 / 16 | L/R Knee – L/R Hip | 0.43 | 0.085 | yes |
+| 5 / 17 | L/R Hip – Core | 0.27 | — | no |
+| 6 / 18 | Core – L/R Shoulder | 0.37 | — | no |
+| 7 / 19 | L/R Shoulder – L/R Elbow | 0.29 | — | yes |
+| 8 / 20 | L/R Elbow – L/R Wrist | **0.26 / 0.27** | 0.03 | yes |
+| 9 / 21 | L/R Wrist – L/R Hand | 0.08 | — | yes |
+| 10 / 22 | L/R Hand – L/R Fingers | 0.08 | — | yes |
+| 11 / 23 | L/R Wrist – L/R Fingers | 0.14 | — | no |
+| 24 | LeftHip – RightHip | 0.23 | — | no |
+| 25 | LeftShoulder – Neck | 0.175 | — | no |
+| 26 | RightShoulder – Neck | 0.175 | — | no |
+| 27 | Neck – Head | 0.165 | 0.05 | yes |
+
+Rows `a / b` are the left limb (indices 0-11, `src/players.hpp:129-140`) and the right one (12-23,
+`src/players.hpp:142-153`), with identical values except the forearm: **left 0.26, right 0.27**
+(`src/players.hpp:137,150`). This asymmetry is in the code; reproduce it.
+
+How the fields are used:
+- `apply_limits` (`src/positions.cpp:314-322`) is called by `Graph::replace` on every write (`src/graph.cpp:20`) and by
+  `spring(Position&)` (`src/positions.cpp:185`); loading does not clamp.
+- `length`: only by `spring` (`src/positions.cpp:142-181`), the editor's relaxation that pulls joints toward the
+  nominal lengths. Positions in the DB are **not** constrained to these lengths; playback and drawing never read
+  `length`.
+- `visible` and `midpointRadius`: only by drawing (`src/playerdrawer.cpp:305-360`). A visible limb is a pillar from
+  `radius(a)` to `radius(b)`; with a mid radius it is two pillars `a → mid → b`, `mid` the midpoint of the ends, radii
+  `radius(a) → midpointRadius → radius(b)` (`src/playerdrawer.cpp:320-328`). Invisible limbs are skipped. In first
+  person, the limb ending at `Head` of that player is skipped (`src/playerdrawer.cpp:318`). The rest of the body
+  (triangles between joints, colors, lighting) is section 7.
+- The torso is not a limb: Hip–Core, Core–Shoulder and Shoulder–Neck are invisible; what the torso looks like comes from
+  the triangles of `playerdrawer.cpp` (section 7).
+
+**JS viewer diverges.** `src/gm.js:59-88` (`segments`) and `src/gm.js:92-116` (`joints`) are a hand-kept copy ("should
+be in-sync", `src/gm.js:89,117`) that is **not** in sync: every segment has a mid radius, several invisible C++ limbs
+are visible there (toe–ankle, heel–ankle, hip–core, core–shoulder, shoulder–neck), and `Core` is not draggable
+(`src/gm.js:113`). The fidelity target of this project is the C++ table above; which renderer the golden images follow
+is decided with section 7.
+
+The JS viewers render with Babylon.js and no `useRightHandedSystem` appears in `src/*.js` (grep); Babylon's default is
+left-handed, so the JS view may be mirrored relative to the C++ one (**[unverified]**: Babylon's docs not checked;
+for section 7 / ADR 0004).
+
+### 3.3 Players
+
+- `PlayerJoint{PlayerNum player; Joint joint}` (`src/players.hpp:40`, `operator==` at `src/players.hpp:42-45`)
+  addresses one joint of one player.
+- `PlayerNum` is an index of type `uint_fast8_t` (`src/indexed.hpp:61`); `player0 = {0}`, `player1 = {1}`
+  (`src/players.hpp:31-32`), `opponent(p) = 1 − p` (`src/players.hpp:38`).
+- `playerCode(p) = "tb"[p]`: player 0 is **t** (top), player 1 is **b** (bottom) (`src/players.hpp:36`). The function
+  itself is not called in the C++ (grep); the top/bottom meaning lives on in the `top`/`bottom` properties (§1.2).
+- Colors: `playerDefs = {red, {0.15, 0.15, 1}}` (`src/positions.cpp:140`), `red = {1, 0, 0}` (`src/math.hpp:62`):
+  player 0 red, player 1 blue.
+- `Position = PerPlayerJoint<V3>` (`src/positions.hpp:9`) = `PerPlayer<PerJoint<V3>>` (`src/players.hpp:103-110`):
+  `values[2][23]` of `V3` (doubles), indexed `p[player][joint]` or `p[PlayerJoint{player, joint}]`. A `Player` is one
+  `PerJoint<V3>` (`src/players.hpp:169`).
+- `playerJoints` is the 46 `PlayerJoint`s, player 0's 23 joints in enum order then player 1's
+  (`src/positions.cpp:65-73,138`); it is the iteration order of the encoder/decoder (§1.3), `basicallySame` (§2.3) and
+  drawing of joints (`src/playerdrawer.cpp:254,282`).
+- `swap_players(p)` swaps the two `Player`s wholesale (`src/positions.hpp:68-71`); no coordinate changes.
+
+## 4. Units and axes
+
+### 4.1 Units
+
+- **Lengths are meters.** The code says so for `midpointRadius` (`src/players.hpp:122`); limb lengths (0.43 m shin and
+  thigh, `src/players.hpp:132-133`) and the encoding range (§1.3) are consistent with it. There is no scale factor
+  between file values and world coordinates: the decoder writes the values straight into `V3` (`src/persistence.cpp:53`).
+- **Angles are radians**, used through `cos`/`sin`/`atan2` (`src/math.hpp:73-80,267`). Exception: `perspective` takes
+  `fovy` in **degrees** (`fovy*pi()/360` is the half angle, `src/math.hpp:116-118`).
+- **`pi()` is `3.141593`, not π** (`src/math.hpp:12`). It is used for the camera's pitch clamp
+  (`src/camera.hpp:61-62`) and the projection (`src/math.hpp:118`), among others; a port that wants bit-level agreement
+  must use the same constant there (other uses: section 7).
+- All values are `double` (§2.3, *Precision*).
+
+### 4.2 Axes and handedness
+
+- **`y` is vertical, up.** The floor is the plane `y = 0`: the grid is drawn at `y = 0` with normal `(0, 1, 0)`
+  (`src/rendering.cpp:249-262`), `apply_limits` keeps every joint at `y ≥ radius` (`src/positions.cpp:318`), the
+  encoding gives `y ∈ [0, 3.843]` with no offset (§1.3), and every reorientation rotates about `y` only (`yrot`,
+  `src/math.hpp:73-80`; §2.3).
+- **Horizontal plane `xz`**, centered on the origin: encoding gives `x, z ∈ [−2, 1.843]` (§1.3) and `apply_limits`
+  clamps `x, z` to `[−2, 2]` (`src/positions.cpp:319-320`). `xz(v) = (v.x, v.z)` (`src/math.hpp:110`) and
+  `y0(V2) = (v.x, 0, v.y)` (`src/math.hpp:40`): a `V2` "xz" value keeps `z` in its `.y` field.
+- **Mirror is `x ↦ −x`** (`mirror(V3)`, `src/positions.hpp:36`), plus left/right joint swap (§2.3).
+- **Right-handed**, derived as follows (no assumption about OpenGL defaults beyond the documented fixed pipeline):
+  1. Matrices `M` are column-major: `translate` puts the offset in `m[12..14]` (`src/math.hpp:91-98`) and
+     `M * V4` reads `m[0], m[4], m[8], m[12]` for `x` (`src/math.hpp:197-204`); they are loaded unchanged with
+     `glLoadMatrixd` (`src/rendering.cpp:341-354`), which expects column-major (OpenGL spec, not code). The shader
+     editor passes the same matrices through `to_glm` (`src/editor_canvas.cpp:331-338`, columns in order) and
+     `glUniformMatrix4fv(…, GL_FALSE, …)` (`src/editor_canvas.cpp:565`): same layout, no flip in either renderer.
+  2. `perspective` is the `gluPerspective` matrix (`m[11] = −1`, so `w = −z_eye`; visible points have `z_eye < 0`)
+     (`src/math.hpp:116-125`): OpenGL's right-handed eye space, camera looking down `−z`, `x` right, `y` up.
+  3. The model-view is `translate(0, 0, −zoom) · xrot(pitch) · yrot(yaw) · translate(−offset)`
+     (`src/camera.hpp:18`): only rotations and translations, no `glScale` or axis flip anywhere in `src/` (grep of
+     `glScale`). A product of rotations keeps handedness, so world coordinates are right-handed too.
+  4. With `yaw = 0` the camera looks toward world `−z` (tilted down by the pitch), with world `+x` to the right of the
+     screen and `+y` up.
+- **Rotation sign.** `yrot(a)` gives `x' = cos a·x + sin a·z`, `z' = −sin a·x + cos a·z` (§2.3): the standard
+  right-handed rotation by `+a` about `+y` (it takes `+z` toward `+x`). `angle(V2{x, z}) = atan2(x, z)`
+  (`src/math.hpp:267`) measures from `+z` toward `+x`, so `angle(xz(yrot(a)·v)) = angle(xz(v)) + a` (mod 2π): `yrot` and
+  `angle` share the same sign.
+- `xrot(a)` (`src/math.hpp:82-89`) gives `y' = cos a·y + sin a·z`, `z' = −sin a·y + cos a·z`, i.e. the standard
+  rotation by **`−a`** about `+x`. With the default `orientation = {0, −0.6, 1.7}` (yaw, pitch, zoom;
+  `src/camera.hpp:12-13`) the eye sits at `offset + (0, 1.7·sin 0.6, 1.7·cos 0.6) ≈ offset + (0, 0.96, 1.40)`: above and
+  on the `+z` side, looking down at `offset` (algebra on `src/camera.hpp:18`; **[unverified]** on screen: the on-screen look is to be confirmed with
+  the oracle images, section 7). The rest of the camera (fov, near/far, controls, smoothing) is section 7.
+
+### 4.3 `heading`, `normalRotation`, `center`, `cameraOffsetFor`
+
+All in `src/positions.hpp`; all use the two players' **`Core`**, except the matching of §2.3 and the canonical mirror test below, which use
+`Head`.
+
+| Function | Definition | Lines |
+|---|---|---|
+| `heading(p)` | `xz(p[1][Core] − p[0][Core])`: `V2` from player 0's core to player 1's, in `xz` | `src/positions.hpp:132-135` |
+| `normalRotation(p)` | `−angle(heading(p)) = −atan2(h.x, h.z)` | `src/positions.hpp:137-140` |
+| `center(p)` | midpoint of the two cores, a `V3` (keeps `y`) | `src/positions.hpp:142-145` |
+| `xzCenter(p)` | `xz(center(p))` | `src/positions.hpp:147-150` |
+| `normalTranslation(p)` | `y0(−xzCenter(p))`: moves the center to `x = z = 0`, `y` untouched | `src/positions.hpp:169` |
+| `cameraOffsetFor(p)` | midpoint of the cores with `y = max(0, y − 0.5)` | `src/positions.hpp:182-187` |
+
+Meaning (from §4.2's sign rule): `yrot(normalRotation(p))` turns `heading` to angle 0, i.e. after it **player 1's core
+is on the `+z` side of player 0's**. `normalRotation` is not wrapped: `atan2` gives `(−π, π]`, so the result is in
+`[−π, π)`; with both cores at the same `xz`, `atan2(0, 0) = 0` (C library behaviour, **[unverified]** for `−0`
+inputs).
+
+Users:
+- **Canonical orientation** (`src/positions.cpp:261-291`): angle `normalRotation(p)`, offset
+  `normalTranslation(rotate(angle, p))` (center computed *after* rotating). `canonical_reorientation_with_mirror` also
+  sets `mirror = (apply(reo, p)[player1][Head].x ≥ 0)` (`src/positions.cpp:267`): the canonical form puts player 1's
+  head at `x ≤ 0`: `x > 0` becomes `x < 0`, and `x = 0` is mirrored to `−0.0` (still 0; `−0.0 ≥ 0` is true, so
+  canonicalising again mirrors again). Who calls these is section 5.
+- **`translateNormal`** (`src/positions.hpp:171-174`): translation only, used for the first/last frames of
+  transitions in the position pages (`src/mkpospages.cpp:500,528`).
+- **`cameraOffsetFor`**: the camera target in the playback and video tools: `hardSetOffset` on the first frame, then
+  `setOffset` every frame (`src/glfw_playback.cpp:47,72`, `src/makevideo.cpp:116,123`), which smooths as
+  `offset = 0.97·offset + 0.03·target` (`src/camera.hpp:46-50`). The editor does **not** use it: it targets `center`
+  with `y *= 0.7` when no joint is chosen and not playing back (`src/editor_canvas.cpp:539-544`; the GLFW editor
+  also requires not being in edit mode, `src/glfw_editor.cpp:526-531`). The position images use neither:
+  `ImageMaker::png` with a heading view (`src/images.cpp:340-370` → `302-313`, called by `mkpospages`,
+  `src/mkpospages.cpp:584-587`) sets the target outright to `{0, ymax − 0.57, 0}` (`hardSetOffset`) and then
+  *adds* to the default orientation `{yaw 0, pitch −0.6, distance 1.7}` (`src/camera.hpp:12,52-70`): distance
+  `+= 0.55`, yaw `+= angle(heading) = pi()·0.5·heading` (`src/headings.hpp:65-68`), pitch `+= (ymax − 0.6)/2`
+  (clamped to `±pi()/2`); fov 45 (`src/images.cpp:309-315`). Player views are first-person (`src/rendering.cpp:345-352`).
+  Frame rate and the rest of the camera: section 7.
+
+### 4.4 Input for ADR 0004 (mapping to raylib)
+
+What the port has to preserve, independent of the target convention:
+- Meters, `y` up, floor `y = 0`, right-handed world, mirror = `x ↦ −x`, rotations about `y` with the sign of
+  `yrot`/`angle` above; f64 in `core` (§2.3).
+- The constants that depend on axes: encoding offsets on `x`/`z` only (§1.3), `apply_limits` box, `cameraOffsetFor`'s
+  `−0.5` on `y`, the editor's `0.7` on `y`, `pi() = 3.141593`.
+
+Mapping to raylib: **pending, ADR 0004**. Not checked here (this section reads only the original). The question for
+the ADR is whether raylib's world/eye convention matches the one derived in §4.2 (right-handed, `y` up, eye looking
+down `−z`); if it does, the original's coordinates can be used as-is with no axis swap or flip, and only `f64 → f32` at
+the render boundary remains. That must be verified in raylib's code or docs in the ADR, not assumed.
+
+### 4.5 Open points (need the oracle/dumper)
+
+Not verifiable by reading: the on-screen orientation of the default camera (§4.2, compare with oracle images);
+`normalRotation` with both cores at the same `xz` and `−0` inputs (§4.3); whether the JS viewer is mirrored (§3.2).

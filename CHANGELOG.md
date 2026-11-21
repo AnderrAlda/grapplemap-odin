@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 ## [Unreleased]
 
 ### Added
+- `docs/original.md` sections 3-4: player model (23 joints and `jointDefs`, the 28 limbs with lengths, mid radii and visibility, players 0/1) and units and axes (meters, `y` up, right-handed derivation, `heading`, `normalRotation`, `center`, `cameraOffsetFor`, input for ADR 0004), cited to the pinned original (#39).
 - MAIN must run on Opus: documented in the models table and «Sigue trabajando», and `/orchestrate` refuses to launch workers from a non-Opus session (`opusplan` drops to Sonnet after plan approval) (#90).
 - `tests/hooks/guard-bash.test.sh` (run by `./build.sh test`): table of allowed/blocked commands for the `guard-bash` hook (#20).
 - `./build.sh worktree-remove <branch>`: removes a worktree and its branch only when the worktree and its submodules are clean; otherwise prints the status, deletes nothing and exits non-zero (#54).
