@@ -5,9 +5,12 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 HOOK="$ROOT/.claude/hooks/guard-bash.sh"
 command -v jq >/dev/null || { echo "jq required"; exit 1; }
 
+# Never let inherited git env (GIT_DIR, GIT_WORK_TREE, ...) redirect the scratch-repo commands below to a real repo.
+while IFS= read -r v; do unset "$v"; done < <(git rev-parse --local-env-vars)
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 git init -q -b main "$TMP/repo"
+[ "$(git -C "$TMP/repo" rev-parse --show-toplevel)" = "$(cd "$TMP/repo" && pwd -P)" ] || { echo "scratch repo not isolated"; exit 1; }
 git -C "$TMP/repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 git -C "$TMP/repo" branch feat/x
 
