@@ -93,6 +93,7 @@ cmd_test() {
 	bash tests/hooks/guard-bash.test.sh
 	bash tests/hooks/protect-paths.test.sh
 	bash tests/changelog/fragments.test.sh
+	bash tests/build/worktree.test.sh
 	local pkg
 	for pkg in "${TEST_PKGS[@]}"; do
 		[ -d "$pkg" ] || continue
@@ -122,9 +123,19 @@ cmd_ci() {
 
 cmd_worktree() {
 	local branch="${1:?usage: ./build.sh worktree <branch>}"
-	local dir="../grapplemap-odin-wt/${branch//\//-}"
-	mkdir -p ../grapplemap-odin-wt
-	git worktree add -b "$branch" "$dir" origin/main 2>/dev/null || git worktree add "$dir" "$branch"
+	# Base dir comes from the main worktree (<main>/.git -> <main> -> parent), not from $PWD, so running this
+	# from another worktree gives the same path.
+	local common main base dir
+	common="$(git rev-parse --path-format=absolute --git-common-dir)"
+	main="$(dirname "$common")"
+	base="$(dirname "$main")/grapplemap-odin-wt"
+	dir="$base/${branch//\//-}"
+	mkdir -p "$base"
+	if git show-ref --verify --quiet "refs/heads/$branch"; then
+		git worktree add "$dir" "$branch"
+	else
+		git worktree add -b "$branch" "$dir" origin/main
+	fi
 	git -C "$dir" submodule update --init || echo "WARN: could not init submodules in $dir (offline?)"
 	echo "Worktree ready: $dir"
 }
