@@ -46,8 +46,9 @@ GrappleMap.txt (bytes) ──► parser ──► graph (arena) ──► transf
   indices into slices, never pointers, so the graph can be copied, serialized and checked without fix-ups.
 - **Per frame**: `context.temp_allocator`, emptied with `free_all` at the end of each frame.
 - **Leaks**: debug builds wrap the default allocator in `mem.Tracking_Allocator` and report leaks at exit
-  (`TRACK_LEAKS :: ODIN_DEBUG`, `src/main.odin:13,29-38`); tests run under the tracking allocator of `core:testing` and,
-  on Linux, AddressSanitizer (`sanitize_flag`, `build.sh`). Target: zero leaks.
+  (`TRACK_LEAKS :: ODIN_DEBUG`, `src/main.odin:13,28-45`); tests run under the tracking allocator of `core:testing` and,
+  on Linux and macOS, AddressSanitizer (`sanitize_flag`, `build.sh:14-20`; skipped on the macOS CI runners).
+  Target: zero leaks.
 - **Global state**: minimal. `App_State` is passed explicitly.
 
 ## Test strategy
@@ -64,9 +65,9 @@ GrappleMap.txt (bytes) ──► parser ──► graph (arena) ──► transf
 - The **oracle** is the original GrappleMap, pinned and built in Docker; it is the source of truth
   ([ADR 0002](adr/0002-oracle.md), `tools/oracle/README.md`).
 - Only a **sample** of its output is committed. The full dump (~0.54 GB) is generated in CI and checked against
-  committed hashes (`tests/fixtures/oracle/FULL.sha256`, #35/#36); `./build.sh ci` never needs Docker.
+  committed hashes (`tests/fixtures/oracle/FULL.sha256`); both pending (#35, #36). `./build.sh ci` never needs Docker.
 - What must match bit for bit and what may use a tolerance: [ADR 0003](adr/0003-numeric-precision.md).
-- Every build uses `-vet -strict-style -warnings-as-errors` (`build.sh:7`).
+- Every build and test uses `-vet -strict-style -warnings-as-errors` (`build.sh:7`); benchmarks (`cmd_bench`) do not.
 
 ## ADRs
 

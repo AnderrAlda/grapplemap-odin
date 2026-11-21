@@ -22,7 +22,8 @@ What Odin does was checked, not assumed, with the pinned toolchain (`.odin-versi
 - The LLVM IR (`-build-mode:llvm-ir`, `-o:speed`, targets `linux_amd64` and `darwin_arm64`) has plain `fmul` /
   `fadd`, with no `contract` (or any other fast-math) flag and no `llvm.fmuladd`.
 - The assembly has separate multiply and add (`mulsd`+`addsd`; `fmul`+`fadd` on arm64) for `linux_amd64 -o:speed`,
-  `linux_amd64 -o:aggressive -microarch:native` on a CPU with FMA, and `darwin_arm64 -o:speed`. So Odin does
+  `linux_amd64 -o:aggressive -microarch:native` on a CPU with FMA, `linux_amd64 -debug -microarch:native` (i.e.
+  `-o:none`), and `darwin_arm64 -o:speed`. So Odin does
   **not** contract to FMA implicitly at the levels we build with (`-debug`/`-o:none` for tests, `-o:speed` for
   release, `build.sh`). Fusion only happens on request: `math.fmuladd_f64` (`core/math/math_basic.odin:92`, the
   `llvm.fmuladd` intrinsic) and `intrinsics.fused_mul_add` (`base/intrinsics/intrinsics.odin:70`).
@@ -44,19 +45,25 @@ What Odin does was checked, not assumed, with the pinned toolchain (`.odin-versi
 3. **`f32` only at the render boundary.** `render` converts to `f32` when uploading to raylib. `core` never stores
    or computes in `f32`, and no `f32` value flows back into `core`.
 4. **What is compared bit for bit** (equality of `f64`): every result built only from `+ − × ÷`, `min`/`max` and
-   `sqrt`: decoding (`sequences.ndjson`), `mirror`, `swap_players`, `heading`, `center` (`ops.ndjson`;
-   `src/positions.hpp:36,68,132-146`), `between` (`between.ndjson`, `src/positions.hpp:42`) and `spring`
-   (`spring.ndjson`, `src/positions.cpp:142-194`).
+   `sqrt`: decoding (`sequences.ndjson`); the fields `mirror`, `swap_players`, `heading` and `center` of
+   `ops.ndjson` (`src/positions.cpp:130-136`, `src/positions.hpp:68,132-135,142-145`); `between`
+   (`between.ndjson`, `src/positions.hpp:42`) and `spring` (`spring.ndjson`, `src/positions.cpp:142-194`). "Same
+   formula" is literal: `center` uses `between(V3, V3) = (a + b) / 2` (`src/math.hpp:193`), not
+   `between(a, b, 0.5) = a + (b − a)·0.5` (`src/positions.hpp:42`); the two do not give the same bits.
 5. **What may need a tolerance**: results that go through `sin`, `cos` or `atan2`: the reorientation found by
    matching (`angleOff` from `angle` = `atan2`, then `yrot`; `src/positions.cpp:198-210`), so the edges'
-   `reorientation_from`/`_to` in `graph.ndjson`; `apply(Reorientation)`; `normalRotation` and both canonical
-   orientations (`src/positions.hpp:137-140`); playback frames across rotated reorientations. They are compared
-   bit for bit first; a tolerance is used only where that fails, and only with the explicit value, the affected
-   fields and the evidence written in the PR, **approved by Ander** (`CLAUDE.md`, "Prohibiciones": no raising
-   tolerances or thresholds without asking).
-6. **Node assignment is exact, never toleranced**: which node every endpoint matches, and with which `swap`/
-   `mirror` flags, must equal `graph.ndjson`. A different assignment is a bug, or (if caused by a last-bit trig
-   difference near a threshold) an open question for Ander, not a tolerance.
+   `reorientation_from`/`_to` in `graph.ndjson`; `apply(Reorientation)`; `normalRotation`
+   (`src/positions.hpp:137-140`) and both canonical orientations (`src/positions.cpp:261-291`); and playback
+   frames, a single transition included, whenever the reorientation of its `from` node has a non-zero angle
+   (`follow()` applies `compose(inverse(from.reorientation), …)` to every frame, `src/graph_util.cpp:60-77`).
+   They are compared bit for bit first; a tolerance is used only where that fails, and only with the explicit
+   value, the affected fields and the evidence written in the PR, **approved by Ander** (`CLAUDE.md`,
+   "Prohibiciones": no raising tolerances or thresholds without asking).
+6. **Discrete decisions are exact, never toleranced**: which node every endpoint matches, and with which `swap`/
+   `mirror` flags, must equal `graph.ndjson`; the `mirror` flag of `canonical_reorientation_with_mirror`
+   (`apply(reo, p)[player1][Head].x >= 0`, `src/positions.cpp:266`) must equal the oracle's. A different result is
+   a bug, or (if caused by a last-bit trig difference near a threshold) an open question for Ander, not a
+   tolerance.
 7. **Constants are copied, not improved**: e.g. `pi()` is `3.141593` (`src/math.hpp:12`, `docs/original.md` §4.1),
    used wherever the original uses `pi()`.
 
@@ -77,7 +84,9 @@ What Odin does was checked, not assumed, with the pinned toolchain (`.odin-versi
 ### Open points (not verifiable now)
 - **`sin`/`cos` bits.** The original uses glibc 2.27; the port calls the libm of the machine it runs on (a newer
   glibc on Linux, Apple's libm on macOS, the browser on wasm). None of them is required to be correctly rounded, so
-  equality over every angle in the DB is **unverified** (phase 2, with the full dump). Options if it fails: bundle one libm implementation for every target, or a tolerance (Ander decides).
+  equality over every angle in the DB is **unverified** (phase 2, with the full dump). Options if it fails: port
+  glibc 2.27's `sin`/`cos`/`atan2` (or a correctly rounded library), verified against the full dump, for every
+  target; or a tolerance (Ander decides).
 - **`atan2` bits.** Odin's `atan2` is Cephes, not glibc's: likely to differ in the last bit for some inputs
   (**unverified**). The same options apply; it feeds node matching (`angleOff`), `normalRotation` and canonical
   orientation.
