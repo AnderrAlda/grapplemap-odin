@@ -21,13 +21,25 @@
       "Bash(gh pr list *)",
       "Bash(gh pr checks *)",
       "Bash(gh run view *)",
-      "Bash(gh run list *)"
-    ],
-    "ask": [
+      "Bash(gh run list *)",
       "Bash(git push *)",
       "Bash(gh pr create *)",
       "Bash(gh pr ready *)",
+      "Bash(gh pr edit *)",
+      "Bash(gh pr comment *)",
       "Bash(gh issue create *)",
+      "Bash(gh issue edit *)",
+      "Bash(gh issue comment *)",
+      "Bash(git worktree list *)",
+      "Bash(herdr pane current *)",
+      "Bash(herdr worktree create *)",
+      "Bash(herdr agent list *)",
+      "Bash(herdr agent start *)",
+      "Bash(herdr agent prompt *)",
+      "Bash(herdr agent wait *)",
+      "Bash(herdr agent read *)"
+    ],
+    "ask": [
       "Bash(gh release create *)",
       "Bash(brew install *)",
       "Bash(npm install *)",
