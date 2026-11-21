@@ -74,7 +74,7 @@ MAIN nunca responde a un diálogo de permisos de otro agente. `./build.sh worktr
 - **Cuándo es seguro `/clear`:** con el lote cerrado: sus PR mergeados y limpiados (§4b de `/orchestrate`), ningún plan pendiente de tu aprobación y ningún worker `blocked`/`error`. `/clear` no mata a los workers (van con `--outlive-parent`) y el estado vive en issues, PR y `docs/plans/`, no en la sesión; si queda un worker vivo, MAIN te dice cuál (`hc ls`, `w-*`) para que la sesión nueva lo encuentre.
 - **Dónde:** en la terminal de MAIN, en la raíz del repo y en `main`.
 - **Qué decir:** `/rename MAIN` y después «sigue trabajando».
-- MAIN termina el cierre de lote y cada propuesta del siguiente con el bloque fijo «Momento de /clear: sí|no» (ver `.claude/skills/orchestrate/SKILL.md`).
+- **Aviso:** MAIN termina el cierre de lote (tras la limpieza: normalmente `sí`) y cada propuesta del siguiente lote (con planes pendientes de tu OK: `no`) con el bloque fijo «Momento de /clear: sí|no» (ver `.claude/skills/orchestrate/SKILL.md`).
 
 ## Propuestas pendientes de tu OK (no activadas)
 - **Sandbox**: en `.claude/settings.json` añadir `"sandbox": {"enabled": true, "autoAllowBashIfSandboxed": true, "network": {"allowedDomains": ["github.com", "api.github.com"]}}`. Menos confirmaciones sin salir del repo.

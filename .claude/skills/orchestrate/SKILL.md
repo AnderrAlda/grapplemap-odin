@@ -70,6 +70,7 @@ Al cerrar un lote (tras la limpieza 4b) y siempre que propongas el siguiente lot
 Momento de /clear: sí|no
 Motivo: <una línea>
 ```
+- Momento del bloque: tras 4b, `sí` si no queda nada abierto; al proponer el siguiente lote, sus planes aún esperan tu OK, así que ahí es `no` (motivo: «planes pendientes de tu OK»).
 - `sí` solo si el lote está cerrado: PR mergeados y limpiados, ningún plan pendiente de aprobación, ningún worker `blocked`/`error`. Si no, `no` y el motivo (qué falta).
 - Si es `sí`, añade las dos líneas a escribir y desde dónde: en la terminal de MAIN, en la raíz del repo y en `main`: `/rename MAIN` y «sigue trabajando».
 - Si queda algún worker vivo, di cuál (`hc ls`, `w-*`) para que la sesión nueva lo encuentre; `/clear` no lo mata (`--outlive-parent`).
