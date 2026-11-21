@@ -61,7 +61,7 @@ What Odin does was checked, not assumed, with the pinned toolchain (`.odin-versi
    "Prohibiciones": no raising tolerances or thresholds without asking).
 6. **Discrete decisions are exact, never toleranced**: which node every endpoint matches, and with which `swap`/
    `mirror` flags, must equal `graph.ndjson`; the `mirror` flag of `canonical_reorientation_with_mirror`
-   (`apply(reo, p)[player1][Head].x >= 0`, `src/positions.cpp:266`) must equal the oracle's. A different result is
+   (`apply(reo, p)[player1][Head].x >= 0`, `src/positions.cpp:267`) must equal the oracle's. A different result is
    a bug, or (if caused by a last-bit trig difference near a threshold) an open question for Ander, not a
    tolerance.
 7. **Constants are copied, not improved**: e.g. `pi()` is `3.141593` (`src/math.hpp:12`, `docs/original.md` §4.1),
