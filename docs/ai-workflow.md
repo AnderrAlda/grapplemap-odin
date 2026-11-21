@@ -6,7 +6,7 @@ Principio: lo crítico lo hacen cumplir permisos, hooks y CI; lo demás va en CL
 | Trabajo | Modelo | Cómo |
 |---|---|---|
 | Specs, planes, ADRs, bugs difíciles | opus | `model: opusplan` en `.claude/settings.json` (Opus en plan mode, Sonnet al ejecutar); skills `/spec`, `/plan`, `/adr` con `model: opus` |
-| Implementar plan aprobado, tests, refactors acotados | sonnet por defecto; opus para el C++ del oráculo, fidelidad en core y ADRs | modelo del worker por issue: `/orchestrate` lo lanza con `claude --model <m> ...`; `/start-task` y `/pr` no fijan `model:` y heredan el del worker |
+| Implementar plan aprobado, tests, refactors acotados | sonnet por defecto; opus para el C++ del oráculo, fidelidad en core y ADRs | modelo del worker por issue: `/orchestrate` lo lanza con `claude --model <m> ...`; `/start-task` no fija `model:` y hereda el del worker; `/pr` fija sonnet |
 | `code-reviewer` | sonnet; opus en core/render/arquitectura | frontmatter `model: sonnet`; `/pr` lo invoca con `model: opus` según las áreas tocadas |
 | `test-writer`, `render-verifier` | sonnet | frontmatter |
 | `explorer`, `odin-researcher`, `chore`, `Explore` (override) | haiku | frontmatter |
