@@ -28,7 +28,7 @@ Un PR nunca se abre ni se marca ready sin **label + milestone** y con el **check
 9. **Checklist según evidencia, nunca por defecto**. Marca `[x]` solo lo que hiciste y verificaste en esta sesión; lo demás queda `[ ]`:
    - Tests añadidos → hay tests nuevos o actualizados en el diff.
    - `./build.sh ci` pasa → solo si lo ejecutaste y salió bien.
-   - Docs/CLAUDE.md/CHANGELOG/ADR → solo si realmente se actualizaron o no aplica (escribe «n/a»).
+   - Docs/CLAUDE.md/fragmento `changelog.d/<issue>-<slug>.md` (nunca editar `CHANGELOG.md`)/ADR → solo si realmente se actualizaron o no aplica (escribe «n/a»).
    - Sin leaks → solo si los tests/smoke en debug lo confirman.
    - CI verde → solo cuando `gh pr checks` lo muestre en el último commit.
    - `code-reviewer` sin bloqueantes → solo tras ejecutarlo; indica modelo y resultado en el cuerpo.

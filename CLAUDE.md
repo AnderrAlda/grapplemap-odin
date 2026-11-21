@@ -39,7 +39,7 @@ Reparto de modelos y detalle: `docs/ai-workflow.md`.
 
 ## Hecho = (cada PR)
 Plan enlazado · `./build.sh ci` verde en local y CI verde · tests nuevos (TDD en core) · cero leaks ·
-formato/vet limpios · docs, CLAUDE.md anidados, CHANGELOG (Unreleased) y ADR al día · `code-reviewer` sin bloqueantes ·
+formato/vet limpios · docs, CLAUDE.md anidados, fragmento en `changelog.d/` (no se edita `CHANGELOG.md`) y ADR al día · `code-reviewer` sin bloqueantes ·
 capturas si hay cambios visuales. Nunca "hecho" sin evidencia (salida de tests/comandos).
 
 ## Prohibiciones

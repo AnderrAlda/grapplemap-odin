@@ -31,7 +31,33 @@ cmd_setup() {
 	command -v jq >/dev/null || echo "WARN: jq not found (needed by Claude Code hooks)."
 }
 
-cmd_check() { odin check src $COLLECTION $VET; }
+# changelog-check [dir]: every fragment in changelog.d/ (README.md excluded) must be non-empty, start with a Keep a
+# Changelog heading and use only known headings (#98). Format check only.
+cmd_changelog_check() {
+	local dir="${1:-changelog.d}" f bad=0 first
+	for f in "$dir"/*.md; do
+		[ -e "$f" ] || continue
+		[ "$(basename "$f")" = "README.md" ] && continue
+		first=$(grep -m1 -v '^[[:space:]]*$' "$f" || true)
+		if [ -z "$first" ]; then
+			echo "changelog fragment $f is empty" >&2
+			bad=1
+		elif ! [[ "$first" =~ ^###\ (Added|Changed|Deprecated|Removed|Fixed|Security)$ ]]; then
+			echo "changelog fragment $f must start with a '### <Added|Changed|Deprecated|Removed|Fixed|Security>' heading" >&2
+			bad=1
+		fi
+		if grep -E '^### ' "$f" | grep -q -v -E '^### (Added|Changed|Deprecated|Removed|Fixed|Security)$'; then
+			echo "changelog fragment $f has an unknown '###' heading" >&2
+			bad=1
+		fi
+	done
+	return $bad
+}
+
+cmd_check() {
+	cmd_changelog_check
+	odin check src $COLLECTION $VET
+}
 
 cmd_fmt() { odinfmt -w src; }
 
@@ -66,6 +92,7 @@ cmd_test() {
 	mkdir -p "$OUT"
 	bash tests/hooks/guard-bash.test.sh
 	bash tests/hooks/protect-paths.test.sh
+	bash tests/changelog/fragments.test.sh
 	local pkg
 	for pkg in "${TEST_PKGS[@]}"; do
 		[ -d "$pkg" ] || continue
@@ -224,6 +251,7 @@ target="${1:-}"
 case "$target" in
 setup) cmd_setup ;;
 check) cmd_check ;;
+changelog-check) cmd_changelog_check "$@" ;;
 fmt) cmd_fmt ;;
 fmt-check) cmd_fmt_check ;;
 debug) cmd_debug ;;
@@ -238,7 +266,7 @@ worktree-remove) cmd_worktree_remove "$@" ;;
 space-id) cmd_space_id "$@" ;;
 oracle) cmd_oracle "$@" ;;
 *)
-	echo "usage: ./build.sh {setup|check|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <branch>|worktree-remove <branch>|space-id <branch>|oracle --full|--test}"
+	echo "usage: ./build.sh {setup|check|changelog-check [dir]|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <branch>|worktree-remove <branch>|space-id <branch>|oracle --full|--test}"
 	exit 2
 	;;
 esac
