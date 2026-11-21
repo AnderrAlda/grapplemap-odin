@@ -772,15 +772,15 @@ map (`R`, `F`, translation). All arithmetic is `double` (§2.3, *Precision*).
   center joints); it is used to look up a single joint without building the whole position (§5.3).
 - Involution: `mirror(mirror(p)) == p` **bit for bit** (negation is exact and the swaps are permutations).
 - What it preserves: all pairwise distances (so `head2head`, §2.3, and limb lengths, §3.2); `y` of every joint. What it
-  changes: `heading(mirror(p)).x = −heading(p).x`, so `angle` and `normalRotation` change sign (§4.3); `center.x`
+  changes: `heading(mirror(p)).x = −heading(p).x`, so `angle` and `normalRotation` change sign (§4.3; exact if `atan2(−y, x) == −atan2(y, x)` in the libm used, §5.7); `center.x`
   changes sign.
 
 ### 5.2 `swap_players`
 
 - `swap_players(Position & p)`: `std::swap(p[player0], p[player1])` (`src/positions.hpp:68-71`), in place: `S`. Exact,
   an involution, preserves every coordinate (only the player index changes).
-- `heading(S(p)) = −heading(p)`: `normalRotation` changes by ±π (§4.3); `center` is unchanged up to rounding
-  (`(a + b)/2` vs `(b + a)/2`: IEEE addition is commutative, so it is in fact identical).
+- `heading(S(p)) = −heading(p)`: `normalRotation` changes by ±π (§4.3); `center` is bit-identical
+  (`(a + b)/2` vs `(b + a)/2`: IEEE addition is commutative).
 - `PlayerJoint`-level version: `opponent(pj.player)` (`src/positions.hpp:111`).
 
 ### 5.3 `Reorientation` and `PositionReorientation`
@@ -792,7 +792,8 @@ axis followed by a translation.
   evaluated expression is, for `x`: `((m[0]·x + m[4]·y) + m[8]·z) + m[12]` with `m[0] = cos a`, `m[4] = 0`,
   `m[8] = sin a`, `m[12] = 0` (`src/math.hpp:73-80`), then `+ o.x`. The `0·y` and `+0` terms are kept by the compiler
   (no `-ffast-math`, `src/SConstruct:4`); they only matter for the sign of zero results, but a bit-exact port should
-  evaluate the same terms in the same order.
+  evaluate the same terms in the same order, **without FMA contraction** (each `*` and `+` rounded separately: the
+  original targets generic x86-64, which has no FMA; the oracle enforces it, `tools/oracle/Dockerfile:32-33,50-54`).
 - Applied to a position, `apply(r, p)` maps every joint (`src/positions.hpp:62-66`).
 
 **`PositionReorientation{reorientation, swap_players, mirror}`** (`src/positions.hpp:73-96`; the comment at line 77:
@@ -871,7 +872,7 @@ only fact needed to derive §5.4; it is exactly the "negate `angle` and `offset.
   `src/glfw_editor.cpp:141`) just flips the `mirror` flag of the current location and of the selection; by the order in
   §5.3 that is `M ∘ u` (mirror of what was shown, about `x = 0`), and it does not change any stored position
   (`src/editor.hpp:52`). By contrast `swap_players(Editor&)` and `mirror_position` change the stored keyframe
-  (`src/editor.cpp:240-265`; key `X`, `src/glfw_editor.cpp:134`). Editor detail: section 8.
+  (`src/editor.cpp:240-265`; keys `X` / `M`, `src/glfw_editor.cpp:134-135`). Editor detail: section 8.
 - Known imprecision in the original: `do_edit` composes a camera-only reorientation and notes it ignores
   `swap_players` (`src/glfw_editor.cpp:380-382`, `// todo: this is wrong`). Not to be "fixed" silently in a port;
   section 8.
@@ -896,19 +897,25 @@ What is fixed in the result (exact in reals; in `double` up to rounding, so "≈
 - **With mirror:** additionally player 1's **head** has `x ≤ 0` (`x > 0` before the test → mirrored to `< 0`;
   `x == 0`, including `−0.0`, also mirrors, §4.3). Mirroring keeps the center at `x ≈ 0` and the heading on `+z`
   (`F` maps `(0, z)` to `(−0, z)`), so both properties above still hold after the mirror.
-- **Never swaps players** (`swap_players = false` in both; `assert(!reo.swap_players)` in `mkpospages`,
-  `src/mkpospages.cpp:662`). Which player is 0 is never canonicalised: a position and its `swap_players` image have
-  canonical forms rotated by π from each other. Callers that want a fixed player order swap first themselves:
+- **Never swaps players**: `swap_players = false` in both (`src/positions.cpp:266,277`; the
+  `assert(!reo.swap_players)` in `src/mkpospages.cpp:662` is compiled out, §1.7). Which player is 0 is never
+  canonicalised: `orient_canonically_without_mirror(S(p)) ≈ S(R(π)·orient_canonically_without_mirror(p))` (rotated by
+  π **and** with the player labels swapped). With mirror, the test then reads the *other* player's head
+  (`−x` of player 0's head in `p`'s canonical form), a decision independent of `p`'s, so the two `with_mirror` forms
+  may additionally differ by a mirror. Callers that want a fixed player order swap first themselves:
   `mkpospages` swaps every frame when the transition's `from.reorientation.swap_players` is set, then canonicalises
   the first frame (`src/mkpospages.cpp:430-435`).
 
 Tie-breaks and degenerate cases:
 - The only discrete choice is the mirror test, with `≥ 0` (head exactly on the plane → mirrored). There is no other
   tie-break; the angle comes from a single `atan2`.
-- Both cores at the same `xz`: `heading = (0, 0)`, `atan2(0, 0) = 0` so no rotation (§4.3). C's `atan2(±0, −0)` is
-  `±π`, which would rotate by π, but `heading` is a component-wise subtraction (`src/math.hpp:135`) and `x − x = +0`
-  under IEEE 754 round-to-nearest, so only `(+0, +0)` can arise and the angle is `0` (`−0` after `normalRotation`'s
-  negation). Derived, not observed: **[unverified]** only in that it assumes the default rounding mode.
+- Both cores at the same `xz`: `heading` is a component-wise subtraction (`src/math.hpp:135`). If the cores'
+  coordinates are **bit-identical**, `x − x = +0` (IEEE 754 round-to-nearest), so `heading = (+0, +0)`,
+  `atan2(+0, +0) = +0` and there is no rotation. This covers every position decoded from the file, which never holds
+  `−0` (`g() − 2` with `g() ≥ +0`, `src/persistence.cpp:45-53`). A reoriented input (e.g. the `mkpospages` frames,
+  which go through `inverse(…)` and `yrot` first, `src/mkpospages.cpp:433,675,711`) can hold `+0` in one core and
+  `−0` in the other: `(−0) − (+0) = −0`, so `heading` can be `(−0, −0)`, `atan2(−0, −0) = −π` and the position is
+  rotated by π. **[unverified]** at runtime, as in §4.3/§4.5.
 - The heading uses `Core` but the mirror test uses `Head`; a position where player 1's head is near `x = 0` flips
   between mirrored and not under tiny edits.
 
@@ -925,8 +932,9 @@ Must match the original **bit for bit** (f64, same operation order; checked by t
 - `mirror(Position)`: `F` + the ten left/right swaps, players not swapped (§5.1). Oracle: `ops.ndjson` (`mirror`).
 - `swap_players` (§5.2). Oracle: `ops.ndjson` (`swap_players`).
 - `apply(Reorientation)`: `R(θ)·v` with the term order of §5.3, then `+ offset`; `PositionReorientation` order
-  rotate → translate → mirror → swap (§5.3). Oracle: indirectly, `graph.ndjson` exports every edge's
-  `reorientation_from`/`_to` (§2.3) and `ops.ndjson` the canonical forms.
+  rotate → translate → mirror → swap (§5.3). Oracle: bit for bit through `ops.ndjson` (`orient_canonically_*`,
+  non-trivial angle and offset) and the `playback` frames; `graph.ndjson` exports only the edges' `reorientation_from`/`_to`
+  *parameters* (§2.3), and applying them reproduces an endpoint only within `basicallySame`.
 - `heading`, `center`, `normalRotation`, `normalTranslation`, and `orient_canonically_with_mirror/without_mirror`
   (§4.3, §5.5). Oracle: `ops.ndjson` (`heading`, `center`, `orient_canonically_*`).
 - `compose`/`inverse` with the exact formulas of §5.4, angle sum not wrapped, `a.mirror` conjugating `b`. Oracle:
