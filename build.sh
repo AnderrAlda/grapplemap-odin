@@ -65,6 +65,7 @@ cmd_run() {
 cmd_test() {
 	mkdir -p "$OUT"
 	bash tests/hooks/guard-bash.test.sh
+	bash tests/hooks/protect-paths.test.sh
 	local pkg
 	for pkg in "${TEST_PKGS[@]}"; do
 		[ -d "$pkg" ] || continue
