@@ -11,13 +11,15 @@ git init -q -b main "$TMP/repo"
 git -C "$TMP/repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 git -C "$TMP/repo" branch feat/x
 
+TMO=""
+command -v timeout >/dev/null && TMO="timeout 10"
 fail=0
 total=0
 # check <allow|block> <branch> <command>
 check() {
 	local want=$1 branch=$2 cmd=$3 out got
 	git -C "$TMP/repo" switch -q "$branch"
-	out=$(jq -n --arg c "$cmd" '{tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$TMP/repo" bash "$HOOK" 2>&1)
+	out=$(jq -n --arg c "$cmd" '{tool_input:{command:$c}}' | CLAUDE_PROJECT_DIR="$TMP/repo" $TMO bash "$HOOK" 2>&1)
 	# Any output that is not a deny decision (e.g. a crash message) must not count as allow.
 	if [ -n "$out" ] && ! printf '%s' "$out" | grep -Eq '"permissionDecision": *"(deny|allow)"'; then
 		fail=$((fail + 1)); total=$((total + 1)); echo "FAIL [$branch] hook crashed: $cmd: $out"; return
@@ -131,6 +133,18 @@ check block $F 'xargs -n1 rm -rf'
 check block $F 'nice sudo ls'
 check block main 'bash -c "git commit -m x"'
 check allow $F 'timeout 5 git log main'
+check allow $F 'git -C "/some/dir" status'
+check allow $F 'git -c "a=b c" log'
+check allow $F 'git -C'
+check allow $F 'hc send foo "git push origin main"'
+check allow $F 'git commit -m "avoid git push -f"'
+check block $F 'git push origin "feat/x" -f'
+check block $F 'git push -u origin "feat/x" --force'
+check block $F 'git push origin "main"'
+check block $F "git push origin 'main'"
+check block $F 'eval git push -f origin x'
+check block $F '\git push -f origin x'
+check block $F 'git -C "/x" push -f origin x'
 
 echo "guard-bash: $((total - fail))/$total passed"
 [ "$fail" -eq 0 ]

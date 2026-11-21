@@ -5,9 +5,10 @@
 # so `git push origin feat && git log main` is not confused with a push to main. Git global options
 # (-C <dir>, -c k=v, --git-dir=..., --no-pager, ...) are skipped before reading the subcommand.
 #
-# Known limit: quotes are NOT parsed. A separator inside a quoted string (e.g. `;` in a commit message)
-# splits the segment and may over-block; likewise a line of a multi-line message that starts with a dangerous
-# command. Fail-closed is accepted; tests: tests/hooks/guard-bash.test.sh.
+# Known limits (fail-closed unless noted): quotes are deleted, not parsed, so a separator inside a quoted string
+# (e.g. `;` in a commit message) or a message line that starts with a dangerous command over-blocks. Fail-open and
+# accepted: variable expansion, command substitution as an argument, git aliases.
+# Tests: tests/hooks/guard-bash.test.sh.
 source "$(dirname "$0")/_common.sh"
 cmd=$(jqr '.tool_input.command // empty')
 [ -z "$cmd" ] && exit 0
@@ -26,7 +27,7 @@ check_git() {
 	# Skip global options.
 	while [ $# -gt 0 ]; do
 		case $1 in
-		-C | -c | --git-dir | --work-tree | --config-env | --exec-path | --namespace | --super-prefix) shift 2 ;;
+		-C | -c | --git-dir | --work-tree | --config-env | --exec-path | --namespace | --super-prefix) shift $(($# < 2 ? $# : 2)) ;;
 		-*) shift ;;
 		*) break ;;
 		esac
@@ -108,9 +109,16 @@ check_segment() {
 	done
 	stripped=0
 	[ ${#w[@]} -eq 0 ] && return 0
-	local first=${w[0]##*/}
+	local first=${w[0]#\\}
+	first=${first##*/}
 	case $first in
 	sudo) deny_pretool "Privilege escalation blocked (sudo)." ;;
+	bash | sh | zsh | dash | eval)
+		# `bash -c "<cmd>"`, `eval <cmd>`: judge the inner command (quotes are already stripped).
+		local -a inner=("${w[@]:1}")
+		while [ ${#inner[@]} -gt 0 ] && [[ ${inner[0]} == -* ]]; do inner=("${inner[@]:1}"); done
+		[ ${#inner[@]} -gt 0 ] && check_segment "${inner[*]}"
+		;;
 	git) check_git "${w[@]:1}" ;;
 	rm) check_rm "${w[@]:1}" ;;
 	gh)
@@ -127,11 +135,12 @@ set -f # no globbing while splitting words
 if printf '%s' "$cmd" | grep -Eq '(^|[[:space:]])--no-verify([[:space:]=]|$)'; then
 	deny_pretool "Skipping git hooks (--no-verify) is blocked."
 fi
-# Segments: split on separators, quotes, backticks and parens so that `bash -c "git push -f"`,
-# `$(git push -f)` and `find -exec rm -rf` expose the inner command. tr (not sed \n) for macOS portability.
+# Segments: quote characters are deleted first (so a quoted argument before a flag keeps the flag visible and
+# a quoted "main" is seen), then the command is split on separators, backticks and parens so that `$(...)`
+# and `find -exec` expose the inner command; `bash -c`/`eval` are judged recursively. tr (not sed \n) for macOS.
 cmd=${cmd// -exec / ; }
 cmd=${cmd// -execdir / ; }
 while IFS= read -r seg; do
 	check_segment "$seg"
-done < <(printf '%s\n' "$cmd" | tr ';|&`"'"'"'()' '\n')
+done < <(printf '%s\n' "$cmd" | tr -d "\"'" | tr ';|&`()' '\n')
 exit 0
