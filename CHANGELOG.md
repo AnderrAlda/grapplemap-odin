@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 ## [Unreleased]
 
 ### Added
+- Oracle dumper (`tools/oracle/dump`, linked against the original's `common` objects) and `./build.sh oracle --full|--test`: `meta.json`, `sequences.ndjson`, `graph.ndjson` (including anonymous nodes and the `.index`) and `body.json` of the whole DB to `build/oracle/full/`, plus a dumper test over `tools/oracle/dump/testdata/` (#34, part 1).
 - `./build.sh worktree-remove <branch>`: removes a worktree and its branch only when the worktree and its submodules are clean; otherwise prints the status, deletes nothing and exits non-zero (#54).
 - «Sigue trabajando» flow: MAIN proposes a batch of up to 3 issues with their plans in a single approval request and runs `/orchestrate` on it; `/orchestrate` is now model-invocable and picks the worker model per issue (`claude --model`); `/start-task` inherits it (#83).
 - `docs/original.md` section 2: graph model and node matching (named positions vs. transitions, anonymous nodes, `is_reoriented`/`basicallySame` matching and its order, `.index` cache, `in`/`out`, `bidirectional`/`detailed`, lookup by description), cited to the pinned original (#38).
