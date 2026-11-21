@@ -31,7 +31,8 @@
       "Bash(gh issue edit *)",
       "Bash(gh issue comment *)",
       "Bash(git worktree list *)",
-      "Bash(hc ls*)",
+      "Bash(hc ls)",
+      "Bash(hc ls *)",
       "Bash(hc get *)",
       "Bash(hc read *)",
       "Bash(hc wait *)",
@@ -47,6 +48,7 @@
     ],
     "deny": [
       "Bash(git branch -D main*)",
+      "Bash(hc send *--force*)",
       "Bash(git push --force*)",
       "Bash(git push origin main*)",
       "Bash(git push * main)",

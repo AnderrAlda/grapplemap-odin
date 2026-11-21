@@ -41,7 +41,7 @@ El repo es privado sin plan Pro, así que GitHub no puede proteger `main`. La pr
 
 ## Orquestación (MAIN + Herdr)
 La app Herdr corre sus terminales en herdr-core (`hc`); el CLI `herdr` antiguo no los ve. `herdr-app` solo coloca ventanas (y solo existe en el Mac); `hc` funciona igual en el Mac y en el servidor.
-La sesión `MAIN` (raíz del repo, en `main`, sin editar código; en el servidor de Hetzner, para que siga aunque el portátil duerma) coordina los workers con `/orchestrate`:
+La sesión `MAIN` (raíz del repo, en `main`, sin editar código; recomendado en el servidor de Hetzner, para que siga aunque el portátil duerma, pero lanza los workers en la máquina donde corre) coordina los workers con `/orchestrate`:
 1. Inventario de issues, PRs, worktrees y agentes (`gh`, `git worktree list`, `hc ls`).
 2. Por cada issue con **plan aprobado por ti**: `./build.sh worktree <rama>` → `hc run --bg --name <slug> --cwd <worktree> --label herdr.space=<space de MAIN> claude --permission-mode auto "…"`
    (así aparece como pestaña en la app) → mensajes separados con `hc send`: `/start-task <N>` y `/pr`. El primer mensaje (lenguaje natural) hace `./build.sh setup`
@@ -53,8 +53,10 @@ La sesión `MAIN` (raíz del repo, en `main`, sin editar código; en el servidor
    irreversible no cubierta por `allow`.
 Para que los workers no se detengan a pedir permiso, `git push`, `gh pr create/ready/edit/comment`, `gh issue create/edit/comment`
 y los subcomandos `hc` que usa la skill (`ls`, `get`, `read`, `wait`, `send`, `run --bg`) están en `allow` en
-`.claude/settings.json`. `hc exec`, `hc keys`, `hc interrupt`, `hc kill/rm` y `hc run` sin `--bg` NO están en `allow`: ejecutarían comandos
-o aprobarían diálogos en otro terminal sin pasar por `deny` ni por el guard. MAIN solo habla con los terminales que lanzó él. Los `deny` (merge, force-push, push a `main`) siguen igual y el guard de push bloquea además
+`.claude/settings.json`. `hc exec`, `hc keys`, `hc interrupt`, `hc kill/rm` y `hc run` sin `--bg` NO están en `allow`. Pero `hc send` (teclea en
+cualquier terminal) y `hc run --bg` (arranca cualquier programa) sí lo están, porque MAIN y los workers los necesitan, y **ni los `deny` ni el guard analizan
+el texto interior**: es un riesgo residual asumido, mitigado por convención (MAIN solo habla con sus workers, `hc send --if idle`, nunca `--force`, que
+además está en `deny`). Los `deny` (merge, force-push, push a `main`) siguen igual y el guard de push bloquea además
 `--mirror`, `--all` y `+refspec`.
 Limpieza: tras cada merge MAIN elimina el worktree, borra la rama local (`-D`, por el squash) y hace `git fetch --prune` (GitHub ya borra la remota),
 solo si el PR está `MERGED`, el HEAD del worktree (no solo la rama) es el `headRefOid` del PR, el árbol está limpio (incluidos ignorados no regenerables)

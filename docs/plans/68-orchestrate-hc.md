@@ -9,7 +9,7 @@ Spec: docs/ai-workflow.md (Orquestación)
 ## Tests a escribir primero
 n/a (configuration and docs). Checks: `jq . .claude/settings.json`; `./build.sh ci`; hc subcommands and flags match `hc <cmd> --help`.
 ## Riesgos
-- `hc run --bg`, `hc send` can start programs or type into other terminals, so the skill limits them to the workers MAIN launched; the guard still scans the command text.
+- `hc run --bg` and `hc send` can start programs or type into any terminal and neither the deny rules nor the guard parse that inner text. Accepted residual risk (MAIN and workers need them), mitigated by convention and a `hc send *--force*` deny; unlike plan 55, which refused equivalent herdr rules.
 - Not verified in a real run: that `$HC_TERMINAL_ID` carries `herdr.space` in a server pane, that a worker labelled with it shows as a tab in the app, and that `hc send "/start-task N"` is interpreted as a slash command.
 - The approved plan is uncommitted on `main`; the first worker message tells the worker to copy and commit it in its branch.
 ## Criterio de hecho
