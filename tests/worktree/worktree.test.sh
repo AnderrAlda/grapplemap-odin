@@ -17,6 +17,11 @@ G() { git -c user.name=t -c user.email=t@t -c protocol.file.allow=always "$@"; }
 G init -q --bare -b main "$TMP/origin.git"
 G clone -q "$TMP/origin.git" "$TMP/work/main-checkout" 2>/dev/null
 MAIN="$TMP/work/main-checkout"
+# Safety guard before any write (commit/push/config): the repo must be the throwaway one, never the real one.
+common=$(git -C "$MAIN" rev-parse --path-format=absolute --git-common-dir)
+origin_url=$(git -C "$MAIN" remote get-url origin)
+case "$common" in "$TMP"/*) ;; *) echo "FATAL: git-common-dir '$common' is outside $TMP" >&2; exit 1 ;; esac
+[ "$origin_url" = "$TMP/origin.git" ] || { echo "FATAL: origin is '$origin_url', expected $TMP/origin.git" >&2; exit 1; }
 cp "$ROOT/build.sh" "$MAIN/build.sh"
 G -C "$MAIN" add build.sh
 G -C "$MAIN" commit -q -m init
