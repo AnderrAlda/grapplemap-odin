@@ -92,7 +92,7 @@ Files (the same names in the full dump and in the sample):
 
 **Full dump** (`--full`, CI only, never committed): every block; `ops` for every position; `between` for every
 consecutive pair with `s ∈ {0.25, 0.5, 0.75}`; `playback` for every transition; `spring` for every named
-position. Measured size (pin `032c8f9`, dumper version 2): **~0.54 GB** of text (544,312,210 bytes), with ~2.6 KB per
+position. Measured size (pin `032c8f9`, dumper version 2): **~0.54 GB** of text (544,312,243 bytes), with ~2.6 KB per
 position in doubles: `playback` 389 MB (67,797 frames of 1,485 transitions, raw + smoothed, plus one 2-transition
 chain), `ops` 93 MB (8,323 positions × 4 transforms), `between` 52 MB (6,237 pairs × 3 values of `s`), the rest
 ~10 MB. That is why only its hashes are committed.

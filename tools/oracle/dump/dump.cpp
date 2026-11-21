@@ -115,11 +115,15 @@ public:
 		if (!o) throw std::runtime_error(tmp(name) + ": cannot write");
 	}
 
+	// If a rename fails, the files already renamed are removed too, so only fail()'s meta.json remains.
 	void commit()
 	{
-		foreach (n : names_)
-			if (std::rename(tmp(n).c_str(), (dir_ + "/" + n).c_str()) != 0)
-				throw std::runtime_error(dir_ + "/" + n + ": cannot rename");
+		for (size_t i = 0; i != names_.size(); ++i)
+			if (std::rename(tmp(names_[i]).c_str(), (dir_ + "/" + names_[i]).c_str()) != 0)
+			{
+				for (size_t k = 0; k != i; ++k) std::remove((dir_ + "/" + names_[k]).c_str());
+				throw std::runtime_error(dir_ + "/" + names_[i] + ": cannot rename");
+			}
 		committed_ = true;
 	}
 
@@ -326,7 +330,7 @@ void each_position(Graph const & g, Block const & blk, F f)
 	}
 }
 
-// src/positions.hpp:37,68,142-184; src/positions.cpp:261-291.
+// src/positions.hpp:37,68,132-184; src/positions.cpp:261-291.
 void dump_ops(std::ostream & out, Graph const & g, vector<Block> const & blocks)
 {
 	Json j;
@@ -420,6 +424,9 @@ void dump_playback(std::ostream & out, Graph const & g, vector<Block> const & bl
 	j.key("type").str("chain");
 	j.key("seqs").begin_array().integer(long(chain->first.index)).integer(long(chain->second.index)).end_array();
 	j.key("frames_per_pos").integer(FRAMES_PER_POS);
+	j.key("segment_frames_per_pos").begin_array();
+	for (SeqNum const s : {chain->first, chain->second}) j.integer(FRAMES_PER_POS / (g[s].detailed ? 2 : 1));
+	j.end_array();
 	j.key("captions").begin_array().str(raw.at(0).first).str(raw.at(1).first).end_array();
 	j.key("raw").begin_array(); frames_d(j, raw, 0); frames_d(j, raw, 1); j.end_array();
 	j.key("smooth").begin_array(); frames_d(j, smooth, 0); frames_d(j, smooth, 1); j.end_array();

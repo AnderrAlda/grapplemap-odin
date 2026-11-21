@@ -49,7 +49,7 @@ timestamps, doubles as `%.17g`, strings as UTF-8 with JSON escapes):
 | `meta.json` | `dumper_version`, `submodule_commit`, `db_md5`, `index_md5`, `index_matches_db`, `index_consistent` (the `.index` pairs equal the `from`/`to` of `loadGraph(istream)`), `versions` (lines of `/oracle/VERSIONS`), `counts` (`blocks`, `positions`, `named_positions`, `transitions`, `nodes`, `anonymous_nodes`), `errors`: the original's exception message verbatim when `loadGraph` fails, or a message starting with `dumper: ` (the dumper is strict: invalid UTF-8, a coordinate off the base62 grid, an unreadable `.index`). On an error during loading or dumping only `meta.json` is written; on an `.index` mismatch all files are written. In every case with errors the exit status is 1 |
 | `sequences.ndjson` | one line per block in file order: `index`, `kind` (`position`/`transition`), `line_nr` (the original's value), `description`, `tags`, `properties` (sorted, as the original's `set`s), `refs` (lines starting `ref:`), `notes` (lines starting `note:`/`todo:`), `detailed`, `bidirectional`, `positions_q` |
 | `graph.ndjson` | nodes (`index`, `block` or `null` for anonymous nodes, `description`, `tags`, `position_q`), then transitions (`index`, `block`, `from`, `to`, `reorientation_from`/`_to` = `{translation, angle, swap, mirror}`), then one `{"type":"index", md5, pairs}` line with the `.index` |
-| `ops.ndjson` | one line per position, blocks in file order (`pos` 0 for a named position, the index in the sequence for a transition): `block`, `pos`, `mirror`, `swap_players` (on a copy: the original swaps in place), `orient_canonically_with_mirror`, `orient_canonically_without_mirror` (positions as doubles `[player][joint] = [x, y, z]`), `heading` (`[x, z]`), `center` (`[x, y, z]`) (`src/positions.hpp:37,68,142-184`) |
+| `ops.ndjson` | one line per position, blocks in file order (`pos` 0 for a named position, the index in the sequence for a transition): `block`, `pos`, `mirror`, `swap_players` (on a copy: the original swaps in place), `orient_canonically_with_mirror`, `orient_canonically_without_mirror` (positions as doubles `[player][joint] = [x, y, z]`), `heading` (`[x, z]`), `center` (`[x, y, z]`) (`src/positions.hpp:37,68,132-184`) |
 | `between.ndjson` | for every consecutive pair of every transition and `s` = `0.25`, `0.5`, `0.75` (in that order): `block`, `seq`, `pos` (index of the pair's first position), `s`, `position` = `between(a, b, s)` (`src/positions.hpp:42`) |
 | `playback.ndjson` | one `{"type":"transition"}` line per transition, then at most one `{"type":"chain"}` line (see "Playback" below) |
 | `body.json` | `joints` (`jointDefs`: name, radius, draggable, mirror joint), `segments` (`limbs()`: ends, length, `mid_radius` or `null`, visible), `players` (code, color), `draw` (constants of `playerdrawer.{hpp,cpp}` with their source lines; `rendering.cpp` has none that affect body geometry) |
@@ -61,13 +61,13 @@ not 5.5; `src/paths.cpp:42`); `segment_frames_per_pos` records the value used. `
 frames per segment (segment boundaries repeat) and `frames()` drops the last frame of each transition
 (`src/paths.cpp:44`): the dump stores exactly what it returns. A `transition` line has `block`, `seq`,
 `frames_per_pos`, `segment_frames_per_pos`, `caption` (as `frames()` builds it: first description line, literal `\n`
-→ space, `...` → the end node's name), `raw` (the frames) and `smooth` (`smoothen()` of that transition alone). Each
+→ space, a caption that is exactly `...` → first line of the end node's description, if it has one), `raw` (the frames) and `smooth` (`smoothen()` of that transition alone). Each
 transition is played forwards from its `from` node (`Step{seq, reverse = false}`). **Smoothing per transition is a
 dumper choice**: every caller in the original smooths a whole script in one call (`src/makevideo.cpp:93,105`,
 `src/playback.cpp:77,89`, `src/paths.cpp:261`), so the filter state carries across chained transitions. For that
 case the `chain` line holds the first pair `a → b` in index order such that `b` starts at `a`'s end node, played as
 one path through `frames(g, script, 11)` (`src/paths.cpp:54`) and smoothed in one call: `seqs`, `frames_per_pos`,
-`captions`, `raw` and `smooth` (one frame list per step). The time-based `Playback::progress` is not dumped.
+`segment_frames_per_pos` and `captions` (one per step), `raw` and `smooth` (one frame list per step). The time-based `Playback::progress` is not dumped.
 
 Output files are streamed record by record to `<name>.tmp` in `OUT` and renamed once all of them are complete
 (`meta.json` last), so the ~0.5 GB dump is never held in memory and a failure leaves only `meta.json`.
@@ -79,7 +79,7 @@ Positions are quantized: `positions_q[k][player][joint] = [qx, qy, qz]`, integer
 `move(desc)` (`src/persistence.cpp:80-85`), which confirms the open point of `docs/original.md` §1.4.
 
 Full dump (pin `032c8f9`, dumper version 2): 2,086 blocks, 8,323 positions, 601 named positions, 1,485 transitions,
-725 nodes (124 anonymous); `.index` consistent. 544,312,210 bytes (`playback` 389 MB, `ops` 93 MB, `between` 52 MB,
+725 nodes (124 anonymous); `.index` consistent. 544,312,243 bytes (`playback` 389 MB, `ops` 93 MB, `between` 52 MB,
 `sequences` 6.8 MB, `spring` 1.7 MB, `graph` 1.1 MB); ~17 s on amd64. Two runs give identical bytes.
 
 Test DB: `testdata/basic.txt` is generated by `testdata/make_basic.py` (deterministic): a named position with quotes
