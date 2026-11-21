@@ -101,7 +101,11 @@ int quantize(double const x, double const off)
 {
 	long const q = std::lround((x + off) * 1000);
 	if (q < 0 || q > 61 * 62 + 61 || double(q) / 1000 - off != x)
-		throw std::runtime_error("coordinate not on the base62 grid: " + std::to_string(x));
+	{
+		char buf[64];
+		std::snprintf(buf, sizeof buf, "coordinate not on the base62 grid: %.17g", x);
+		throw std::runtime_error(buf);
+	}
 	return int(q);
 }
 
@@ -321,8 +325,8 @@ struct Counts
 	size_t blocks = 0, positions = 0, named_positions = 0, transitions = 0, nodes = 0, anonymous_nodes = 0;
 };
 
-string dump_meta(Args const & a, string const & db_md5, Index const * ix, bool index_consistent,
-                 Counts const * c, vector<string> const & errors)
+string dump_meta(Args const & a, optional<vector<string>> const & versions, string const & db_md5,
+                 Index const * ix, bool index_consistent, Counts const * c, vector<string> const & errors)
 {
 	Json j;
 	j.begin_object();
@@ -335,7 +339,7 @@ string dump_meta(Args const & a, string const & db_md5, Index const * ix, bool i
 	j.key("index_matches_db").boolean(ix && ix->md5 == db_md5);
 	j.key("index_consistent").boolean(index_consistent);
 	j.key("versions");
-	if (a.versions.empty()) j.null(); else j.strings(split_lines(read_file(a.versions)));
+	if (versions) j.strings(*versions); else j.null();
 	j.key("counts");
 	if (!c) j.null();
 	else
@@ -358,45 +362,61 @@ int run(Args const & a)
 {
 	string const db = read_file(a.db);
 	string const db_md5 = MD5(db).hexdigest();
-	string const meta_path = a.out + "/meta.json";
+	optional<vector<string>> versions;
+	if (!a.versions.empty()) versions = split_lines(read_file(a.versions));
 
-	Index ix;
+	// On any error only meta.json is written, with the message in `errors`, and the exit status is 1.
+	// Errors of the original loader are recorded verbatim; the dumper's own ones start with "dumper: ".
+	auto fail = [&](string const & error)
+		{
+			write_file(a.out + "/meta.json", dump_meta(a, versions, db_md5, nullptr, false, nullptr, {error}));
+			std::cerr << "grapplemap-dump: " << error << '\n';
+			return 1;
+		};
+
 	Graph g{vector<NamedPosition>{}, vector<Sequence>{}};
 	try
 	{
-		ix = read_index(a.index);
 		std::istringstream in(db);
 		g = loadGraph(in); // always the istream path: no .index (src/persistence.cpp:171-176)
 	}
-	catch (std::exception const & e)
+	catch (std::exception const & e) { return fail(e.what()); }
+
+	try
 	{
-		write_file(meta_path, dump_meta(a, db_md5, nullptr, false, nullptr, {e.what()}));
-		std::cerr << "grapplemap-dump: " << e.what() << '\n';
-		return 1;
+		Index const ix = read_index(a.index);
+
+		bool consistent = ix.pairs.size() == g.num_sequences();
+		foreach (s : seqnums(g))
+			consistent = consistent
+				&& ix.pairs[s.index] == std::make_pair(unsigned(g[s].from->index), unsigned(g[s].to->index));
+
+		auto const blocks = blocks_in_file_order(g);
+		Counts c;
+		c.blocks = blocks.size();
+		c.transitions = g.num_sequences();
+		c.nodes = g.num_nodes();
+		foreach (n : nodenums(g))
+			if (g[n].line_nr) ++c.named_positions; else ++c.anonymous_nodes;
+		c.positions = c.named_positions;
+		foreach (s : seqnums(g)) c.positions += g[s].positions.size();
+
+		vector<string> errors;
+		if (!consistent) errors.push_back("dumper: .index disagrees with loadGraph(istream)");
+		if (ix.md5 != db_md5) errors.push_back("dumper: .index md5 differs from the DB md5");
+
+		// Everything is built before anything is written, so a failure never leaves a partial dump.
+		string const sequences = dump_sequences(g, blocks), graph = dump_graph(g, blocks, ix), body = dump_body(),
+		             meta = dump_meta(a, versions, db_md5, &ix, consistent, &c, errors);
+		write_file(a.out + "/sequences.ndjson", sequences);
+		write_file(a.out + "/graph.ndjson", graph);
+		write_file(a.out + "/body.json", body);
+		write_file(a.out + "/meta.json", meta);
+
+		foreach (e : errors) std::cerr << "grapplemap-dump: " << e << '\n';
+		return errors.empty() ? 0 : 1;
 	}
-
-	bool consistent = ix.pairs.size() == g.num_sequences();
-	foreach (s : seqnums(g))
-		consistent = consistent && ix.pairs[s.index] == std::make_pair(unsigned(g[s].from->index), unsigned(g[s].to->index));
-
-	auto const blocks = blocks_in_file_order(g);
-	Counts c;
-	c.blocks = blocks.size();
-	c.transitions = g.num_sequences();
-	c.nodes = g.num_nodes();
-	foreach (n : nodenums(g))
-		if (g[n].line_nr) ++c.named_positions; else ++c.anonymous_nodes;
-	c.positions = c.named_positions;
-	foreach (s : seqnums(g)) c.positions += g[s].positions.size();
-
-	write_file(a.out + "/sequences.ndjson", dump_sequences(g, blocks));
-	write_file(a.out + "/graph.ndjson", dump_graph(g, blocks, ix));
-	write_file(a.out + "/body.json", dump_body());
-	write_file(meta_path, dump_meta(a, db_md5, &ix, consistent, &c, {}));
-
-	if (!consistent) { std::cerr << "grapplemap-dump: .index disagrees with loadGraph(istream)\n"; return 1; }
-	if (ix.md5 != db_md5) { std::cerr << "grapplemap-dump: .index md5 differs from the DB md5\n"; return 1; }
-	return 0;
+	catch (std::exception const & e) { return fail(string("dumper: ") + e.what()); }
 }
 
 } // namespace

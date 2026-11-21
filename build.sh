@@ -161,6 +161,7 @@ ORACLE_TESTDATA="tools/oracle/dump/testdata"
 oracle_image() {
 	command -v docker >/dev/null || { echo "error: docker not found; ./build.sh oracle needs Docker" >&2; return 1; }
 	docker info >/dev/null 2>&1 || { echo "error: cannot reach the Docker daemon (is it running?)" >&2; return 1; }
+	echo "building the oracle image (cached after the first time; the first build takes minutes)..." >&2
 	docker build --quiet --platform linux/amd64 -f tools/oracle/Dockerfile -t "$ORACLE_IMAGE" . >/dev/null
 }
 
@@ -178,7 +179,7 @@ oracle_full() {
 }
 
 oracle_test() {
-	local f name out fail=0 n=0
+	local f name out fail=0 n=0 status expect_fail
 	oracle_image
 	for f in "$ORACLE_TESTDATA"/*.txt; do
 		name=$(basename "$f" .txt)
@@ -186,9 +187,15 @@ oracle_test() {
 		rm -r -f "$out"
 		mkdir -p "$out"
 		n=$((n + 1))
-		if ! oracle_run -v "$PWD/$ORACLE_TESTDATA:/testdata:ro" -v "$PWD/$out:/out" "$ORACLE_IMAGE" \
-			grapplemap-oracle-dump "/testdata/$name.txt" /out; then
-			echo "FAIL $name: dumper failed" >&2
+		# A DB the original rejects is expected to fail: its expected directory holds only meta.json (with errors).
+		status=0
+		expect_fail=0
+		[ -f "$ORACLE_TESTDATA/$name/graph.ndjson" ] || expect_fail=1
+		oracle_run -v "$PWD/$ORACLE_TESTDATA:/testdata:ro" -v "$PWD/$out:/out" "$ORACLE_IMAGE" \
+			grapplemap-oracle-dump "/testdata/$name.txt" /out 2>"$out.stderr" || status=$?
+		if { [ "$status" -ne 0 ] && [ "$expect_fail" -eq 0 ]; } || { [ "$status" -eq 0 ] && [ "$expect_fail" -eq 1 ]; }; then
+			echo "FAIL $name: dumper exit status $status (expected $([ "$expect_fail" -eq 1 ] && echo non-zero || echo 0))" >&2
+			cat "$out.stderr" >&2
 			fail=1
 		elif ! diff -r "$ORACLE_TESTDATA/$name" "$out"; then
 			echo "FAIL $name: output differs from $ORACLE_TESTDATA/$name/" >&2
