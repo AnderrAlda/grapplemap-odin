@@ -25,7 +25,7 @@ Excepción: cambios describibles en una frase van sin spec ni plan, con PR peque
 ## Enforcement (qué lo hace cumplir)
 - Regla de revisión: la skill `/pr` y `CLAUDE.md` exigen `code-reviewer` en todo PR; no se marca ready sin CI verde, revisión sin bloqueantes y checklist completo, todo sobre el mismo commit. Como mucho una ronda de no bloqueantes aplicados por PR; el resto va a issues.
   Los hallazgos no bloqueantes del revisor que van a issue se crean con label `tech-debt` y milestone `Backlog`, salvo que sean `priority:high` (esos van al milestone de la fase en curso).
-- Permisos en `.claude/settings.json` (allow/ask/deny; deny gana siempre). Las reglas de ruta para ficheros se escriben como `Edit(...)`: cubren todas las herramientas que escriben ficheros (Edit, Write, NotebookEdit; no las escrituras por Bash, ver #21); `Write(...)` no tiene efecto. Personal: `.claude/settings.local.json` (ignorado por git).
+- Permisos en `.claude/settings.json` (allow/ask/deny; deny gana siempre; `ask` solo conserva instalaciones, `gh release create` y workflows de CI). Las reglas de ruta para ficheros se escriben como `Edit(...)`: cubren todas las herramientas que escriben ficheros (Edit, Write, NotebookEdit; no las escrituras por Bash, ver #21); `Write(...)` no tiene efecto. Personal: `.claude/settings.local.json` (ignorado por git).
 - Hooks (`.claude/hooks/`): formato+check tras editar `.odin`; bloqueo de `reference/GrappleMap/` y `tests/golden/`; bloqueo de commit/push en `main` y comandos destructivos; `Stop` ejecuta `check`+tests; `SessionStart` muestra rama/issue.
 - El `Stop` hook respeta `stop_hook_active` para no hacer bucles. Claude Code fuerza la parada tras 8 bloqueos seguidos
   (`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`): si ocurre, el resumen debe decirlo y la tarea NO se da por buena.
@@ -38,6 +38,20 @@ El repo es privado sin plan Pro, así que GitHub no puede proteger `main`. La pr
 
 ## Worktrees (varios agentes)
 `./build.sh worktree <rama>` crea `../grapplemap-odin-wt/<rama>`. Un worktree por rama/agente; nunca dos agentes en la misma rama.
+
+## Orquestación (MAIN + Herdr)
+La sesión `MAIN` (raíz del repo, en `main`, sin editar código) coordina los worktrees con `/orchestrate`:
+1. Inventario de issues, PRs, worktrees y agentes (`gh`, `git worktree list`, `herdr agent list`).
+2. Por cada issue con **plan aprobado por ti**: `herdr worktree create` → `herdr agent start <slug> --kind claude -- --permission-mode auto`
+   → `herdr agent prompt` con `./build.sh setup` + `/start-task <N>` + `/pr`. Como mucho 3 workers a la vez.
+3. Vigila con `herdr agent wait/read`. Cuando un PR cumple CI verde + `code-reviewer` sin bloqueantes + checklist completo
+   (mismo commit), lo pasa a ready sin preguntar y te avisa. **El merge es siempre tuyo** (`gh pr merge` sigue en `deny`).
+4. Solo te pregunta en: aprobar un plan, merge, plan erróneo o alcance ambiguo, dependencia nueva, tocar `reference/` o golden,
+   editar workflows de CI, worker `blocked`, CI rojo tras 2 intentos, tope del Stop hook, conflicto entre workers o una acción
+   irreversible no cubierta por `allow`.
+Para que los workers no se detengan a pedir permiso, `git push`, `gh pr create/ready/edit/comment`, `gh issue create/edit/comment`
+y `herdr *` están en `allow` en `.claude/settings.json`; los `deny` (merge, force-push, push a `main`) y los hooks siguen igual.
+MAIN nunca responde a un diálogo de permisos de otro agente. `herdr worktree create` no ejecuta `./build.sh setup`: lo hace el worker.
 
 ## Propuestas pendientes de tu OK (no activadas)
 - **Sandbox**: en `.claude/settings.json` añadir `"sandbox": {"enabled": true, "autoAllowBashIfSandboxed": true, "network": {"allowedDomains": ["github.com", "api.github.com"]}}`. Menos confirmaciones sin salir del repo.

@@ -12,7 +12,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 - Original GrappleMap as a read-only submodule `reference/GrappleMap`, pinned at `032c8f9`, with `reference/CLAUDE.md`
   (read-only and pin-bump rules) (#32).
 
+- `/orchestrate` skill: the MAIN session coordinates worktrees through Herdr (launch workers, watch them, take PRs to ready);
+  merge and plan approval stay with the user.
+
 ### Changed
+- Claude Code permissions: `git push`, `gh pr create/ready/edit/comment`, `gh issue create/edit/comment` and `herdr *` move
+  to `allow` so worktree workers do not stall; `deny` rules and hooks are unchanged.
 - Write protection narrowed from `reference/` to the submodule `reference/GrappleMap/`; `./build.sh setup` and `worktree`
   (and `build.bat setup`) initialize the submodule (#32).
 - `/pr` skill: at most one round of non-blocking review findings is applied per PR; the rest go to issues.
