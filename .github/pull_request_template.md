@@ -18,3 +18,4 @@ Plan: `docs/plans/…` (omitir en cambios de una frase)
 - [ ] Sin leaks en debug
 - [ ] ADR añadido si hay decisión de arquitectura
 - [ ] Revisado por `code-reviewer` sin bloqueantes
+- [ ] CI verde en el último commit
