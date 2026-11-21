@@ -11,6 +11,9 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     libc6=2.27-3ubuntu1.6 \
     libc6-dev=2.27-3ubuntu1.6 \
+    gcc-7=7.5.0-3ubuntu1~18.04 \
+    g++-7=7.5.0-3ubuntu1~18.04 \
+    libstdc++-7-dev=7.5.0-3ubuntu1~18.04 \
     g++=4:7.4.0-1ubuntu2.3 \
     scons=3.0.1-1 \
     pkg-config=0.29.1-0ubuntu2 \

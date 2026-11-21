@@ -28,7 +28,7 @@ On Apple Silicon the image runs emulated (slow `-O3` build, a few minutes); on a
 ```sh
 docker run --rm grapplemap-oracle sh -c 'grapplemap-dbtojs --help; grapplemap-mkpospages --help'
 docker run --rm grapplemap-oracle sh -c 'cp /oracle/GrappleMap.txt /tmp/ && grapplemap-indexer /tmp/GrappleMap.txt && ls -l /tmp/GrappleMap.txt.index'
-docker run --rm grapplemap-oracle sh -c 'ls /oracle/src/{images,rendering,playerdrawer}.o; ldd /usr/local/bin/grapplemap-mkpospages | grep -E "OSMesa|ftgl|gvc|png"'
+docker run --rm grapplemap-oracle sh -c 'ls /oracle/src/images.o /oracle/src/rendering.o /oracle/src/playerdrawer.o; ldd /usr/local/bin/grapplemap-mkpospages | grep -E "OSMesa|ftgl|gvc|png"'
 docker image inspect -f '{{.Architecture}}' grapplemap-oracle   # amd64
 git -C reference/GrappleMap status --porcelain                  # empty
 ```
@@ -37,7 +37,7 @@ git -C reference/GrappleMap status --porcelain                  # empty
 
 - Base: `ubuntu:18.04` (bionic), amd64 manifest `sha256:dca176c9663a7ba4c1f0e710986f5a25e672842963d95b960191e2d9f7185ebe`
   (index digest `sha256:152dc042452c496007f07ca9127571cb9c29697f42acbfad72324b2bb2e43c98`).
-- Packages pinned to exact versions in the `Dockerfile`: GCC 7.5 (`g++` 4:7.4.0-1ubuntu2.3), libc6 2.27-3ubuntu1.6,
+- Packages pinned to exact versions in the `Dockerfile`: GCC 7.5.0 (`gcc-7`/`g++-7`/`libstdc++-7-dev` 7.5.0-3ubuntu1~18.04), libc6 2.27-3ubuntu1.6,
   Boost 1.65.1, Mesa/OSMesa 20.0.8, ftgl 2.1.3~rc5, libpng 1.6.34, graphviz 2.40.1, scons 3.0.1. No `apt-get upgrade`.
 - Determinism: amd64 only, no `-march=native` (the build fails unless GCC's default is `-march=x86-64`), no
   `-ffast-math` (the original flags are `-std=c++1y -O3 -DNDEBUG -DUSE_FTGL`), libm fixed by the base image and libc6.
