@@ -152,6 +152,64 @@ cmd_space_id() {
 	printf 'sp%s\n' "${hash:0:32}"
 }
 
+# oracle --full|--test: runs the oracle dumper (tools/oracle, #34) in Docker. --full dumps the whole original DB to
+# build/oracle/full/ (wiped first, so reruns give the same bytes); --test dumps tools/oracle/dump/testdata/*.txt and
+# diffs each against its committed expected directory. Not part of `ci`: it needs Docker (amd64 image).
+ORACLE_IMAGE="grapplemap-oracle"
+ORACLE_TESTDATA="tools/oracle/dump/testdata"
+
+oracle_image() {
+	command -v docker >/dev/null || { echo "error: docker not found; ./build.sh oracle needs Docker" >&2; return 1; }
+	docker info >/dev/null 2>&1 || { echo "error: cannot reach the Docker daemon (is it running?)" >&2; return 1; }
+	docker build --quiet --platform linux/amd64 -f tools/oracle/Dockerfile -t "$ORACLE_IMAGE" . >/dev/null
+}
+
+oracle_run() { docker run --rm --platform linux/amd64 -u "$(id -u):$(id -g)" "$@"; }
+
+oracle_full() {
+	local out="$OUT/oracle/full" commit
+	oracle_image
+	commit=$(git -C reference/GrappleMap rev-parse HEAD) || { echo "error: reference/GrappleMap not initialised" >&2; return 1; }
+	rm -r -f "$out"
+	mkdir -p "$out"
+	oracle_run -v "$PWD/$out:/out" "$ORACLE_IMAGE" \
+		grapplemap-oracle-dump /oracle/GrappleMap.txt /out --versions /oracle/VERSIONS --commit "$commit"
+	(cd "$out" && sha256sum -- *)
+}
+
+oracle_test() {
+	local f name out fail=0 n=0
+	oracle_image
+	for f in "$ORACLE_TESTDATA"/*.txt; do
+		name=$(basename "$f" .txt)
+		out="$OUT/oracle/test/$name"
+		rm -r -f "$out"
+		mkdir -p "$out"
+		n=$((n + 1))
+		if ! oracle_run -v "$PWD/$ORACLE_TESTDATA:/testdata:ro" -v "$PWD/$out:/out" "$ORACLE_IMAGE" \
+			grapplemap-oracle-dump "/testdata/$name.txt" /out; then
+			echo "FAIL $name: dumper failed" >&2
+			fail=1
+		elif ! diff -r "$ORACLE_TESTDATA/$name" "$out"; then
+			echo "FAIL $name: output differs from $ORACLE_TESTDATA/$name/" >&2
+			fail=1
+		else
+			echo "ok   $name"
+		fi
+	done
+	[ "$n" -gt 0 ] || { echo "error: no $ORACLE_TESTDATA/*.txt" >&2; return 1; }
+	return $fail
+}
+
+cmd_oracle() {
+	case "${1:-}" in
+	--full) oracle_full ;;
+	--test) oracle_test ;;
+	--sample | --images | --update-full-hashes) echo "error: ./build.sh oracle $1 arrives with #35" >&2; return 2 ;;
+	*) echo "usage: ./build.sh oracle --full|--test" >&2; return 2 ;;
+	esac
+}
+
 target="${1:-}"
 [ $# -gt 0 ] && shift
 case "$target" in
@@ -169,8 +227,9 @@ ci) cmd_ci ;;
 worktree) cmd_worktree "$@" ;;
 worktree-remove) cmd_worktree_remove "$@" ;;
 space-id) cmd_space_id "$@" ;;
+oracle) cmd_oracle "$@" ;;
 *)
-	echo "usage: ./build.sh {setup|check|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <branch>|worktree-remove <branch>|space-id <branch>}"
+	echo "usage: ./build.sh {setup|check|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <branch>|worktree-remove <branch>|space-id <branch>|oracle --full|--test}"
 	exit 2
 	;;
 esac
