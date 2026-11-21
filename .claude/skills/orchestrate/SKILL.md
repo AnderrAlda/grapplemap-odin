@@ -12,12 +12,12 @@ La app Herdr corre sus terminales en **herdr-core (`hc`)**: usa `hc` para lanzar
 
 ## 0. Entorno
 - `echo "$HC_TERMINAL_ID"` no está vacío y `hc get "$HC_TERMINAL_ID" --json` responde. Si no, para y avísame.
-- Guarda tu space: `hc get "$HC_TERMINAL_ID" --json` → `labels."herdr.space"` (el id del space es de cada máquina). Los workers se lanzan con esa misma etiqueta para que aparezcan como pestañas de tu space en la app. Sin etiqueta funcionan igual pero ocultos: avísame.
-- Un worktree por rama/agente; nunca dos agentes en la misma rama. Como mucho 3 workers a la vez. Solo hablas con terminales que lanzaste tú (por su nombre); nunca con otros (tus zsh, otros proyectos o máquinas). `hc ls --label herdr.space=<tu-space>` limita el listado a tu space.
+- Cada worker se abre en **su propio space de Herdr** (como un worktree en la app): se lanza con una etiqueta `herdr.space` nueva, que genera `./build.sh space-id <rama>` (`sp` + 32 hex, estable por rama: relanzar un worker de la misma rama cae en el mismo space). La app abre el space con el nombre de la carpeta del worktree. Sin etiqueta el worker funciona igual pero oculto: avísame.
+- Un worktree por rama/agente; nunca dos agentes en la misma rama. Como mucho 3 workers a la vez. Solo hablas con terminales que lanzaste tú (por su nombre `w-*`); nunca con otros (tus zsh, otros proyectos o máquinas).
 - Lo recomendado es que MAIN corra en el servidor (sigue aunque el portátil duerma), pero la skill lanza los workers en la máquina donde corre MAIN (sin `--on`).
 
 ## 1. Inventario
-`gh issue list`, `gh pr list`, `git worktree list`, `hc ls --label herdr.space=<tu-space>`. Clasifica cada issue:
+`gh issue list`, `gh pr list`, `git worktree list`, `hc ls` (tus workers son los de nombre `w-*`). Clasifica cada issue:
 - **Sin plan** (y el cambio no cabe en una frase): usa `/plan <issue>` y **espera mi OK**. No lances worker sin plan aprobado.
 - **Plan aprobado, sin worker**: lánzalo (paso 2).
 - **Con worker**: vigílalo (paso 3).
@@ -29,7 +29,7 @@ Cada worker hace **todo el recorrido por sí mismo** en su worktree: `/start-tas
 1. `git fetch origin` y `./build.sh worktree <type>/<slug>` desde la raíz (crea `../grapplemap-odin-wt/<type>-<slug>` y el submódulo; el `type` sale del label `type:` del issue). Usa la ruta **absoluta** del worktree. El nombre del terminal es siempre `w-<slug>`: 1-32 caracteres de `a-z0-9-_`, único entre los vivos (deriva del nombre de la rama: minúsculas, `/` → `-`, recortado a 30 caracteres para dejar sitio al prefijo `w-`). El prefijo `w-` es lo que permiten las reglas `allow` de `hc send/kill/rm`.
 2. Lanza el worker con la slash command como **prompt inicial** (así `claude` la interpreta como escrita por el usuario; con `hc send` llegaría envuelta en `<hc from=...>` como texto y no se ejecutaría):
    ```
-   hc run --bg --outlive-parent --name w-<slug> --cwd <ruta-absoluta-del-worktree> --label herdr.space=<tu-space> claude --permission-mode auto "/start-task <N> <ruta-absoluta>/docs/plans/<N>-<slug>.md"
+   hc run --bg --outlive-parent --name w-<slug> --cwd <ruta-absoluta-del-worktree> --label herdr.space=<id de ./build.sh space-id <rama>> claude --permission-mode auto "/start-task <N> <ruta-absoluta>/docs/plans/<N>-<slug>.md"
    ```
    El segundo argumento (ruta del plan aprobado, sin commit en `main`) se omite si el cambio no necesita plan. `hc run` no devuelve `first_message` con flags extra: confirma que arrancó con `hc read --lines 40 w-<slug>`. Si aparece un diálogo (p. ej. de confianza), escala: nunca `hc keys`.
 3. No hace falta mandarle nada más. Para corregir, contestar a una escalación suya o reanudarlo, `hc send w-<slug> "<texto en lenguaje natural>"` (nunca otro `/comando`; llegaría como texto) y solo si su estado es `idle` o `done`. `/start-task` no se puede reinvocar así, pero `/pr` sí: «invoca la skill pr» lo reanuda desde la revisión.
