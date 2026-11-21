@@ -1,27 +1,22 @@
 #!/usr/bin/env bash
 # Tests for `./build.sh worktree <branch>` (#31): the path must not depend on the current worktree.
 set -u
-# Hooks (pre-push) export GIT_DIR & co.: without this every git call below would hit the real repo.
-while IFS= read -r v; do unset "$v"; done < <(git rev-parse --local-env-vars)
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-TMP=$(mktemp -d) || exit 1
-trap 'rm -rf "$TMP"' EXIT
-TMP=$(cd "$TMP" && pwd -P)
+source "$ROOT/tests/lib/sandbox.sh"
+sandbox_init
+TMP=$SANDBOX
 fail=0
 check() { # check <name> <condition exit code>
 	if [ "$2" -eq 0 ]; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi
 }
-G() { git -c user.name=t -c user.email=t@t -c protocol.file.allow=always "$@"; }
+G() { sandbox_git "$@"; }
 
 # Throwaway repo: bare origin + clone with origin/main. No network, no submodules.
 G init -q --bare -b main "$TMP/origin.git"
 G clone -q "$TMP/origin.git" "$TMP/work/main-checkout" 2>/dev/null
 MAIN="$TMP/work/main-checkout"
 # Safety guard before any write (commit/push/config): the repo must be the throwaway one, never the real one.
-common=$(git -C "$MAIN" rev-parse --path-format=absolute --git-common-dir)
-origin_url=$(git -C "$MAIN" remote get-url origin)
-case "$common" in "$TMP"/*) ;; *) echo "FATAL: git-common-dir '$common' is outside $TMP" >&2; exit 1 ;; esac
-[ "$origin_url" = "$TMP/origin.git" ] || { echo "FATAL: origin is '$origin_url', expected $TMP/origin.git" >&2; exit 1; }
+sandbox_assert_repo "$MAIN"
 cp "$ROOT/build.sh" "$MAIN/build.sh"
 G -C "$MAIN" add build.sh
 G -C "$MAIN" commit -q -m init

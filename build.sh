@@ -89,11 +89,17 @@ cmd_run() {
 }
 
 cmd_test() {
+	# Git hooks (pre-push) and the Stop hook export GIT_DIR & co.; every git call below would hit the real repo (#111).
+	local v
+	while IFS= read -r v; do unset "$v"; done < <(git rev-parse --local-env-vars)
 	mkdir -p "$OUT"
 	bash tests/hooks/guard-bash.test.sh
 	bash tests/hooks/protect-paths.test.sh
 	bash tests/changelog/fragments.test.sh
 	bash tests/worktree/worktree.test.sh
+	# The sandbox regression test runs this function nested; the nested run skips it and the Odin packages.
+	[ -n "${GM_IN_SANDBOX_REGRESSION:-}" ] && return 0
+	bash tests/lib/sandbox.test.sh
 	local pkg
 	for pkg in "${TEST_PKGS[@]}"; do
 		[ -d "$pkg" ] || continue
