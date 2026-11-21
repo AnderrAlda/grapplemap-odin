@@ -38,7 +38,7 @@ Si dos issues tocan los mismos ficheros, no los lances a la vez: encadénalos.
 
 ## 4. Cerrar el PR
 Con CI verde, `code-reviewer` sin bloqueantes y checklist completo, todo sobre el mismo commit (`gh pr view N --json headRefOid,statusCheckRollup`):
-`gh pr ready N` sin preguntar (memoria `auto-ready-prs`) y dímelo. Si algo falla, el PR sigue en draft y se lo mandas al worker.
+`gh pr ready N` sin preguntar (regla de autonomía de `CLAUDE.md`) y dímelo. Si algo falla, el PR sigue en draft y se lo mandas al worker.
 **Nunca `gh pr merge`.** Tras mi merge, limpia (paso 4b).
 
 ## 4b. Limpiar lo terminado

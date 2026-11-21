@@ -21,6 +21,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
   `grapplemap-indexer`, `-dbtojs` and `-mkpospages` out of tree, plus the object files for `--images` (#33).
 
 ### Changed
+- Agent autonomy rules (create issues/branches/PRs without asking, mark ready when CI is green, review has no blockers and the checklist is
+  complete) now live in `CLAUDE.md`; `/pr` no longer asks for confirmation before opening the draft and `/orchestrate` no longer points to
+  a Claude memory entry (#65).
 - Claude Code permissions: `git push`, `gh pr create/ready/edit/comment`, `gh issue create/edit/comment` and the specific
   `herdr` subcommands the orchestrator uses move to `allow` so worktree workers do not stall; `herdr pane run/send-*`,
   `agent send-keys`, `worktree remove` and `update` stay out of `allow`. `deny` rules are unchanged; the push guard now also
