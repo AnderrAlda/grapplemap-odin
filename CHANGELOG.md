@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 ## [Unreleased]
 
 ### Added
+- `docs/original.md` sections 3-4: player model (23 joints and `jointDefs`, the 28 limbs with lengths, mid radii and visibility, players 0/1) and units and axes (meters, `y` up, right-handed derivation, `heading`, `normalRotation`, `center`, `cameraOffsetFor`, input for ADR 0004), cited to the pinned original (#39).
 - `./build.sh worktree-remove <branch>`: removes a worktree and its branch only when the worktree and its submodules are clean; otherwise prints the status, deletes nothing and exits non-zero (#54).
 - «Sigue trabajando» flow: MAIN proposes a batch of up to 3 issues with their plans in a single approval request and runs `/orchestrate` on it; `/orchestrate` is now model-invocable and picks the worker model per issue (`claude --model`); `/start-task` inherits it (#83).
 - `docs/original.md` section 2: graph model and node matching (named positions vs. transitions, anonymous nodes, `is_reoriented`/`basicallySame` matching and its order, `.index` cache, `in`/`out`, `bidirectional`/`detailed`, lookup by description), cited to the pinned original (#38).
