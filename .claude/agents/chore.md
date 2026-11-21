@@ -1,6 +1,6 @@
 ---
 name: chore
-description: Tareas mecánicas acotadas: mensajes de commit, entradas de CHANGELOG, descripciones de PR desde el diff, renombrados simples.
+description: Tareas mecánicas acotadas: mensajes de commit, fragmentos de changelog, descripciones de PR desde el diff, renombrados simples.
 tools: Read, Grep, Glob, Edit, Bash
 model: haiku
 ---
