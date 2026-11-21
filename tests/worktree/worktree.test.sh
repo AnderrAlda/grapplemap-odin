@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Tests for `./build.sh worktree <branch>` (#31): the path must not depend on the current worktree.
 set -u
+# Hooks (pre-push) export GIT_DIR & co.: without this every git call below would hit the real repo.
+while IFS= read -r v; do unset "$v"; done < <(git rev-parse --local-env-vars)
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 TMP=$(mktemp -d) || exit 1
 trap 'rm -rf "$TMP"' EXIT
@@ -24,7 +26,7 @@ G -C "$MAIN" branch -q -u origin/main 2>/dev/null
 EXPECT_BASE="$TMP/work/grapplemap-odin-wt"
 
 # From the main checkout.
-out=$(cd "$MAIN" && G config core.hooksPath /dev/null && ./build.sh worktree feat/one 2>&1)
+out=$(cd "$MAIN" && ./build.sh worktree feat/one 2>&1)
 rc=$?
 check "main checkout: exit 0" "$rc"
 [ -d "$EXPECT_BASE/feat-one" ]
