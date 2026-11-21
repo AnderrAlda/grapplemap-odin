@@ -55,7 +55,8 @@ y los subcomandos `herdr` que usa la skill (`pane current`, `worktree create`, `
 en otro pane sin pasar por `deny` ni por el guard. Los `deny` (merge, force-push, push a `main`) siguen igual y el guard de push bloquea además
 `--mirror`, `--all` y `+refspec`.
 Limpieza: tras cada merge MAIN elimina el worktree, borra la rama local (`-D`, por el squash) y hace `git fetch --prune` (GitHub ya borra la remota),
-solo si el PR está `MERGED`, el commit local es el `headRefOid` del PR y el árbol está limpio. Un worktree con submódulos exige `--force` en git plano
+solo si el PR está `MERGED`, el HEAD del worktree (no solo la rama) es el `headRefOid` del PR, el árbol está limpio (incluidos ignorados no regenerables)
+y las ramas `pre-rebase-*` son ancestro del PR. `git branch -D main*` está en `deny`; `--force` solo en `git worktree remove`, nunca en push. Un worktree con submódulos exige `--force` en git plano
 (pide confirmación) hasta que exista `./build.sh worktree-remove` (#54).
 MAIN nunca responde a un diálogo de permisos de otro agente. `herdr worktree create` no ejecuta `./build.sh setup`: lo hace el worker.
 

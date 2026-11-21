@@ -47,6 +47,7 @@
       "Edit(./.github/workflows/**)"
     ],
     "deny": [
+      "Bash(git branch -D main*)",
       "Bash(git push --force*)",
       "Bash(git push origin main*)",
       "Bash(git push * main)",
