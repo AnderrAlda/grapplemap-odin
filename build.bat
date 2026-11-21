@@ -15,7 +15,7 @@ if "%1"=="run" goto run
 if "%1"=="test" goto test
 if "%1"=="ci" goto ci
 echo usage: build.bat {setup^|check^|fmt^|debug^|release^|run^|test^|ci}
-echo Not available on Windows (use build.sh via WSL/Git Bash): fmt-check, test-golden, bench, worktree.
+echo Not available on Windows (use build.sh via WSL/Git Bash): fmt-check, test-golden, bench, worktree, worktree-remove.
 exit /b 2
 
 :setup
