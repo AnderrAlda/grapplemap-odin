@@ -7,6 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ### Added
 - `docs/original.md` sections 3-4: player model (23 joints and `jointDefs`, the 28 limbs with lengths, mid radii and visibility, players 0/1) and units and axes (meters, `y` up, right-handed derivation, `heading`, `normalRotation`, `center`, `cameraOffsetFor`, input for ADR 0004), cited to the pinned original (#39).
+- `tests/hooks/guard-bash.test.sh` (run by `./build.sh test`): table of allowed/blocked commands for the `guard-bash` hook (#20).
 - `./build.sh worktree-remove <branch>`: removes a worktree and its branch only when the worktree and its submodules are clean; otherwise prints the status, deletes nothing and exits non-zero (#54).
 - «Sigue trabajando» flow: MAIN proposes a batch of up to 3 issues with their plans in a single approval request and runs `/orchestrate` on it; `/orchestrate` is now model-invocable and picks the worker model per issue (`claude --model`); `/start-task` inherits it (#83).
 - `docs/original.md` section 2: graph model and node matching (named positions vs. transitions, anonymous nodes, `is_reoriented`/`basicallySame` matching and its order, `.index` cache, `in`/`out`, `bidirectional`/`detailed`, lookup by description), cited to the pinned original (#38).
@@ -48,6 +49,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 ### Fixed
 - Claude Code permission rules: removed `Write(...)` path rules, which have no effect; the existing `Edit(...)` rules
   protect `reference/`, `tests/golden/` and `.github/workflows/` for every file-writing tool (#29).
+- `guard-bash` hook: judges each command segment separately (no more false positives like `git push origin feat && git log main`) and skips git global options (`-C`, `-c`, `--git-dir`, ...); now also blocks `git push` with grouped force flags (`-fu`), `+`/`:` refspecs, `-d`, and `rm` with split or long recursive/force options (#20).
 
 ## [0.1.0] - 2026-11-20
 
