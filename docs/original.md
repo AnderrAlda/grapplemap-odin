@@ -608,6 +608,8 @@ Rows `a / b` are the left limb (indices 0-11, `src/players.hpp:129-140`) and the
 (`src/players.hpp:137,150`). This asymmetry is in the code; reproduce it.
 
 How the fields are used:
+- `apply_limits` (`src/positions.cpp:314-322`) is called by `Graph::replace` on every write (`src/graph.cpp:20`) and by
+  `spring(Position&)` (`src/positions.cpp:185`); loading does not clamp.
 - `length`: only by `spring` (`src/positions.cpp:142-181`), the editor's relaxation that pulls joints toward the
   nominal lengths. Positions in the DB are **not** constrained to these lengths; playback and drawing never read
   `length`.
@@ -625,8 +627,14 @@ are visible there (toe–ankle, heel–ankle, hip–core, core–shoulder, shoul
 (`src/gm.js:113`). The fidelity target of this project is the C++ table above; which renderer the golden images follow
 is decided with section 7.
 
+The JS viewers render with Babylon.js and no `useRightHandedSystem` appears in `src/*.js` (grep); Babylon's default is
+left-handed, so the JS view may be mirrored relative to the C++ one (**[unverified]**: Babylon's docs not checked;
+for section 7 / ADR 0004).
+
 ### 3.3 Players
 
+- `PlayerJoint{PlayerNum player; Joint joint}` (`src/players.hpp:40`, `operator==` at `src/players.hpp:42-45`)
+  addresses one joint of one player.
 - `PlayerNum` is an index of type `uint_fast8_t` (`src/indexed.hpp:61`); `player0 = {0}`, `player1 = {1}`
   (`src/players.hpp:31-32`), `opponent(p) = 1 − p` (`src/players.hpp:38`).
 - `playerCode(p) = "tb"[p]`: player 0 is **t** (top), player 1 is **b** (bottom) (`src/players.hpp:36`). The function
@@ -668,13 +676,16 @@ is decided with section 7.
 - **Right-handed**, derived as follows (no assumption about OpenGL defaults beyond the documented fixed pipeline):
   1. Matrices `M` are column-major: `translate` puts the offset in `m[12..14]` (`src/math.hpp:91-98`) and
      `M * V4` reads `m[0], m[4], m[8], m[12]` for `x` (`src/math.hpp:197-204`); they are loaded unchanged with
-     `glLoadMatrixd` (`src/rendering.cpp:341-354`), which expects column-major.
+     `glLoadMatrixd` (`src/rendering.cpp:341-354`), which expects column-major (OpenGL spec, not code). The shader
+     editor passes the same matrices through `to_glm` (`src/editor_canvas.cpp:331-338`, columns in order) and
+     `glUniformMatrix4fv(…, GL_FALSE, …)` (`src/editor_canvas.cpp:565`): same layout, no flip in either renderer.
   2. `perspective` is the `gluPerspective` matrix (`m[11] = −1`, so `w = −z_eye`; visible points have `z_eye < 0`)
      (`src/math.hpp:116-125`): OpenGL's right-handed eye space, camera looking down `−z`, `x` right, `y` up.
   3. The model-view is `translate(0, 0, −zoom) · xrot(pitch) · yrot(yaw) · translate(−offset)`
      (`src/camera.hpp:18`): only rotations and translations, no `glScale` or axis flip anywhere in `src/` (grep of
      `glScale`). A product of rotations keeps handedness, so world coordinates are right-handed too.
-  4. With `yaw = 0` the camera looks along world `−z`, with world `+x` to the right of the screen and `+y` up.
+  4. With `yaw = 0` the camera looks toward world `−z` (tilted down by the pitch), with world `+x` to the right of the
+     screen and `+y` up.
 - **Rotation sign.** `yrot(a)` gives `x' = cos a·x + sin a·z`, `z' = −sin a·x + cos a·z` (§2.3): the standard
   right-handed rotation by `+a` about `+y` (it takes `+z` toward `+x`). `angle(V2{x, z}) = atan2(x, z)`
   (`src/math.hpp:267`) measures from `+z` toward `+x`, so `angle(xz(yrot(a)·v)) = angle(xz(v)) + a` (mod 2π): `yrot` and
@@ -682,12 +693,13 @@ is decided with section 7.
 - `xrot(a)` (`src/math.hpp:82-89`) gives `y' = cos a·y + sin a·z`, `z' = −sin a·y + cos a·z`, i.e. the standard
   rotation by **`−a`** about `+x`. With the default `orientation = {0, −0.6, 1.7}` (yaw, pitch, zoom;
   `src/camera.hpp:12-13`) the eye sits at `offset + (0, 1.7·sin 0.6, 1.7·cos 0.6) ≈ offset + (0, 0.96, 1.40)`: above and
-  on the `+z` side, looking down at `offset` (algebra on `src/camera.hpp:18`; the on-screen look is to be confirmed with
+  on the `+z` side, looking down at `offset` (algebra on `src/camera.hpp:18`; **[unverified]** on screen: the on-screen look is to be confirmed with
   the oracle images, section 7). The rest of the camera (fov, near/far, controls, smoothing) is section 7.
 
 ### 4.3 `heading`, `normalRotation`, `center`, `cameraOffsetFor`
 
-All in `src/positions.hpp`; all use the two players' **`Core`**, except the matching of §2.3, which uses the heads.
+All in `src/positions.hpp`; all use the two players' **`Core`**, except the matching of §2.3 and the canonical mirror test below, which use
+`Head`.
 
 | Function | Definition | Lines |
 |---|---|---|
@@ -707,14 +719,16 @@ Users:
 - **Canonical orientation** (`src/positions.cpp:261-291`): angle `normalRotation(p)`, offset
   `normalTranslation(rotate(angle, p))` (center computed *after* rotating). `canonical_reorientation_with_mirror` also
   sets `mirror = (apply(reo, p)[player1][Head].x ≥ 0)` (`src/positions.cpp:267`): the canonical form puts player 1's
-  head at `x < 0` (`≥` sends `x = 0` to mirroring). Who calls these is section 5.
+  head at `x ≤ 0`: `x > 0` becomes `x < 0`, and `x = 0` is mirrored to `−0.0` (still 0; `−0.0 ≥ 0` is true, so
+  canonicalising again mirrors again). Who calls these is section 5.
 - **`translateNormal`** (`src/positions.hpp:171-174`): translation only, used for the first/last frames of
   transitions in the position pages (`src/mkpospages.cpp:500,528`).
 - **`cameraOffsetFor`**: the camera target in the playback and video tools: `hardSetOffset` on the first frame, then
   `setOffset` every frame (`src/glfw_playback.cpp:47,72`, `src/makevideo.cpp:116,123`), which smooths as
   `offset = 0.97·offset + 0.03·target` (`src/camera.hpp:46-50`). The editor does **not** use it: it targets `center`
   with `y *= 0.7` when no joint is chosen and not playing back (`src/editor_canvas.cpp:539-544`; the GLFW editor
-  also requires not being in edit mode, `src/glfw_editor.cpp:526-531`). Frame rate and the rest of the camera: section 7.
+  also requires not being in edit mode, `src/glfw_editor.cpp:526-531`). The image generator (`src/images.cpp:310-312`, used by `mkpospages --images`, i.e. the oracle)
+  uses neither: it sets a fixed target `{0, ymax − 0.57, 0}`. Frame rate and the rest of the camera: section 7.
 
 ### 4.4 Input for ADR 0004 (mapping to raylib)
 
@@ -728,3 +742,8 @@ Mapping to raylib: **pending, ADR 0004**. Not checked here (this section reads o
 the ADR is whether raylib's world/eye convention matches the one derived in §4.2 (right-handed, `y` up, eye looking
 down `−z`); if it does, the original's coordinates can be used as-is with no axis swap or flip, and only `f64 → f32` at
 the render boundary remains. That must be verified in raylib's code or docs in the ADR, not assumed.
+
+### 4.5 Open points (need the oracle/dumper)
+
+Not verifiable by reading: the on-screen orientation of the default camera (§4.2, compare with oracle images);
+`normalRotation` with both cores at the same `xz` and `−0` inputs (§4.3); whether the JS viewer is mirrored (§3.2).
