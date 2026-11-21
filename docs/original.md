@@ -249,14 +249,17 @@ buffers/streams, `217-225` for files). Then `Graph(named, transitions)` is built
 4. **Transitions in file order** (`src/graph.cpp:290-296`): for each one, `from = find_or_add(positions.front())`, then
    `to = find_or_add(positions.back())` (that order matters for numbering, §2.4), and the edge is stored with its
    `ReorientedNode from, to` and all its own positions untouched. Edge `i` is the `i`-th transition of the file; this
-   is the `SeqNum`/`t<N>` number (§2.7).
+   is the `SeqNum`/`t<N>` number (§2.8).
 5. **in/out lists** are computed at the end for every node (`src/graph.cpp:298-299`, §2.6).
 6. `data.forget_past()` clears the undo history (`src/graph.cpp:301`).
 
 Nothing checks the invariant `!is_reoriented(positions.front(), positions.back())` (`src/positions.hpp:16`) when
-loading: only `Graph::set` (editor insertions) rejects it (`src/graph.cpp:134-138`). A DB transition whose end
-positions are reorientations of each other would load with `from` and `to` the same node. Not checked on the DB:
-**[unverified]** (dumper).
+loading: only editor mutations reject it (`Graph::set`, `src/graph.cpp:134-138`; `Graph::erase`, `src/graph.cpp:179-186`). A DB transition whose end
+positions are reorientations of each other could load with `from == to` (likely, not guaranteed: `back` may first
+match a lower-index node). Conversely, `from == to` can also arise when both ends are within the threshold of the same
+node without being reorientations of each other (they can be up to ~8 cm apart per joint, §2.3). The `Edge`
+invariant `*from != *to` (`src/graph.hpp:60`) is only a comment and is never checked, so the port must accept
+self-loops. On the DB: **[unverified]** (dumper).
 
 Types: `NodeNum` is `uint16_t`, `SeqNum` `uint_fast32_t` (`src/indexed.hpp:57-59`); `num_nodes()` returns `uint16_t`
 (`src/graph.hpp:123`) and `num_sequences()` too (`src/graph.hpp:122`), so more than 65535 nodes or sequences would
@@ -266,6 +269,9 @@ wrap silently. Far from the DB size (1485 transitions).
 (§2.6) + `modified` flag (editor). **Edge data** (`src/graph.hpp:54-66`): the `Sequence` (description, positions,
 `line_nr`, `detailed`, `bidirectional`) + `from`, `to` + `modified`.
 
+**Empty DB** (§1.7): 0 nodes and 0 edges, no error (`src/graph.cpp:279-302` has nothing to iterate); the file
+overload writes an `.index` with only the hash line (`src/persistence.cpp:178-184,230-232`).
+
 ### 2.2 Anonymous nodes
 
 A node created by `find_or_add` has an **empty description** and no `line_nr` (`src/graph.cpp:222-233`): its position is
@@ -273,7 +279,8 @@ the position passed in, *as is* (not normalized) and the returned reorientation 
 (`PositionReorientation{}` = zero offset, angle 0, no swap, no mirror; `src/positions.hpp:79-80`). It is
 appended at the end of `nodes`, so anonymous nodes are numbered after the 601 named ones, in order of first
 need (§2.4). They are never saved (`save` skips nodes with empty description, `src/persistence.cpp:243-248`; their
-edges are written, `src/persistence.cpp:250`), which is why the index (§2.5) exists: it makes the numbering reproducible.
+edges are written, `src/persistence.cpp:250`). Since they are never saved, their numbering is re-derived on every load
+by the matching of §2.3; the index (§2.5) only caches that result.
 The number of anonymous nodes in the DB is runtime data: pending (§10).
 
 ### 2.3 Matching an endpoint to a node: `is_reoriented`
@@ -289,13 +296,18 @@ axis plus a translation, optionally with **mirror** (left/right) and optionally 
    `x' = cos(a)·x + sin(a)·z`, `y' = y`, `z' = −sin(a)·x + cos(a)·z`, then `+ offset`.
 2. If `mirror`: `Position mirror(p)`: negate `x` of every joint **and** swap the left/right joints of each player
    (shoulder, hip, hand, wrist, elbow, fingers, ankle, toe, heel, knee; Core/Neck/Head do not move)
-   (`src/positions.cpp:77-89,130-136`; the joint pairs in `src/players.hpp:73-` `mirror(Joint)`).
+   (`src/positions.cpp:77-89,130-136`, via `swapLimbs`; `mirror(Joint)`, `src/players.hpp:73-101`, is the equivalent
+   per-joint mapping).
 3. If `swap_players`: swap player 0 and player 1 (`src/positions.hpp:68-71`).
 
 **`basicallySame(a, b)`** (`src/positions.hpp:49-54`): for every `PlayerJoint` (player 0's 23 joints, then player 1's,
 §1.3 order), squared Euclidean distance (`src/math.hpp:190`) ≤ `0.0016` m² (i.e. ≤ 4 cm); the first joint above it
-returns false. Strict `>` fails, so a distance of exactly the threshold passes. Same threshold for all joints (no per-joint radius). Not an equivalence relation (not transitive), so
+returns false. The test is a strict `>`, so a distance exactly at the threshold passes. Same threshold for all joints (no per-joint radius). Not an equivalence relation (not transitive), so
 **the candidate order below decides the result**.
+
+**Precision:** all of this is `double` (`V3 = BasicV3<double>`, `src/math.hpp:34`; `V4`, `src/math.hpp:59`;
+`M = std::array<double, 16>`, `src/math.hpp:71`). To agree with the oracle the port must match in f64, not in
+raylib's f32.
 
 **`is_reoriented(a, b)` → optional `PositionReorientation u` with `u(a) ≈ b`** (`src/positions.cpp:233-259`). `a` is the
 node's stored position, `b` the endpoint to match:
@@ -317,8 +329,9 @@ node's stored position, `b` the endpoint to match:
 (no search, no optimisation, no least squares):
 - `a0h, a1h, b0h, b1h` = Head of player 0/1 in `a`/`b`.
 - `angleOff = angle(xz(b1h − b0h)) − angle(xz(a1h − a0h))`, with `xz(v) = (v.x, v.z)` (`src/math.hpp:110`) and
-  `angle(V2 v) = atan2(v.x, v.y)` (`src/math.hpp:267`; so for `(x, z)` it is `atan2(x, z)`). No wrapping of the
-  difference into (−π, π]: it is not needed because only `sin`/`cos` of it are used.
+  `angle(V2 v) = atan2(v.x, v.y)` (`src/math.hpp:267`; so for `(x, z)` it is `atan2(x, z)`). The difference is
+  **not wrapped** (range (−2π, 2π)). Geometry only uses `sin`/`cos` of it, but the raw value is exported
+  (`src/js_conversions.cpp:36,182`), so the port must keep it unwrapped, or the oracle comparison must be modulo 2π.
 - `r = Reorientation{ offset = b0h − xyz(yrot(angleOff) · V4(a0h, 1)), angle = angleOff }`. So the rotation aligns
   the head-to-head direction in the xz plane and the translation puts player 0's head exactly on `b`'s (**including
   the y component**: there is no separate rule that the offset's `y` be 0; a vertical shift only survives if every
@@ -366,8 +379,9 @@ for each T in file order:
     to   = find_or_add(T.back)             // may match the anon node just added for `from`
     edges.push(Edge{from, to, T})
 ```
-`to` can match a node created for `from` of the same transition only if they are reorientations of each other, which
-the invariant forbids (§2.1), so in a valid DB it does not.
+`to` can match the node just created for `from` of the same transition, or any other node that `from` also matched;
+the `Sequence` invariant (§2.1) does not prevent `from == to` because `basicallySame` is not transitive. Self-loops are
+therefore possible even in a DB that respects it (§2.1).
 
 ### 2.5 The `.index` cache
 
@@ -402,7 +416,7 @@ Any other case (missing file, hash mismatch) leaves `connections` empty.
   So it skips the search over nodes but still recomputes `r` for the named node; the result equals the no-index
   path **if the index belongs to this DB**, because the same first-match lowest-index node was recorded.
   `index[i]` is not bounds-checked against the number of transitions: an index with fewer pairs than
-  transitions reads out of bounds (UB). With a matching md5 this should not happen (written by the same code
+  transitions reads out of bounds (UB; **[unverified]** runtime effect). With a matching md5 this should not happen (written by the same code
   from the same DB), but a truncated/hand-edited file with the right hash line is trusted.
 - `connections` empty → full build (§2.1), then write the index (`src/persistence.cpp:230-232`). This also
   re-creates the file if a stale one is present. The result is returned either way.
@@ -419,8 +433,9 @@ The `loadGraph` overloads are used by every tool (`src/glfw_editor.cpp:67`, `src
 `src/dbtojs.cpp:50`, `src/diff.cpp:452-453`, …).
 
 **For the Odin port:** the index is an optimisation of §2.3; reimplementing it is optional. The matching must produce
-the same node numbering with or without it. A cached index from the original, if used, has to be checked for `n >
-num_nodes()` instead of aborting. [unverified] on the DB: that the cached and uncached paths give identical graphs
+the same node numbering with or without it. A cached index from the original, if used, must turn into errors (not
+`abort()`): `n > num_nodes()`, `is_reoriented` failing for `n < num_nodes()` (`src/graph.cpp:327-328`), and a number
+of pairs different from the number of transitions (out-of-bounds `index[i]`, `src/graph.cpp:339-340`). [unverified] on the DB: that the cached and uncached paths give identical graphs
 (needs the dumper run with and without the `.index`).
 
 ### 2.6 `in`, `out`, `in_out`
@@ -467,8 +482,9 @@ literal `\n` (backslash + `n`) replaced by a space (`replace_all`, boost, all oc
 `src/metadata.cpp:69,89`). The comparison is **not** normalized otherwise (no trimming or case folding).
 
 `node_by_desc(g, desc)` (`src/metadata.cpp:81-94`):
-1. If `desc.size() >= 2`, `desc[0] == 'p'` and the rest is all digits (`all_digits`, `std::isdigit` per byte,
-   `src/util.hpp:83-86`) → `NodeNum{uint16_t(stoul(desc.substr(1)))}`, **before and instead of** any name lookup, and
+1. If `desc.size() >= 2`, `desc[0] == 'p'` and the rest is all digits (`all_digits`, `std::isdigit` per `char`,
+   `src/util.hpp:83-86`; with a negative (UTF-8) byte that is UB in theory, same pattern in `line_desc`,
+   `src/metadata.cpp:101`) → `NodeNum{uint16_t(stoul(desc.substr(1)))}`, **before and instead of** any name lookup, and
    **not range-checked** (a node index ≥ `num_nodes()` is returned as is; `stoul` throws `out_of_range` for numbers
    that do not fit an `unsigned long`; larger than 65535 wraps by the cast). A named position literally called `p12`
    can only be reached by index.
@@ -479,7 +495,7 @@ literal `\n` (backslash + `n`) replaced by a space (`replace_all`, boost, all oc
 
 `step_by_desc(g, desc, from?)` (`src/metadata.cpp:66-79`): scans sequences in index order; candidate if the first
 line (with replacement) equals `desc` **or** `desc == "t" + to_string(seq index)`. Note `g[sn].description.front()` is
-unconditional here, so a transition with an empty description would be UB (the parser can produce one, §1.7). Without `from`
+unconditional here, so a transition with an empty description would be UB (the parser can produce one, §1.7; **[unverified]** runtime effect). Without `from`
 (`from` is an optional `NodeNum`) the first candidate is returned as `{sn, false}`. With `from`: returns `{sn, false}` if `edge.from == from`; else
 `{sn, true}` if `bidirectional` and `edge.to == from`; else it **continues** with the next candidate.
 
@@ -490,7 +506,7 @@ unconditional here, so a transition with an empty description would be UB (the p
    If neither matches, **it falls through** to 3 (no early return). `line_nr` semantic is **[unverified]** (§1.4).
 3. `step_by_desc` (transitions take priority over nodes), then 4. `node_by_desc` (including `p<N>`), else none.
 
-`readScene` (`src/persistence.cpp:253-300`) uses one description per line with `node_by_desc` first, then `step_by_desc`
+`readScene` (`src/persistence.cpp:253-298`) uses one description per line with `node_by_desc` first, then `step_by_desc`
 with the previous node as `from`; after a node it searches `prev_node.out` for the transition whose target is
 that node, `error("could not find transition")` otherwise. The playback/video tools take `--start`/`--demo` through the same two
 functions (`src/playback.cpp:71,78`, `src/makevideo.cpp:87,94`).
@@ -500,15 +516,17 @@ functions (`src/playback.cpp:71,78`, `src/makevideo.cpp:87,94`).
 Recorded here because they use the matching of §2.3; full editor behaviour is section 8.
 - `Graph::set` (insert/replace/erase a transition): rejects a sequence whose ends are reorientations of each other;
   `find_or_add` on both ends; recomputes `in/out` for the two nodes (for an erase, for all nodes)
-  (`src/graph.cpp:130-167`). An anonymous node that loses all its edges **stays** (nodes are never deleted).
+  (`src/graph.cpp:130-167`). On a replace only the new `from`/`to` are recomputed (`src/graph.cpp:146-158`): the old
+  endpoints of the replaced edge keep stale `in/out` lists. An anonymous node that loses all its edges **stays** (nodes are never deleted).
 - `Graph::replace` with `NodeModifyPolicy` (`src/graph.cpp:18-108`): `propagate` rewrites the node's position (as the inverse
   reorientation of the edit) and every edge end attached to it; `local` re-matches (`is_reoriented` against the old node, else `find_or_add`);
-  `unintended` asserts it is still a reorientation. The asserts vanish with `NDEBUG`.
+  `unintended` asserts it is still a reorientation. The asserts vanish with `NDEBUG`; for `unintended` an empty `reo`
+  is then dereferenced (`src/graph.cpp:70-73`), UB (**[unverified]** runtime effect).
 - `Graph::erase` of a frame re-matches the new endpoint with `find_or_add` (`src/graph.cpp:169-211`).
 - Description edits of a node: `set_description(NodeNum, …)` (`src/graph.cpp:357-364`).
 
 ### 2.10 Open points (need the oracle/dumper)
 
-Not verifiable by reading: number of anonymous nodes; whether any pair of named positions or transition ends are reorientations
+Not verifiable by reading: number of anonymous nodes; self-loops (`from == to`, §2.1); whether any pair of named positions or transition ends are reorientations
 of each other; whether any DB endpoint is within the threshold of two nodes (so that order matters); the `line_nr`
 offset (§1.4); equality of indexed and non-indexed loads; floating-point boundary cases of `basicallySame`.
