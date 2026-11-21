@@ -100,6 +100,50 @@ cmd_worktree() {
 	echo "Worktree ready: $dir"
 }
 
+# worktree-remove <branch>: removes the worktree of <branch> and the local branch, only if the worktree and its submodules
+# have no changes (untracked included; ignored build outputs do not count). Works from any worktree: paths come from
+# `git worktree list --porcelain`, not from $PWD. --force is needed because git refuses to remove worktrees with submodules.
+cmd_worktree_remove() {
+	local branch="${1:?usage: ./build.sh worktree-remove <branch>}" wt="" path="" line
+	case "$branch" in
+	main* | master*) echo "error: refusing to remove protected branch '$branch'" >&2; return 1 ;;
+	esac
+	while IFS= read -r line; do
+		case "$line" in
+		"worktree "*) path="${line#worktree }" ;;
+		"branch refs/heads/$branch") wt="$path" ;;
+		esac
+	done < <(git worktree list --porcelain)
+	if [ -z "$wt" ]; then
+		if git show-ref --verify --quiet "refs/heads/$branch"; then
+			echo "error: branch '$branch' has no worktree; nothing removed" >&2
+		else
+			echo "error: branch '$branch' does not exist; nothing removed" >&2
+		fi
+		return 1
+	fi
+	if [ "$wt" = "$(git worktree list --porcelain | sed -n '1s/^worktree //p')" ]; then
+		echo "error: '$wt' is the main worktree; nothing removed" >&2
+		return 1
+	fi
+	case "$PWD/" in
+	"$wt"/*) echo "error: build.sh was run from inside '$wt'; run this from another worktree. Nothing removed" >&2; return 1 ;;
+	esac
+	local dirty sub_dirty
+	dirty=$(git -C "$wt" status --short --untracked-files=all --ignore-submodules=none) || return 1
+	sub_dirty=$(git -C "$wt" submodule foreach --recursive --quiet 'git status --short --untracked-files=all | sed "s|^|$displaypath: |"') || return 1
+	if [ -n "$dirty$sub_dirty" ]; then
+		echo "error: worktree '$wt' has uncommitted changes; nothing removed:" >&2
+		[ -z "$dirty" ] || printf '%s\n' "$dirty" >&2
+		[ -z "$sub_dirty" ] || { echo "submodules:" >&2; printf '%s\n' "$sub_dirty" >&2; }
+		return 1
+	fi
+	git worktree remove --force "$wt"
+	git worktree prune
+	git branch -D "$branch"
+	echo "Removed worktree $wt and branch $branch"
+}
+
 # space-id <branch>: stable Herdr space id ("sp" + 32 hex) derived from the branch name, so a worker relaunched for the
 # same branch lands in the same space. Used by /orchestrate as the herdr.space label.
 cmd_space_id() {
@@ -123,9 +167,10 @@ test-golden) cmd_test_golden "$@" ;;
 bench) cmd_bench ;;
 ci) cmd_ci ;;
 worktree) cmd_worktree "$@" ;;
+worktree-remove) cmd_worktree_remove "$@" ;;
 space-id) cmd_space_id "$@" ;;
 *)
-	echo "usage: ./build.sh {setup|check|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <branch>|space-id <branch>}"
+	echo "usage: ./build.sh {setup|check|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <branch>|worktree-remove <branch>|space-id <branch>}"
 	exit 2
 	;;
 esac

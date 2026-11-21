@@ -56,8 +56,8 @@ En cada inventario, y siempre que te diga que he mergeado, busca worktrees y ram
 4. Para las ramas de respaldo (`pre-rebase-*`): lista cada una con su SHA (`git branch -vv --list 'pre-rebase-*'`) y bórrala solo si es ancestro del `headRefOid` (`git merge-base --is-ancestor <rama> <headRefOid>`); si no, escala.
 Entonces, desde la raíz y con `main` al día (`git pull --ff-only`):
 - Worker: `hc kill w-<slug>`, comprueba con `hc get w-<slug>` que terminó y luego `hc rm w-<slug>` (están en `allow` solo para nombres `w-*`). Hazlo antes de quitar el worktree.
-- Worktree: usa `./build.sh worktree-remove <rama>` cuando exista (#54). Mientras no exista, `git worktree remove <ruta>`; si git se niega solo por tener submódulos, `--force` es aceptable **únicamente** tras las comprobaciones 1-3 y **solo en `git worktree remove`, nunca en un push** (no está en `allow`: pedirá confirmación). Luego `git worktree prune`.
-- Rama local: `git branch -D <rama>` (un squash no hace la rama «mergeada» para git, por eso `-D` y no `-d`; las comprobaciones son la garantía, y `git branch -D main*` está en `deny`).
+- Worktree: `./build.sh worktree-remove <rama>` (comprueba que el worktree y sus submódulos están limpios, y si no, no borra nada y sale con error; si sí, hace `git worktree remove --force` + `git worktree prune` + `git branch -D`). Se ejecuta desde la raíz de MAIN, tras las comprobaciones 1-3.
+- Rama local: ya la borra `worktree-remove`; `git branch -D <rama>` solo para ramas sin worktree (un squash no hace la rama «mergeada» para git, por eso `-D` y no `-d`; las comprobaciones son la garantía, y `git branch -D main*` está en `deny`).
 - Remoto: GitHub borra la rama al mergear (`delete_branch_on_merge`); solo `git fetch --prune`. Nunca `git push --delete`.
 Si alguna comprobación falla, no borres nada y escala con el motivo.
 
