@@ -6,7 +6,7 @@ Principio: lo crítico lo hacen cumplir permisos, hooks y CI; lo demás va en CL
 | Trabajo | Modelo | Cómo |
 |---|---|---|
 | Specs, planes, ADRs, bugs difíciles | opus | `model: opusplan` en `.claude/settings.json` (Opus en plan mode, Sonnet al ejecutar); skills `/spec`, `/plan`, `/adr` con `model: opus` |
-| Implementar plan aprobado, tests, refactors acotados | sonnet | ejecución normal; `/start-task`, `/pr` |
+| Implementar plan aprobado, tests, refactors acotados | sonnet por defecto; opus para el C++ del oráculo, fidelidad en core y ADRs | modelo del worker por issue: `/orchestrate` lo lanza con `claude --model <m> ...`; `/start-task` no fija `model:` y hereda el del worker; `/pr` fija sonnet |
 | `code-reviewer` | sonnet; opus en core/render/arquitectura | frontmatter `model: sonnet`; `/pr` lo invoca con `model: opus` según las áreas tocadas |
 | `test-writer`, `render-verifier` | sonnet | frontmatter |
 | `explorer`, `odin-researcher`, `chore`, `Explore` (override) | haiku | frontmatter |
@@ -40,10 +40,11 @@ El repo es privado sin plan Pro, así que GitHub no puede proteger `main`. La pr
 `./build.sh worktree <rama>` crea `../grapplemap-odin-wt/<rama>`. Un worktree por rama/agente; nunca dos agentes en la misma rama.
 
 ## Orquestación (MAIN + Herdr)
+**«Sigue trabajando»:** si la sesión se llama MAIN, está en la raíz del repo en `main` y dices «sigue trabajando» (o similar), MAIN hace el inventario, elige el siguiente lote (≤3 issues de la fase en curso por prioridad, sin ficheros solapados), escribe sus planes y te los presenta **juntos en una sola petición de aprobación**. Con tu OK ejecuta `/orchestrate` sobre el lote hasta dejar los PR ready, te avisa para que mergees, limpia y propone el siguiente lote. Solo pregunta en las escalaciones de `/orchestrate` §5 (punto 4 de abajo).
 La app Herdr corre sus terminales en herdr-core (`hc`); el CLI `herdr` antiguo no los ve. `herdr-app` solo coloca ventanas (y solo existe en el Mac); `hc` funciona igual en el Mac y en el servidor.
 La sesión `MAIN` (raíz del repo, en `main`, sin editar código; recomendado en el servidor de Hetzner, para que siga aunque el portátil duerma, pero lanza los workers en la máquina donde corre) coordina los workers con `/orchestrate`:
 1. Inventario de issues, PRs, worktrees y agentes (`gh`, `git worktree list`, `hc ls`).
-2. Por cada issue con **plan aprobado por ti** (o un cambio de una frase): `./build.sh worktree <rama>` → `hc run --bg --outlive-parent --name w-<slug> --cwd <worktree> --label herdr.space=sp<32 hex de ./build.sh space-id <rama>> claude --permission-mode auto "/start-task <N> <ruta del plan>"`
+2. Por cada issue con **plan aprobado por ti** (o un cambio de una frase): `./build.sh worktree <rama>` → `hc run --bg --outlive-parent --name w-<slug> --cwd <worktree> --label herdr.space=sp<32 hex de ./build.sh space-id <rama>> claude --model <m> --permission-mode auto "/start-task <N> <ruta del plan>"`
    (la app abre un space nuevo con el nombre de la carpeta del worktree; el id es estable por rama). La slash command va como **prompt inicial** porque `claude` la interpreta como escrita por el usuario; con `hc send` llegaría envuelta en `<hc from=...>` como texto
    y no se ejecutaría. Cada worker hace **todo el recorrido solo**: `/start-task` (setup, copia y commitea el plan aprobado, implementa, `./build.sh ci`) y luego la skill `pr`
    (invocable por workers: revisión, PR draft, espera de CI, ready). Como mucho 3 workers a la vez.

@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 ## [Unreleased]
 
 ### Added
+- «Sigue trabajando» flow: MAIN proposes a batch of up to 3 issues with their plans in a single approval request and runs `/orchestrate` on it; `/orchestrate` is now model-invocable and picks the worker model per issue (`claude --model`); `/start-task` inherits it (#83).
 - `docs/original.md` section 2: graph model and node matching (named positions vs. transitions, anonymous nodes, `is_reoriented`/`basicallySame` matching and its order, `.index` cache, `in`/`out`, `bidirectional`/`detailed`, lookup by description), cited to the pinned original (#38).
 - `docs/original.md` section 1: data format and parser of `GrappleMap.txt` (structure, base62 position encoding,
   grammar, parser errors and edge cases, DB checks), each claim cited to the pinned original (#37).

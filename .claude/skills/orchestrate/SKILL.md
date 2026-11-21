@@ -2,12 +2,11 @@
 name: orchestrate
 description: Desde la sesión MAIN (raíz del repo), coordina los workers por worktree con hc (herdr-core): los lanza por issue, los vigila y lleva cada PR hasta ready. Solo pregunta en las escalaciones listadas.
 argument-hint: "[nº de issue ...]"
-disable-model-invocation: true
 model: opus
 ---
 Orquesta el trabajo de: $ARGUMENTS (si está vacío, los issues abiertos de la fase en curso con plan aprobado).
 
-Solo desde la sesión MAIN (raíz del repo, rama `main`, sin editar código). El merge es siempre de Ander.
+Solo desde la sesión MAIN (raíz del repo, rama `main`, sin editar código); otras sesiones no la invocan. El merge es siempre de Ander.
 La app Herdr corre sus terminales en **herdr-core (`hc`)**: usa `hc` para lanzar, leer, esperar y hablar con los workers. El CLI `herdr` antiguo NO ve esos terminales; no lo uses. `herdr-app` solo coloca ventanas y no existe en el servidor. Referencia: `hc --skill`.
 
 ## 0. Entorno
@@ -15,6 +14,9 @@ La app Herdr corre sus terminales en **herdr-core (`hc`)**: usa `hc` para lanzar
 - Cada worker se abre en **su propio space de Herdr** (como un worktree en la app): se lanza con una etiqueta `herdr.space` nueva, que genera `./build.sh space-id <rama>` (`sp` + 32 hex, estable por rama: relanzar un worker de la misma rama cae en el mismo space). La app abre el space con el nombre de la carpeta del worktree. Si `./build.sh space-id` falla, para y avísame (sin etiqueta el worker quedaría oculto).
 - Un worktree por rama/agente; nunca dos agentes en la misma rama. Como mucho 3 workers a la vez. Solo hablas con terminales que lanzaste tú (por su nombre `w-*`); nunca con otros (tus zsh, otros proyectos o máquinas).
 - Lo recomendado es que MAIN corra en el servidor (sigue aunque el portátil duerma), pero la skill lanza los workers en la máquina donde corre MAIN (sin `--on`).
+
+## 0b. Proponer lote y planes («sigue trabajando»)
+Si la sesión se llama MAIN, está en la raíz en `main` y Ander dice «sigue trabajando» (o similar) sin issues concretos: haz el inventario (paso 1), elige el siguiente lote (≤3 issues de la fase en curso por prioridad, sin ficheros solapados), escribe sus planes (`/plan`) y preséntalos **juntos en una sola petición de aprobación**. Con el OK, sigue con los pasos 2-4 sobre el lote hasta dejar los PR ready, avisa para que Ander mergee, limpia (4b) y propone el siguiente lote. Solo preguntas en las escalaciones del paso 5.
 
 ## 1. Inventario
 `gh issue list`, `gh pr list`, `git worktree list`, `hc ls` (tus workers son los de nombre `w-*`). Clasifica cada issue:
@@ -29,8 +31,9 @@ Cada worker hace **todo el recorrido por sí mismo** en su worktree: `/start-tas
 1. `git fetch origin` y `./build.sh worktree <type>/<slug>` desde la raíz (crea `../grapplemap-odin-wt/<type>-<slug>` y el submódulo; el `type` sale del label `type:` del issue). Usa la ruta **absoluta** del worktree. El nombre del terminal es siempre `w-<slug>`: 1-32 caracteres de `a-z0-9-_`, único entre los vivos (deriva del nombre de la rama: minúsculas, `/` → `-`, recortado a 30 caracteres para dejar sitio al prefijo `w-`). El prefijo `w-` es lo que permiten las reglas `allow` de `hc send/kill/rm`.
 2. Ejecuta antes `./build.sh space-id <rama>` como paso aparte y pega el valor literal (`sp` + 32 hex) en la etiqueta: no uses `$(...)` dentro de `hc run`, para que el permiso de `hc run --bg *` case sin ambigüedad. Lanza el worker con la slash command como **prompt inicial** (así `claude` la interpreta como escrita por el usuario; con `hc send` llegaría envuelta en `<hc from=...>` como texto y no se ejecutaría):
    ```
-   hc run --bg --outlive-parent --name w-<slug> --cwd <ruta-absoluta-del-worktree> --label herdr.space=sp<32 hex> claude --permission-mode auto "/start-task <N> <ruta-absoluta>/docs/plans/<N>-<slug>.md"
+   hc run --bg --outlive-parent --name w-<slug> --cwd <ruta-absoluta-del-worktree> --label herdr.space=sp<32 hex> claude --model <m> --permission-mode auto "/start-task <N> <ruta-absoluta>/docs/plans/<N>-<slug>.md"
    ```
+   `<m>` es el modelo del worker, elegido por issue: `sonnet` por defecto; `opus` para el C++ del oráculo, la fidelidad en `core` y los ADRs. El flag va después de `claude`, así la regla `allow` de `hc run --bg *` sigue casando.
    El segundo argumento (ruta del plan aprobado, sin commit en `main`) se omite si el cambio no necesita plan. `hc run` no devuelve `first_message` con flags extra: confirma que arrancó con `hc read --lines 40 w-<slug>` y que se abrió en su propio space con `hc get w-<slug> --json` (`labels.where` debe ser `<carpeta del worktree> / 1`). Si aparece un diálogo (p. ej. de confianza), escala: nunca `hc keys`.
 3. No hace falta mandarle nada más. Para corregir, contestar a una escalación suya o reanudarlo, `hc send w-<slug> "<texto en lenguaje natural>"` (nunca otro `/comando`; llegaría como texto) y solo si su estado es `idle` o `done`. `/start-task` no se puede reinvocar así, pero `/pr` sí: «invoca la skill pr» lo reanuda desde la revisión.
 

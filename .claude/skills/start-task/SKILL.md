@@ -3,7 +3,6 @@ name: start-task
 description: Lee un issue y su plan (copiándolo y commiteándolo si te lo pasan), implementa en el worktree y termina invocando /pr para dejar el PR listo.
 argument-hint: "<nº de issue> [ruta absoluta del plan aprobado]"
 disable-model-invocation: true
-model: sonnet
 ---
 Empieza el issue indicado en `$ARGUMENTS`: el primer valor es el nº de issue (`N`) y el segundo, opcional, la ruta absoluta del plan aprobado (lo pasa `/orchestrate`).
 
