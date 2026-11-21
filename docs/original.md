@@ -15,7 +15,7 @@ again**. Source of truth: the submodule `reference/GrappleMap`, pinned at `032c8
 2. [Graph model and node matching](#2-graph-model-and-node-matching)
 3. [Player model](#3-player-model)
 4. [Units and axes](#4-units-and-axes)
-5. Transforms: *pending*
+5. [Transforms](#5-transforms)
 6. Interpolation and playback: *pending*
 7. Rendering and camera: *pending*
 8. Editor: *pending*
@@ -752,3 +752,202 @@ the render boundary remains. That must be verified in raylib's code or docs in t
 
 Not verifiable by reading: the on-screen orientation of the default camera (§4.2, compare with oracle images);
 `normalRotation` with both cores at the same `xz` and `−0` inputs (§4.3); whether the JS viewer is mirrored (§3.2).
+
+## 5. Transforms
+
+Notation used below: `R(a) = yrot(a)` (rotation about `+y`, sign as in §4.2), `F = diag(−1, 1, 1)` (negate `x`),
+`L` = the left/right joint permutation of §2.3, `S` = swap the two players. A position is 46 `V3` (§1.3); every
+transform here acts joint by joint, so the joint permutations (`L`, `S`) commute with each other and with any per-joint
+map (`R`, `F`, translation). All arithmetic is `double` (§2.3, *Precision*).
+
+### 5.1 `mirror`
+
+- `mirror(V3 v) = {−v.x, v.y, v.z}` (`src/positions.hpp:36`): `F`, a reflection in the plane `x = 0` **of the world**,
+  not about the position's center.
+- `mirror(Position p)` (`src/positions.cpp:130-136`): applies `F` to every joint of both players, then `swapLimbs` on
+  player 0 and on player 1 (`src/positions.cpp:77-89`): ten `std::swap`s of the Left/Right pairs (Shoulder, Hip, Hand,
+  Wrist, Elbow, Fingers, Ankle, Toe, Heel, Knee); `Core`, `Neck`, `Head` stay. So `mirror = L ∘ F` (`= F ∘ L`).
+  Players are **not** swapped.
+- `mirror(Joint)` (`src/players.hpp:73-101`) is the same permutation as an index map (`default: return j` for the three
+  center joints); it is used to look up a single joint without building the whole position (§5.3).
+- Involution: `mirror(mirror(p)) == p` **bit for bit** (negation is exact and the swaps are permutations).
+- What it preserves: all pairwise distances (so `head2head`, §2.3, and limb lengths, §3.2); `y` of every joint. What it
+  changes: `heading(mirror(p)).x = −heading(p).x`, so `angle` and `normalRotation` change sign (§4.3; exact if `atan2(−y, x) == −atan2(y, x)` in the libm used, §5.7); `center.x`
+  changes sign.
+
+### 5.2 `swap_players`
+
+- `swap_players(Position & p)`: `std::swap(p[player0], p[player1])` (`src/positions.hpp:68-71`), in place: `S`. Exact,
+  an involution, preserves every coordinate (only the player index changes).
+- `heading(S(p)) = −heading(p)`: `normalRotation` changes by ±π (§4.3); `center` is bit-identical
+  (`(a + b)/2` vs `(b + a)/2`: IEEE addition is commutative).
+- `PlayerJoint`-level version: `opponent(pj.player)` (`src/positions.hpp:111`).
+
+### 5.3 `Reorientation` and `PositionReorientation`
+
+**`Reorientation{offset, angle}`** (`src/math.hpp:235-243`, defaults `{0,0,0}` and `0`): a rotation about the vertical
+axis followed by a translation.
+- `apply(r, v) = (yrot(r.angle) * v) + r.offset` (`src/math.hpp:252-255`), i.e. `r(v) = R(θ)·v + o`. Rotation
+  **first**, then translation. `yrot(a) * v` goes through `M * V4(v, 1)` (`src/math.hpp:206-209,197-204`), so the
+  evaluated expression is, for `x`: `((m[0]·x + m[4]·y) + m[8]·z) + m[12]` with `m[0] = cos a`, `m[4] = 0`,
+  `m[8] = sin a`, `m[12] = 0` (`src/math.hpp:73-80`), then `+ o.x`. The `0·y` and `+0` terms are kept by the compiler
+  (no `-ffast-math`, `src/SConstruct:4`); they only matter for the sign of zero results, but a bit-exact port should
+  evaluate the same terms in the same order, **without FMA contraction** (each `*` and `+` rounded separately: the
+  original targets generic x86-64, which has no FMA; the oracle enforces it, `tools/oracle/Dockerfile:32-33,50-54`).
+- Applied to a position, `apply(r, p)` maps every joint (`src/positions.hpp:62-66`).
+
+**`PositionReorientation{reorientation, swap_players, mirror}`** (`src/positions.hpp:73-96`; the comment at line 77:
+mirror is a separate flag because it needs the left/right swap). Write it `u = {r, s, m}`.
+- On a position, `u(p)` applies, in this order (`src/positions.hpp:82-88`): `apply(r, ·)`, then `mirror` if `m`, then
+  `swap_players` if `s`:
+
+  `u(p) = S^s ∘ (L∘F)^m ∘ r (p)`.
+
+  Mirror is therefore applied **after** the rotation and translation, about the world plane `x = 0`, not about the
+  rotated position's center.
+- On a single `V3`, `u(v)` = `apply(r, v)` then `F` if `m`; the swap is ignored because it has no meaning for a point
+  (`src/positions.hpp:90-95`).
+- On a `PlayerJoint` index, `apply(u, pj)` maps `joint ↦ mirror(joint)` if `m` and `player ↦ opponent(player)` if `s`
+  (`src/positions.hpp:107-114`). `apply(u, p, j)` returns `u(p)[j]` without building `u(p)`:
+  `F^m(apply(r, p[apply(u, j)]))` (`src/positions.hpp:116-125`; the `assert` that compares it with `u(p)[j]` is
+  compiled out, §1.7). Note that `apply(u, ·)` on an index is its own inverse (both maps are involutions), which is
+  why the same map serves for "where does joint `j` of `u(p)` come from".
+- The identity is `{{0,0,0}, 0, false, false}` (the constructor's defaults, `src/positions.hpp:79-80`); `u(p)` with it
+  is **not** bit-identical to `p` in general (it computes `cos 0·x + 0·y + sin 0·z + 0 + 0`, which only differs for
+  `−0` inputs: `−0 + 0 = +0`).
+
+**Mirror conjugation.** Because `F·R(θ)·F = R(−θ)` (from the matrix of §2.3), for any `r = {o, θ}`:
+`F ∘ r = mir(r) ∘ F` with `mir(r) = {(−o.x, o.y, o.z), −θ}`. And `L`, `S` commute with every per-joint map. This is the
+only fact needed to derive §5.4; it is exactly the "negate `angle` and `offset.x`" that the code does.
+
+### 5.4 `compose` and `inverse`
+
+**On `Reorientation`** (both marked `// formalized` in the source):
+- `inverse(x) = {yrot(−x.angle) * −x.offset, −x.angle}` (`src/math.hpp:257-260`): `r⁻¹ = {R(−θ)·(−o), −θ}`. Check:
+  `r⁻¹(r(v)) = R(−θ)(R(θ)v + o) − R(−θ)o = v` (exact in reals; in `double`, `R(−θ)R(θ)` is not the identity bit for
+  bit).
+- `compose(a, b) = {b.offset + (yrot(b.angle) * a.offset), a.angle + b.angle}` (`src/math.hpp:262-265`). It means
+  **"first `a`, then `b`"**: `compose(a, b)(v) = b(a(v))`, since `b(a(v)) = R(θb)(R(θa)v + oa) + ob`. Caveats for bit
+  equality: the angle is the plain sum `θa + θb` (**not wrapped**; it can grow past ±2π after many compositions), and
+  `R(θa + θb)` is not bit-equal to `R(θb)·R(θa)`, so `compose(a, b)(v)` and `b(a(v))` agree only up to rounding.
+  Only the angle sum and the offset formula above are what the port must reproduce exactly.
+
+**On `PositionReorientation`** (`src/positions.cpp:97-128`):
+- `inverse(u)` (`src/positions.cpp:97-109`): `{inverse(r), s, m}`, and if `m`, then `angle = −angle` and
+  `offset.x = −offset.x`. I.e.
+
+  `inverse({r, s, m}) = {mir^m(r⁻¹), s, m}`.
+
+  Derivation: `u⁻¹ = r⁻¹ ∘ (L∘F)^m ∘ S^s`; moving `r⁻¹` to the right of `F` turns it into `mir(r⁻¹)`; `S` and `L`
+  commute. Explicitly, with `m = true`: angle `+θ`, offset `F·R(−θ)·(−o)`. The flags `s` and `m` are kept as they are
+  (both are involutions). A debug `assert` checking `r(x(testPos)) ≈ testPos` is commented out
+  (`src/positions.cpp:106`), and `testPos` itself is commented out (`src/positions.cpp:91-93`).
+- `compose(a, b)` (`src/positions.cpp:111-128`; marked `// todo: formalize`): take `b.r`; if `a.m`, replace it by
+  `mir(b.r)`; then
+
+  `compose(a, b) = {compose(a.r, mir^{a.m}(b.r)), a.s ≠ b.s, a.m ≠ b.m}`.
+
+  Same order as on `Reorientation`, **"first `a`, then `b`"**: `compose(a, b)(p) = b(a(p))` (the commented-out
+  `assert(basicallySame(b(a(testPos)), r(testPos)))`, `src/positions.cpp:125`, states the intent). Derivation:
+  `b ∘ a = S^{bs} M^{bm} b.r ∘ S^{as} M^{am} a.r` with `M = L∘F`; moving `b.r` right past `M^{am}` gives
+  `mir^{am}(b.r)`; the flags combine by XOR because `S` and `M` are commuting involutions. Note it is `a.mirror`
+  that conjugates `b`'s reorientation, not `b.mirror`.
+- Not provided: an identity check, equality, or normalisation of the angle. `inverse(inverse(u))` equals `u` only up to
+  rounding in the offset (the angle and flags round-trip exactly, since `−(−θ) = θ`).
+
+**How the graph uses them** (the semantics phase 2 must keep; detail of traversal is section 6):
+- A `Reoriented<T>` is a value plus a `PositionReorientation` (`src/reoriented.hpp:9-26`; `x * r` builds one). Reading
+  a position through it applies the reorientation: `g[ReorientedNode] = u(node.position)` (`src/graph.hpp:114-117`),
+  `at(Reoriented<PositionInSequence>) = u(at(pis))` and per joint `apply(u, p, j)` (`src/graph_util.hpp:265-278`).
+- Edge endpoints: `edge.from = n * Ef` with `Ef(nodes[n].position) ≈ positions.front()` (§2.3). Viewing a sequence
+  through `u` gives its endpoint nodes with `compose(Ef, u)` (`src/graph_util.hpp:145-155`), i.e. "edge's own
+  reorientation first, then the view's", so `compose(Ef, u)(node) ≈ u(front)`.
+- Walking from a node `n` (viewed with `N`) into a sequence `s` whose `from` is `n * Ef`:
+  `compose(inverse(Ef), N)` maps the sequence's frame to the viewer's (`src/graph_util.cpp:67,132,239`),
+  and the node reached at the other end `to = m * Et` is viewed with `compose(Et, compose(inverse(Ef), N))`
+  (`src/graph_util.cpp:81,117-119`; symmetric for entering by `to`, `src/graph_util.cpp:85,99,122-124,134,241`).
+- Editing through a view writes back with `inverse`: `node.position = inverse(u)(p)` (`src/graph.cpp:44`),
+  `graph.replace(…, inverse(location.reorientation)(…))` (`src/editor.cpp:347,400`).
+- The editor's **mirror view** (`Editor::mirror`, `src/editor.cpp:212-217`, key `I` in the GLFW editor,
+  `src/glfw_editor.cpp:141`) just flips the `mirror` flag of the current location and of the selection; by the order in
+  §5.3 that is `M ∘ u` (mirror of what was shown, about `x = 0`), and it does not change any stored position
+  (`src/editor.hpp:52`). By contrast `swap_players(Editor&)` and `mirror_position` change the stored keyframe
+  (`src/editor.cpp:240-265`; keys `X` / `M`, `src/glfw_editor.cpp:134-135`). Editor detail: section 8.
+- Known imprecision in the original: `do_edit` composes a camera-only reorientation and notes it ignores
+  `swap_players` (`src/glfw_editor.cpp:380-382`, `// todo: this is wrong`). Not to be "fixed" silently in a port;
+  section 8.
+
+### 5.5 Canonical orientation
+
+`canonical_reorientation_without_mirror(p)` (`src/positions.cpp:272-281`) builds `u = {r, false, false}` with:
+1. `r.angle = normalRotation(p) = −atan2(h.x, h.z)`, `h = heading(p)` (§4.3, uses the **cores**).
+2. `r.offset = normalTranslation(rotate(r.angle, p)) = y0(−xz(center(R(θ)·p)))` (`src/positions.hpp:159-169`):
+   the center of the **already rotated** position, negated, with `y = 0`. `rotate` is `yrot(a) * v` per joint, the
+   same arithmetic as `apply` with a zero offset.
+
+`canonical_reorientation_with_mirror(p)` (`src/positions.cpp:261-270`): same `r`, `swap_players = false`, and
+`mirror = (apply(r, p)[player1][Head].x ≥ 0)`, evaluated on the rotated-and-translated position **before** mirroring.
+
+`orient_canonically_without_mirror(p)` / `…_with_mirror(p)` = `canonical_reorientation_…(p)(p)`
+(`src/positions.cpp:283-291`).
+
+What is fixed in the result (exact in reals; in `double` up to rounding, so "≈ 0" below):
+- **Center:** `xz(center) ≈ (0, 0)`; `center.y` unchanged (no vertical translation).
+- **Heading:** `heading` points along `+z` (`angle ≈ 0`): player 1's core in front of player 0's on `+z` (§4.3).
+- **With mirror:** additionally player 1's **head** has `x ≤ 0` (`x > 0` before the test → mirrored to `< 0`;
+  `x == 0`, including `−0.0`, also mirrors, §4.3). Mirroring keeps the center at `x ≈ 0` and the heading on `+z`
+  (`F` maps `(0, z)` to `(−0, z)`), so both properties above still hold after the mirror.
+- **Never swaps players**: `swap_players = false` in both (`src/positions.cpp:266,277`; the
+  `assert(!reo.swap_players)` in `src/mkpospages.cpp:662` is compiled out, §1.7). Which player is 0 is never
+  canonicalised: `orient_canonically_without_mirror(S(p)) ≈ S(R(π)·orient_canonically_without_mirror(p))` (rotated by
+  π **and** with the player labels swapped). With mirror, the test then reads the *other* player's head
+  (`−x` of player 0's head in `p`'s canonical form), a decision independent of `p`'s, so the two `with_mirror` forms
+  may additionally differ by a mirror. Callers that want a fixed player order swap first themselves:
+  `mkpospages` swaps every frame when the transition's `from.reorientation.swap_players` is set, then canonicalises
+  the first frame (`src/mkpospages.cpp:430-435`).
+
+Tie-breaks and degenerate cases:
+- The only discrete choice is the mirror test, with `≥ 0` (head exactly on the plane → mirrored). There is no other
+  tie-break; the angle comes from a single `atan2`.
+- Both cores at the same `xz`: `heading` is a component-wise subtraction (`src/math.hpp:135`). If the cores'
+  coordinates are **bit-identical**, `x − x = +0` (IEEE 754 round-to-nearest), so `heading = (+0, +0)`,
+  `atan2(+0, +0) = +0` and there is no rotation. This covers every position decoded from the file, which never holds
+  `−0` (`g() − 2` with `g() ≥ +0`, `src/persistence.cpp:45-53`). A reoriented input (e.g. the `mkpospages` frames,
+  which go through `inverse(…)` and `yrot` first, `src/mkpospages.cpp:433,675,711`) can hold `+0` in one core and
+  `−0` in the other: `(−0) − (+0) = −0`, so `heading` can be `(−0, −0)`, `atan2(−0, −0) = −π` and the position is
+  rotated by π. **[unverified]** at runtime, as in §4.3/§4.5.
+- The heading uses `Core` but the mirror test uses `Head`; a position where player 1's head is near `x = 0` flips
+  between mirrored and not under tiny edits.
+
+Users: only the web/position-page tools. `orient_canonically_with_mirror` for the position page heading image
+(`src/mkpospages.cpp:578`), `canonical_reorientation_with_mirror` for transition GIFs (`src/mkpospages.cpp:433`) and for
+the incoming/outgoing frames of a node page (`src/mkpospages.cpp:661,675,711`, applied after
+`inverse(this_side.reorientation)` brings each frame to the node's own frame). Neither the graph loader nor matching
+(§2.3) use canonical orientation. `canonical_reorientation_without_mirror` is called only by
+`orient_canonically_without_mirror` (`src/positions.cpp:285`), which has no caller in `src/` (grep).
+
+### 5.6 Input for phase 2
+
+Must match the original **bit for bit** (f64, same operation order; checked by the oracle):
+- `mirror(Position)`: `F` + the ten left/right swaps, players not swapped (§5.1). Oracle: `ops.ndjson` (`mirror`).
+- `swap_players` (§5.2). Oracle: `ops.ndjson` (`swap_players`).
+- `apply(Reorientation)`: `R(θ)·v` with the term order of §5.3, then `+ offset`; `PositionReorientation` order
+  rotate → translate → mirror → swap (§5.3). Oracle: bit for bit through `ops.ndjson` (`orient_canonically_*`,
+  non-trivial angle and offset) and the `playback` frames; `graph.ndjson` exports only the edges' `reorientation_from`/`_to`
+  *parameters* (§2.3), and applying them reproduces an endpoint only within `basicallySame`.
+- `heading`, `center`, `normalRotation`, `normalTranslation`, and `orient_canonically_with_mirror/without_mirror`
+  (§4.3, §5.5). Oracle: `ops.ndjson` (`heading`, `center`, `orient_canonically_*`).
+- `compose`/`inverse` with the exact formulas of §5.4, angle sum not wrapped, `a.mirror` conjugating `b`. Oracle:
+  only indirectly (playback frames, `playback` in the spec); `ops.ndjson` does not list them.
+
+Must match semantically (the port may choose its own representation as long as these hold):
+- `compose(a, b) = b ∘ a`; `inverse(u) ∘ u ≈ id`; `PositionReorientation` acts on joint *indices* as in §5.3.
+- Canonical orientation never swaps players.
+
+### 5.7 Open points (need the oracle/dumper)
+
+- Bit equality of `sin`/`cos`/`atan2`: the original uses glibc's `libm` (via `<cmath>`); whether the Odin port's
+  functions give the same bits for every angle in the DB is **[unverified]**; if not, either call the same libm or
+  compare with a tolerance (needs a decision, phase 2).
+- `compose`/`inverse` are not dumped directly; adding them to `ops.ndjson` (e.g. `inverse(reorientation_from)` and
+  `compose` of the two endpoint reorientations of each edge) would check §5.4 directly. To be proposed on #34.
