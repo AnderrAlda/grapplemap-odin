@@ -33,7 +33,7 @@ Commits Conventional; PR por squash con título Conventional; PRs pequeños (<40
 Todo issue y todo PR llevan labels (`type:`, `area:`, `phase-N`) y el milestone de su fase, desde que se crean.
 Los hallazgos no bloqueantes del revisor que van a issue se crean con label `tech-debt` y milestone `Backlog`, salvo que sean `priority:high` (esos van al milestone de la fase en curso).
 Flujo: `/spec` (fase) → `/plan <issue>` → sesión limpia + `/start-task <issue>` → `/pr` (revisor adversarial).
-Desde la sesión MAIN, `/orchestrate` coordina los worktrees con Herdr y lleva los PR hasta ready; el merge sigue siendo mío.
+Desde la sesión MAIN, `/orchestrate` coordina los workers por worktree con `hc` (herdr-core) y lleva los PR hasta ready; el merge sigue siendo mío.
 Reparto de modelos y detalle: `docs/ai-workflow.md`.
 
 ## Hecho = (cada PR)
