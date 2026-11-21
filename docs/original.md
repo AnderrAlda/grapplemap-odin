@@ -1456,14 +1456,15 @@ still says the composer and explorer use it: stale.
    (`src/search.js:399-428`). Default view `[1,false]` = heading E (`src/search.js:264,530-533`).
 3. Two paged lists (9 positions / 12 transitions per page, `src/search.js:807-808`): positions are 320×240 PNGs linking
    to the position page `res/p{n}{view}.html`; transitions are looping 200×150 MP4s linking to the composer with that single
-   transition (`composer/index.html?{id}`) (`src/search.js:598-645`). Tooltips show the description and `(t{id} @ line {n})`.
-4. **Neighbourhood**, only if ≤ 30 positions result: a d3 force graph (§8.5) on the right and, on the left, a WebGL canvas
+   transition (`composer/index.html?{id}`) (`src/search.js:598-645`). Transition tooltips show the description and `(t{id} @ line {n})`; position tooltips only the description (`src/search.js:587-596`).
+4. **Neighbourhood**, only if the graph built below has ≤ 30 nodes (it includes non-selected neighbours): a d3 force graph (§8.5) on the right and, on the left, a WebGL canvas
    running the C++ `cursor_canvas` (`src/search.html:45-80`). Hovering a graph node calls `cursor_canvas_goto(id)`
    (`src/search.js:747-755`): the 3D figure **walks** there along the transition (segments pushed on a queue, 5 segments/s,
-   speed-up when more than 10 are queued, chaser `between(…, 0.2)`, `src/cursor_canvas.cpp:39-74,89-100`) instead of
-   jumping, or resets if the node is not adjacent. The graph shown is: every transition touching a selected position, then,
-   if > 30 nodes, only transitions with both ends selected, then ignoring the transition filter (`src/search.js:648-728`);
-   still > 30 → "Too many positions to display".
+   elapsed time multiplied by `(n−10)/2` when more than 10 are queued, chaser `between(…, 0.2)`, `src/cursor_canvas.cpp:39-74,89-100`) instead of
+   jumping (it resets instead if the node is not adjacent, `src/cursor_canvas.cpp:95-99`; `recompute_results` also calls
+   `cursor_canvas_goto(selected_nodes[0])`, `src/search.js:379-380`). The graph shown has three passes, each used only if the
+   previous one gives > 30 nodes: transitions that match the filter **or** have an end selected; then matching **or** both ends
+   selected; then both ends selected only (`src/search.js:648-728`); still > 30 → "Too many positions to display".
 5. View select external/red/blue and a mirror button for the canvas (`src/search.html:53-59`).
 
 A link to the explorer (`goto_explorer`, `src/search.js:736-745`) exists but its HTML link is commented out
@@ -1490,11 +1491,13 @@ the readable names as links (`src/mkpospages.cpp:643-653`).
   `src/images.hpp:187-196`). Clips of one side are padded so they have equal length (`src/mkpospages.cpp:695-702,720-727`).
 - *Centre*: description as `<h1>`, the 480×360 PNG in canonical orientation with mirror (`ymax = max(0.8, head heights)`),
   view controls `↻ ↺ ⇄ ⇅`, **tag list** (each tag links to `../index.html?{tag}`), and `Go to:` composer (`?p{n}`),
-  explorer (`?{n}`) and search (`?` + `query_for`: the node's own tags + up to 10 greedily chosen negated tags that
-  best separate it from the other positions, `src/metadata.cpp:5-35`, `src/mkpospages.cpp:560-574`).
-- *Outgoing transitions* (right): mirror image of incoming.
+  explorer (`?{n}`) and search (`?` + `query_for`: the node's own tags, then negated tags added greedily (the one most frequent
+  among the other positions still matching) until the query has 10 entries in total, own tags included,
+  `src/metadata.cpp:5-35`, `src/mkpospages.cpp:560-574`).
+- *Outgoing transitions* (right): like incoming, but the tint is **not** swapped for sweeps (`src/mkpospages.cpp:716`); the
+  linked view is mirrored for sweeps in both lists (`src/mkpospages.cpp:490,518`).
 - Below: **Neighbourhood**, an SVG made with Graphviz (`todot`, `gvc`/`cgraph` in `src/SConstruct:48-50`) of the positions up
-  to 2 transitions away, ignoring taps (`nodes_around(…, 2, true)`, `src/mkpospages.cpp:602-618`).
+  to 2 transitions away, ignoring taps (transitions whose first description line is `tap`, `src/graph_util.cpp:174-177`; `nodes_around(…, 2, true)`, `src/mkpospages.cpp:602-618`).
 
 How the clips are timed (padding of 10 frames each end, 5 or 3 interpolated frames per keyframe pair, `smoothen`) is §6.3 /
 `src/mkpospages.cpp:124-142,319-331`; rendering is §7.6.
@@ -1532,8 +1535,8 @@ has the same formula as the C++ one (`src/gm.js:351-358` vs `src/math.hpp:73-80`
 **Playback** (`src/composer.js:433-469`): per rendered frame `k += min(deltaTime_ms / 100, 2)`, so one keyframe step
 every 0.1 s; with the doubling, a non-detailed transition runs at 5 segments/s and a `detailed` one at 10, the
 same speeds as §6.4. The last transition holds 6 more steps and the loop restarts at frame −5 (clamped keyframe index), i.e.
-pauses of about 0.5-0.7 s (derived from the counters, not observed), versus the 0.8 s of C++ (§6.4). The drawn pose
-chases the ideal pose, `thepos = lerp(thepos, ideal, 0.20)` per **rendered frame** (0.12 while dragging the slider)
+pauses of about 0.5-0.7 s (**[unverified]**: derived from the counters, not observed), versus the 0.8 s of C++ (§6.4). The drawn pose
+chases the ideal pose, `thepos = lerp(thepos, ideal, 0.20)` per **rendered frame** (0.12 while the pointer is over the slider, which also pauses playback, `src/composer.html:53`, `src/composer.js:435`)
 (`src/composer.js:426-431`), so smoothing is frame-rate dependent, like the C++ chaser (§6.5).
 
 ### 8.5 Explorer (`explorer/index.html`)
@@ -1560,7 +1563,8 @@ reachable by **one stored transition** (forward from the current node, or backwa
 transition's frames are queued with the reorientation composed so the figure continues from where it is (the first frame
 of the transition is skipped; the reversed case queues frames backwards); queued frame ids
 `transition·100 + i` let a back-and-forth cancel itself (`queue_frame`, `src/graphdisplay.js:247-256`). Only steps with
-`reverse == false` are considered, so `bidirectional` reverse traversal (§2.7) is not available here. Playback speed grows
+`reverse == false` are scanned (`src/graphdisplay.js:261,279`): forward along `outgoing`, backward along `incoming`; the reversed
+entries of §2.6 are redundant, so nothing is lost. Note it therefore also walks **non-bidirectional** transitions backwards. Playback speed grows
 with the queue length: `kf += max(0.1, queue^1.5/500)` per rendered frame (`src/graphdisplay.js:299-312`); drawn pose
 smoothing 0.20 (`src/graphdisplay.js:314-315`, `src/explorer.js:1`). The camera target follows the pair's mean `Core`: xz at 0.5 % per frame, y at
 5 % (rising) or 0.5 % (falling), height `max(0, y − 0.5)` (`src/graphdisplay.js:317-327`). All of this is per rendered frame.
@@ -1580,7 +1584,7 @@ A WebGL canvas running the C++ `EditorCanvas` (shader renderer, §7) next to a s
   line number, or `last-trans`, `src/editor.js:157-166`, `src/metadata.cpp:107-119`), *Confine to path* checkbox,
   *Mirror view*, *Load database* (file input).
 - **Playback** (green): the path plays; no other controls.
-- **Edit** (red): *Transition*: Split, Prepend New, Append New (each asks for a position number with `prompt()`);
+- **Edit** (red): *Transition*: Split, Prepend New, Append New (the last two ask for a position number with `prompt()`, `src/editor.js:527-537`);
   *Frame*: Insert, Delete, Swap players, Mirror; *Transform*: translate / rotate; *Manipulate*: single joint / whole
   player / both players; *Confine to*: horizontal edits, linear interpolations, local edits; *Database*: Save, Undo last change.
   Selecting *rotate* unchecks "linear interpolations" and replaces "single joint" by "both players"; picking *single joint*
@@ -1601,13 +1605,13 @@ scrubs the path by choosing the location whose projected joint position best fol
 `whereBetween`/`determineNextPos`, `:9-46`); **left button drag on a joint** edits it in Edit mode (left press pushes an undo step and
 fixes the joint nearest to the cursor, `:79-97,534-537`); **middle button drag** orbits the camera (`:389-395`); arrow keys and
 Home/End move the camera (`:189-206`, keys ignored while the metadata box has focus, `src/editor.html:184-185`,
-`:880-883`). Camera values are §7.5. The view can be external or first person of either player (`:959-966`).
+`:880-883`). Camera values are §7.5. `set_view` (`:959-966`) is bound but the editor page has no control for it; only the search page's canvas selects first-person views (`src/search.html:54`).
 
 **Persistence.** There is no server: the original DB is the preloaded file; *Load database* reads a local file
 (`FileReader`, `Module.editor_loadDB`, `src/editor.js:109-119`, `src/editor_canvas.cpp:712-727`); *Save* serialises with the
 C++ writer (§1.5) into a Blob and triggers a download named `GrappleMap.txt`, or `<loaded name>.new`
 (`src/editor.js:148-155`, `src/editor_canvas.cpp:729-738`). Leaving the page with unsaved changes triggers the browser's
-confirmation (`src/editor.js:570-580`). Undo is in-memory (a stack pushed on each left press).
+confirmation (`src/editor.js:570-580`). Undo is in-memory, pushed before each edit operation (§9).
 
 ### 8.7 Differences from the C++ viewer
 
@@ -1618,7 +1622,7 @@ confirmation (`src/editor.js:570-580`). Undo is in-memory (a stack pushed on eac
 | Floor | ±2 m grid | ±3 m grid, 0.5 m step, `grey` lines (`src/gm.js:280-295`); white background |
 | Camera | §7.5 | Babylon `ArcRotateCamera` (alpha 0, beta π/4, radius 2.5, radius limits 1-4, `lowerBetaLimit 0`), wheel precision 30; first person `FreeCamera`, fov 1.6 rad, minZ 0.05, looking at the mean of the two **fingers** (C++: the hands) (`src/graphdisplay.js:359-375`, `src/explorer.js:164-179`) |
 | Speeds | segments/s of §6.4 | same numbers, but per-frame constants (drag 0.20, camera lerp) and the composer's pauses differ (§8.4) |
-| Handedness | right-handed (§4.2) | Babylon scenes are left-handed unless `useRightHandedSystem` is set, and no `src/*.js` sets it (grep); the typedoc confirms the property exists (`https://doc.babylonjs.com/typedoc/classes/BABYLON.Scene`) but does not state its default, and the library version is unpinned, so whether the JS view is mirrored remains **[unverified]** |
+| Handedness | right-handed (§4.2) | Babylon scenes are **[unverified]** left-handed by default (unless `useRightHandedSystem` is set), and no `src/*.js` sets it (grep); the typedoc confirms the property exists (`https://doc.babylonjs.com/typedoc/classes/BABYLON.Scene`) but does not state its default, and the library version is unpinned, so whether the JS view is mirrored remains **[unverified]** |
 | Frame logic | `follow`/`Playback` | JS re-implementation (`follow`, `compose_reo`, `try_move`), not shared with C++ |
 
 ### 8.8 Input for phase 5
@@ -1639,5 +1643,4 @@ naming, polling timers, `prompt()` dialogs, the d3 layout constants, panel layou
 constants (use time-based), the unpinned Babylon dependency.
 
 Open points: handedness of the JS view (§8.7); whether the JS `follow`/`compose_reo`/`mirror` match the C++ ones beyond
-`yrot` (oracle); exact timing of the composer's loop pauses; explorer-only limitation to non-reversed steps (§2.7) is a
-bug or a choice; the editor's canvas gestures in detail (`determineNextPos`, `closeCandidates`) are §9.
+`yrot` (oracle); exact timing of the composer's loop pauses; the editor's canvas gestures in detail (`determineNextPos`, `closeCandidates`) are §9.
