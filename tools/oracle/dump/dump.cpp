@@ -5,15 +5,17 @@
 // Usage: grapplemap-dump --db FILE --index FILE --out DIR [--versions FILE] [--commit SHA]
 //   --index: the .index written by grapplemap-indexer on a copy of the DB (only read, never used to load).
 //
-// Files (fixed order, no timestamps): meta.json, sequences.ndjson, graph.ndjson, body.json.
-// PR 2 of #34 adds ops, between, playback and spring.
+// Files (fixed order, no timestamps): meta.json, sequences.ndjson, graph.ndjson, ops.ndjson, between.ndjson,
+// playback.ndjson, body.json, spring.ndjson.
 #include "json.hpp"
 
 #include "graph_util.hpp"
 #include "md5.hpp"
 #include "metadata.hpp"
+#include "paths.hpp"
 #include "persistence.hpp"
 
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -24,7 +26,14 @@ namespace {
 using namespace GrappleMap;
 using dump::Json;
 
-char const DUMPER_VERSION[] = "1";
+char const DUMPER_VERSION[] = "2";
+
+// frames-per-pos of frames() (default of src/makevideo.cpp:34); halved for `detailed` by integer division
+// (src/paths.cpp:42: 11 / 2 = 5).
+unsigned const FRAMES_PER_POS = 11;
+
+// Values of s for between(a, b, s) over every consecutive pair.
+double const BETWEEN_S[] = {0.25, 0.5, 0.75};
 
 struct Args
 {
@@ -79,6 +88,47 @@ vector<string> split_lines(string const & s)
 	return v;
 }
 
+// The full dump is ~0.5 GB, so no file is held in memory: each one is streamed record by record to
+// "<name>.tmp" and only renamed to its final name once every file is complete (meta.json last). A failure
+// therefore never leaves a partial dump: the temporaries are removed and only meta.json, with the error, is written.
+class Staged_Files
+{
+	string dir_;
+	vector<string> names_;
+	bool committed_ = false;
+
+	string tmp(string const & name) const { return dir_ + "/" + name + ".tmp"; }
+
+public:
+	explicit Staged_Files(string dir) : dir_(std::move(dir)) {}
+	Staged_Files(Staged_Files const &) = delete;
+	Staged_Files & operator=(Staged_Files const &) = delete;
+
+	template<typename F>
+	void write(string const & name, F f)
+	{
+		names_.push_back(name);
+		std::ofstream o(tmp(name), std::ios::binary);
+		if (!o) throw std::runtime_error(tmp(name) + ": cannot open");
+		f(o);
+		o.close();
+		if (!o) throw std::runtime_error(tmp(name) + ": cannot write");
+	}
+
+	void commit()
+	{
+		foreach (n : names_)
+			if (std::rename(tmp(n).c_str(), (dir_ + "/" + n).c_str()) != 0)
+				throw std::runtime_error(dir_ + "/" + n + ": cannot rename");
+		committed_ = true;
+	}
+
+	~Staged_Files()
+	{
+		if (!committed_) foreach (n : names_) std::remove(tmp(n).c_str());
+	}
+};
+
 struct Index
 {
 	string md5;
@@ -127,6 +177,26 @@ void position_q(Json & j, Position const & p)
 
 void v3(Json & j, V3 const v) { j.begin_array().num(v.x).num(v.y).num(v.z).end_array(); }
 
+// A computed position as doubles: [player][joint] = [x, y, z].
+void position_d(Json & j, Position const & p)
+{
+	j.begin_array();
+	foreach (pl : playerNums())
+	{
+		j.begin_array();
+		foreach (jt : joints) v3(j, p[pl][jt]);
+		j.end_array();
+	}
+	j.end_array();
+}
+
+void positions_d(Json & j, vector<Position> const & v)
+{
+	j.begin_array();
+	foreach (p : v) position_d(j, p);
+	j.end_array();
+}
+
 void reorientation(Json & j, PositionReorientation const & r)
 {
 	j.begin_object();
@@ -170,9 +240,8 @@ vector<Block> blocks_in_file_order(Graph const & g)
 	return v;
 }
 
-string dump_sequences(Graph const & g, vector<Block> const & blocks)
+void dump_sequences(std::ostream & out, Graph const & g, vector<Block> const & blocks)
 {
-	string out;
 	Json j;
 	for (size_t b = 0; b != blocks.size(); ++b)
 	{
@@ -197,18 +266,16 @@ string dump_sequences(Graph const & g, vector<Block> const & blocks)
 		else foreach (p : g[SeqNum{blk.index}].positions) position_q(j, p);
 		j.end_array();
 		j.end_object();
-		out += j.take();
+		out << j.take();
 	}
-	return out;
 }
 
-string dump_graph(Graph const & g, vector<Block> const & blocks, Index const & ix)
+void dump_graph(std::ostream & out, Graph const & g, vector<Block> const & blocks, Index const & ix)
 {
 	vector<long> node_block(g.num_nodes(), -1), seq_block(g.num_sequences(), -1);
 	for (size_t b = 0; b != blocks.size(); ++b)
 		(blocks[b].is_node ? node_block : seq_block)[blocks[b].index] = long(b);
 
-	string out;
 	Json j;
 	foreach (n : nodenums(g))
 	{
@@ -221,7 +288,7 @@ string dump_graph(Graph const & g, vector<Block> const & blocks, Index const & i
 		j.key("tags").strings(set_to_vector(tags_in_desc(g[n].description)));
 		j.key("position_q"); position_q(j, g[n].position);
 		j.end_object();
-		out += j.take();
+		out << j.take();
 	}
 	foreach (s : seqnums(g))
 	{
@@ -235,7 +302,7 @@ string dump_graph(Graph const & g, vector<Block> const & blocks, Index const & i
 		j.key("reorientation_from"); reorientation(j, e.from.reorientation);
 		j.key("reorientation_to"); reorientation(j, e.to.reorientation);
 		j.end_object();
-		out += j.take();
+		out << j.take();
 	}
 	j.begin_object();
 	j.key("type").str("index");
@@ -244,8 +311,141 @@ string dump_graph(Graph const & g, vector<Block> const & blocks, Index const & i
 	foreach (p : ix.pairs) j.begin_array().integer(p.first).integer(p.second).end_array();
 	j.end_array();
 	j.end_object();
-	out += j.take();
-	return out;
+	out << j.take();
+}
+
+// Calls f(pos, position) for every position of a block: pos 0 for a named position, the sequence for a transition.
+template<typename F>
+void each_position(Graph const & g, Block const & blk, F f)
+{
+	if (blk.is_node) f(size_t(0), g[NodeNum{uint16_t(blk.index)}].position);
+	else
+	{
+		auto const & ps = g[SeqNum{blk.index}].positions;
+		for (size_t k = 0; k != ps.size(); ++k) f(k, ps[k]);
+	}
+}
+
+// src/positions.hpp:37,68,142-184; src/positions.cpp:261-291.
+void dump_ops(std::ostream & out, Graph const & g, vector<Block> const & blocks)
+{
+	Json j;
+	for (size_t b = 0; b != blocks.size(); ++b)
+		each_position(g, blocks[b], [&](size_t const pos, Position const & p)
+			{
+				Position swapped = p;
+				swap_players(swapped); // in place in the original
+				V2 const h = heading(p);
+
+				j.begin_object();
+				j.key("block").integer(long(b));
+				j.key("pos").integer(long(pos));
+				j.key("mirror"); position_d(j, mirror(p));
+				j.key("swap_players"); position_d(j, swapped);
+				j.key("orient_canonically_with_mirror"); position_d(j, orient_canonically_with_mirror(p));
+				j.key("orient_canonically_without_mirror"); position_d(j, orient_canonically_without_mirror(p));
+				j.key("heading").begin_array().num(h.x).num(h.y).end_array();
+				j.key("center"); v3(j, center(p));
+				j.end_object();
+				out << j.take();
+			});
+}
+
+// between(a, b, s) (src/positions.hpp:42) for every consecutive pair of every transition; pos is a's index.
+void dump_between(std::ostream & out, Graph const & g, vector<Block> const & blocks)
+{
+	Json j;
+	for (size_t b = 0; b != blocks.size(); ++b)
+	{
+		if (blocks[b].is_node) continue;
+		auto const & ps = g[SeqNum{blocks[b].index}].positions;
+		for (size_t k = 0; k + 1 < ps.size(); ++k)
+			for (double const s : BETWEEN_S)
+			{
+				j.begin_object();
+				j.key("block").integer(long(b));
+				j.key("seq").integer(long(blocks[b].index));
+				j.key("pos").integer(long(k));
+				j.key("s").num(s);
+				j.key("position"); position_d(j, between(ps[k], ps[k + 1], s));
+				j.end_object();
+				out << j.take();
+			}
+	}
+}
+
+void frames_d(Json & j, Frames const & f, size_t const step) { positions_d(j, f.at(step).second); }
+
+// frames() (src/paths.cpp:23-52, one Frames entry per step, the last frame of each step dropped) raw and after
+// smoothen() (src/paths.cpp:8-21). Each transition is played alone, forwards, and smoothed alone: smoothing per
+// transition is the dumper's choice (the original's callers smooth a whole script, src/makevideo.cpp:93,105), so a
+// "chain" record follows with the first pair a -> b (index order, b starts at a's end node) smoothed in one call.
+void dump_playback(std::ostream & out, Graph const & g, vector<Block> const & blocks)
+{
+	Json j;
+	for (size_t b = 0; b != blocks.size(); ++b)
+	{
+		if (blocks[b].is_node) continue;
+		SeqNum const s{blocks[b].index};
+		Frames const raw = frames(g, Path{Step{s, false}}, FRAMES_PER_POS);
+		Frames const smooth = smoothen(raw);
+
+		j.begin_object();
+		j.key("type").str("transition");
+		j.key("block").integer(long(b));
+		j.key("seq").integer(long(s.index));
+		j.key("frames_per_pos").integer(FRAMES_PER_POS);
+		j.key("segment_frames_per_pos").integer(FRAMES_PER_POS / (g[s].detailed ? 2 : 1));
+		j.key("caption").str(raw.at(0).first);
+		j.key("raw"); frames_d(j, raw, 0);
+		j.key("smooth"); frames_d(j, smooth, 0);
+		j.end_object();
+		out << j.take();
+	}
+
+	optional<pair<SeqNum, SeqNum>> chain;
+	foreach (a : seqnums(g))
+	{
+		foreach (c : seqnums(g))
+			if (*g[c].from == *g[a].to) { chain = std::make_pair(a, c); break; }
+		if (chain) break;
+	}
+	if (!chain) return;
+
+	vector<Path> const script{Path{Step{chain->first, false}, Step{chain->second, false}}};
+	Frames const raw = frames(g, script, FRAMES_PER_POS); // paths.cpp:54
+	Frames const smooth = smoothen(raw);
+
+	j.begin_object();
+	j.key("type").str("chain");
+	j.key("seqs").begin_array().integer(long(chain->first.index)).integer(long(chain->second.index)).end_array();
+	j.key("frames_per_pos").integer(FRAMES_PER_POS);
+	j.key("captions").begin_array().str(raw.at(0).first).str(raw.at(1).first).end_array();
+	j.key("raw").begin_array(); frames_d(j, raw, 0); frames_d(j, raw, 1); j.end_array();
+	j.key("smooth").begin_array(); frames_d(j, smooth, 0); frames_d(j, smooth, 1); j.end_array();
+	j.end_object();
+	out << j.take();
+}
+
+// spring(Position&) (src/positions.cpp:183-194, apply_limits then spring per player, no fixed joint) on a copy of
+// every named position, in block order.
+void dump_spring(std::ostream & out, Graph const & g, vector<Block> const & blocks)
+{
+	Json j;
+	for (size_t b = 0; b != blocks.size(); ++b)
+	{
+		if (!blocks[b].is_node) continue;
+		NodeNum const n{uint16_t(blocks[b].index)};
+		Position p = g[n].position;
+		spring(p);
+
+		j.begin_object();
+		j.key("block").integer(long(b));
+		j.key("node").integer(n.index);
+		j.key("position"); position_d(j, p);
+		j.end_object();
+		out << j.take();
+	}
 }
 
 void joint_name(Json & j, Joint const jt) { j.str(to_string(jt)); }
@@ -405,13 +605,16 @@ int run(Args const & a)
 		if (!consistent) errors.push_back("dumper: .index disagrees with loadGraph(istream)");
 		if (ix.md5 != db_md5) errors.push_back("dumper: .index md5 differs from the DB md5");
 
-		// Everything is built before anything is written, so a failure never leaves a partial dump.
-		string const sequences = dump_sequences(g, blocks), graph = dump_graph(g, blocks, ix), body = dump_body(),
-		             meta = dump_meta(a, versions, db_md5, &ix, consistent, &c, errors);
-		write_file(a.out + "/sequences.ndjson", sequences);
-		write_file(a.out + "/graph.ndjson", graph);
-		write_file(a.out + "/body.json", body);
-		write_file(a.out + "/meta.json", meta);
+		Staged_Files out(a.out);
+		out.write("sequences.ndjson", [&](std::ostream & o) { dump_sequences(o, g, blocks); });
+		out.write("graph.ndjson", [&](std::ostream & o) { dump_graph(o, g, blocks, ix); });
+		out.write("ops.ndjson", [&](std::ostream & o) { dump_ops(o, g, blocks); });
+		out.write("between.ndjson", [&](std::ostream & o) { dump_between(o, g, blocks); });
+		out.write("playback.ndjson", [&](std::ostream & o) { dump_playback(o, g, blocks); });
+		out.write("body.json", [&](std::ostream & o) { o << dump_body(); });
+		out.write("spring.ndjson", [&](std::ostream & o) { dump_spring(o, g, blocks); });
+		out.write("meta.json", [&](std::ostream & o) { o << dump_meta(a, versions, db_md5, &ix, consistent, &c, errors); });
+		out.commit();
 
 		foreach (e : errors) std::cerr << "grapplemap-dump: " << e << '\n';
 		return errors.empty() ? 0 : 1;
