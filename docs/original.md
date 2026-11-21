@@ -1195,7 +1195,7 @@ spheres at the ends close them, since a pillar end has the joint's own radius).
   320 triangles), `course` [sic] = 1 (42 / 80) (`src/playerdrawer.cpp:144-147`).
 - **Fine** for `Head`, `Core`, both hips and both shoulders; **coarse** for the other 17 joints (`Neck` included)
   (`src/playerdrawer.cpp:269-272`).
-- Vertex `center + v·radius`, normal `v` (unit), triangles emitted with reversed index order `2, 1, 0`
+- Vertex `center + v·radius`, normal `v` (≈ unit: the base vertices are `float` constants), triangles emitted with reversed index order `2, 1, 0`
   (`src/playerdrawer.cpp:149-166`). With no face culling anywhere (below) the winding does not change the image.
 - In a first-person view, that player's `Head` sphere is skipped (`src/playerdrawer.cpp:256`).
 
@@ -1206,7 +1206,7 @@ midpoint with `midpointRadius` and the first-person skip are §3.2. Each pillar 
   (`sin(10·s) ≈ 7e-7`): the seam is open by under a micrometre.
 - Basis: `a = normalize(cross(to − from, (1,1,1) − from))`, `b = normalize(cross(to − from, a))`
   (`src/playerdrawer.cpp:197-198`). `(1,1,1)` is a fixed world point, not a direction, so the basis (hence where the 10
-  edges fall around the axis) depends on where the limb is. Degenerate (NaN) if `(1,1,1)` lies on the limb's line
+  edges fall around the axis) depends on where the limb is. Degenerate (NaN) if `(1,1,1)` lies on the limb's line or the two joints coincide
   (**[unverified]** whether it ever happens in the DB).
 - Face `i`: quad between `from + r_f·(a·sinᵢ + b·cosᵢ)` and `to + r_t·(…)` at angles `i`, `i+1`. Normals are
   `a·sin + b·cos`, **perpendicular to the axis even when `r_f ≠ r_t`** (not the true cone normal), smooth per vertex.
@@ -1244,11 +1244,11 @@ Vertices go to GL as `double` (`glVertex3d`, `src/playerdrawer.cpp:10`); the sha
 |---|---|---|
 | Player 0 / player 1 (limbs, triangles, joints without override) | `(1, 0, 0)` / `(0.15, 0.15, 1)` | `src/positions.cpp:140` (§3.3) |
 | Override colors only affect joint spheres | `colors[pj]` | `src/playerdrawer.cpp:258-267` |
-| Editor, edit mode: every joint | white `(1, 1, 1)` | `src/glfw_editor.cpp:437`, `src/editor_canvas.cpp:456` |
+| Editor (not playing back), edit mode: every joint | white `(1, 1, 1)` | `src/glfw_editor.cpp:437`, `src/editor_canvas.cpp:456` |
 | Editor, explore mode: joints with a candidate path | `0.4·white + 0.6·player color` | `src/glfw_editor.cpp:438-440` |
 | Editor: highlighted (closest or chosen) joint | yellow `(1, 1, 0)` | `src/glfw_editor.cpp:442`, `src/math.hpp:63` |
 | VR `renderScene`: browse joint / edit joints | yellow / green `(0, 1, 0)` | `src/rendering.cpp:481,485` |
-| Background (`Style` default) | black `(0, 0, 0)` | `src/rendering.hpp:29` |
+| Background (`Style` default; `glfw_editor` and VR) | black `(0, 0, 0)` | `src/rendering.hpp:29`, `src/glfw_editor.cpp:83` |
 | Grid (`Style` default) | `(0.5, 0.5, 0.5)`, size 2, line width 2 | `src/rendering.hpp:28-31` |
 | GLFW playback | background white, grid `(0.7, 0.7, 0.7)`, size 20 | `src/glfw_playback.cpp:43-45` |
 | Web editor | clear color black, grid `(0.25, 0.25, 0.25)`, size 4 | `src/editor_canvas.cpp:611-612,626` |
@@ -1265,8 +1265,8 @@ joint as a 20-px white point without depth test; `src/rendering.cpp:61-101,141-1
 **Fixed-function** (`setupLights`, `src/rendering.cpp:229-247`), called after the model-view is loaded
 (`src/rendering.cpp:341-356`); since `GL_POSITION` is transformed by the current model-view (OpenGL spec, not code),
 the light directions are in **world** space:
-- `GL_LIGHT0` and `GL_LIGHT1`, both **directional** (`w = 0`): toward `(2, 2, 2)` and `(−2, 2, −2)`, i.e. unit
-  directions `(1, 1, 1)/√3` and `(−1, 1, −1)/√3`.
+- `GL_LIGHT0` and `GL_LIGHT1`, both **directional** (`w = 0`), at infinity in the direction of `(2, 2, 2)` and `(−2, 2, −2)`
+  (vector toward the light), i.e. unit directions `(1, 1, 1)/√3` and `(−1, 1, −1)/√3`.
 - Each: diffuse `0.65` (RGB), ambient `0.03`. Specular not set.
 - `GL_COLOR_MATERIAL` is enabled (`src/rendering.cpp:339`) with no `glColorMaterial` call (grep), so with the default
   mode `GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE` (spec default) `glColor` sets the material's ambient and diffuse. No `glMaterial`, `glLightModel`, fog, culling or multisampling anywhere in `src/`
@@ -1311,7 +1311,8 @@ viewport size and fov. Model-view and its handedness are §4.2. Projection:
 
 - `rotateHorizontal(r)`: `yaw += r`, unbounded. `rotateVertical(r)`: `pitch += r` clamped to `[−pi()/2, pi()/2]`.
   `zoom(z)`: `distance += z`, **unclamped** (can go to 0 or negative). (`src/camera.hpp:52-70`.)
-- `hardSetOffset(o)` sets the target; `setOffset(o)` moves it 3 % of the way per call (`src/camera.hpp:38-50`;
+- `hardSetOffset(o)` sets the target; `setOffset(o)` moves it 3 % of the way per call (`src/camera.hpp:38-50`; every caller passes a `V3`; the
+  `V2` overload, which keeps `offset.y`, is never called;
   per frame, so frame-rate dependent, like the chaser in §6.5).
 - First-person views ignore the camera's model-view: `gluLookAt(eye = Head, center = (LeftHand + RightHand)/2,
   up = Head − Neck)` of that player (`src/rendering.cpp:346-352`; shader path `src/editor_canvas.cpp:548-555`).
@@ -1322,8 +1323,8 @@ its own fov; each view is scissored and cleared (`src/rendering.cpp:321-337`).
 
 | Program | Views (fov) | Camera setup and per-frame motion | Keys / mouse |
 |---|---|---|---|
-| `glfw_playback` (640×480, vsync) | one, third person, 50 | `zoom(1.2)` → distance 2.9; `hardSetOffset(cameraOffsetFor(first frame))`; every frame `rotateHorizontal(−0.013)` (auto-orbit) and `setOffset(cameraOffsetFor(pos))` (`src/glfw_playback.cpp:41-47,71-72,148-152`) | ↑/↓ pitch ∓0.05, ←/→ yaw ∓0.03, Home/End distance ∓0.05, per frame while held (`src/glfw_playback.cpp:74-79`) |
-| `glfw_editor` (640×480, vsync) | single: third person 60; split (toggle): third person 90 on the left half, players 0/1 first person 75 on the right quarters (`src/glfw_editor.cpp:262-268`) | target `center` with `y·0.7` (§4.3); "jiggle" `rotateHorizontal(sin(jiggle)·0.0005)`, `jiggle += 0.01` per frame when not editing and no joint chosen (`src/glfw_editor.cpp:417-421`) | ↑/↓ pitch ∓0.05, **← yaw +0.03, → yaw −0.03** (opposite of playback), Home/End ∓0.05 (`src/glfw_editor.cpp:410-415`); middle-drag: yaw `+0.002·dx`, pitch `−0.002·dy` per pixel (`src/glfw_editor.cpp:276-291`) |
+| `glfw_playback` (640×480, vsync) | one, third person, 50 | `zoom(1.2)` → distance 2.9; `hardSetOffset(cameraOffsetFor(first frame))`; every frame `rotateHorizontal(−0.013)` (auto-orbit) and `setOffset(cameraOffsetFor(pos))` (`src/glfw_playback.cpp:41-47,71-72,94,148-152`) | ↑/↓ pitch ∓0.05, ←/→ yaw ∓0.03, Home/End distance ∓0.05, per frame while held (`src/glfw_playback.cpp:74-79`) |
+| `glfw_editor` (640×480, vsync) | single: third person 60; split (toggle): third person 90 on the left half, players 0/1 first person 75 on the right quarters (`src/glfw_editor.cpp:262-268`) | `setOffset(center` with `y·0.7)` when not in edit mode, no joint chosen and not playing back (`src/glfw_editor.cpp:526-531`, §4.3); "jiggle" `rotateHorizontal(sin(jiggle)·0.0005)`, `jiggle += 0.01` per frame when not editing and no joint chosen (`src/glfw_editor.cpp:417-421`) | ↑/↓ pitch ∓0.05, **← yaw +0.03, → yaw −0.03** (opposite of playback; ←/→ also reset the jiggle phase to `pi()`/0), Home/End ∓0.05 (`src/glfw_editor.cpp:410-415`); middle-drag: yaw `+0.002·dx`, pitch `−0.002·dy` per pixel (`src/glfw_editor.cpp:276-291`) |
 | web editor (1024×768) | external third person 60, or one player first person 120 (`src/editor_canvas.cpp:48-54`) | as `glfw_editor`, target also while editing (`src/editor_canvas.cpp:539-544`) | keys as `glfw_editor` (`src/editor_canvas.cpp:189-206`); middle-drag `1·Δ` in NDC units (`src/editor_canvas.cpp:389-395`) |
 | images (`mkpospages`) | heading views: third person 45; player views: first person 80 | below (§7.6) | none |
 
@@ -1333,7 +1334,9 @@ is commented out at the pin (`src/makevideo.cpp:124-139`).
 ### 7.6 Reference images (`ImageMaker`)
 
 What the oracle's `--images` (`tools/oracle/README.md`, #35) will run:
-- Context: OSMesa, `OSMESA_RGB`, 16-bit depth, no stencil, 16-bit accumulation (`src/images.cpp:525`).
+- Context: OSMesa, `OSMESA_RGB`, 16-bit depth, no stencil, 16-bit accumulation (`src/images.cpp:525`). The accumulation
+  buffer is only used by the `png(pos_beg, pos_end, …)` overload that averages frames (`src/images.cpp:236-300`),
+  which nothing calls at the pin (grep of `png(`): no motion blur in the images.
 - **2× supersampling**: renders at `2w × 2h`, then each output pixel is the integer (truncating) mean of a 2×2 block
   (`src/images.cpp:63-106`). The image is flipped vertically before writing (`src/images.cpp:111-112`).
 - Channels 0 and 2 of every pixel are swapped before writing (`src/images.cpp:89,176,278`). Whether that turns
@@ -1361,7 +1364,10 @@ Visible in the oracle PNGs, so a pixel comparison depends on it:
 - Fixed-function lighting: two directional lights, 0.65 diffuse, 0.03 + 0.2 ambient, no specular, per-vertex Gouraud.
 - Camera math: `pi()`, `gluPerspective` with near 0.01 / far 15, the heading-view formula, fov 45, image sizes,
   2× supersampling with truncating box filter, vertical flip, the channel swap (once verified).
-- Grid: 0.5 m lines over ±2 m, 2 px at 2× (≈ 1 px).
+- Grid: 0.5 m lines over ±2 m, 2 px at 2× (≈ 1 px), aliased (no `GL_LINE_SMOOTH`, grep) before the box filter.
+- The 16-bit depth buffer with near 0.01 / far 15: joints rest at `y = radius` just above the grid plane, so depth
+  resolution there can change pixels.
+- Only the PNGs compare pixel by pixel: the clips are lossy H.264 `yuv420p` (`src/images.cpp:226-228`).
 
 Not visible in the oracle images (free, or to be chosen for UX):
 - Which API/technique draws it (fixed-function vs shaders, per-vertex vs per-pixel lighting) as long as the images
@@ -1372,5 +1378,6 @@ Not visible in the oracle images (free, or to be chosen for UX):
   (`src/images.cpp:80-81,167-168,266-267`), so it never shows in the images (editor only; still part of fidelity).
 - Mesh layout details with no visual effect (winding, the pillar strip's degenerate triangles, the open seam).
 
-Open points: OSMesa's channel order and the lighting defaults above (oracle images, #35); whether a pillar basis ever
-degenerates on the DB (section 10).
+Open points: OSMesa's channel order and the lighting defaults above (oracle images, #35); the on-screen orientation of
+the default camera left open in §4.2 (same images); whether a pillar basis ever degenerates on the DB (section 10);
+the JS viewers' handedness (§3.2), not covered here (ADR 0004 / section 8).
