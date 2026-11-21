@@ -1193,7 +1193,7 @@ spheres at the ends close them, since a pillar end has the joint's own radius).
   constants widened to `double`; `src/icosphere.cpp:16-29`), each subdivision splits every triangle in 4 with new
   vertices `normalize(e0 + e1)` shared per edge (`src/icosphere.cpp:34-73`). `fine` = 2 subdivisions (162 vertices,
   320 triangles), `course` [sic] = 1 (42 / 80) (`src/playerdrawer.cpp:144-147`).
-- **Fine** for `Head`, `Core`, both hips and both shoulders; **coarse** for the other 16 joints
+- **Fine** for `Head`, `Core`, both hips and both shoulders; **coarse** for the other 17 joints (`Neck` included)
   (`src/playerdrawer.cpp:269-272`).
 - Vertex `center + v·radius`, normal `v` (unit), triangles emitted with reversed index order `2, 1, 0`
   (`src/playerdrawer.cpp:149-166`). With no face culling anywhere (below) the winding does not change the image.
@@ -1232,7 +1232,8 @@ radii `ra, rb, rc` (`src/playerdrawer.cpp:17-35`):
 - The result is a slab of thickness `2·r` at each corner, bevelled out to the corner radii along the edges' directions.
 
 **Normals** are never recomputed: they are the unit vectors above, passed with `glNormal3d` (`src/playerdrawer.cpp:9`).
-No `GL_NORMALIZE`, no `glShadeModel` (grep of `src/`), so smooth (Gouraud) shading, the OpenGL default.
+No `GL_NORMALIZE`, no `glShadeModel` (grep of `src/`), so smooth (Gouraud) shading (OpenGL spec default, not code;
+**[unverified]** on OSMesa 20.0.8, see §7.3).
 
 Vertices go to GL as `double` (`glVertex3d`, `src/playerdrawer.cpp:10`); the shader path converts them to `float`
 (`V3f`, `src/playerdrawer.hpp:11`).
@@ -1262,17 +1263,19 @@ joint as a 20-px white point without depth test; `src/rendering.cpp:61-101,141-1
 ### 7.3 Lights and shading
 
 **Fixed-function** (`setupLights`, `src/rendering.cpp:229-247`), called after the model-view is loaded
-(`src/rendering.cpp:341-356`), so the light positions are in **world** space:
+(`src/rendering.cpp:341-356`); since `GL_POSITION` is transformed by the current model-view (OpenGL spec, not code),
+the light directions are in **world** space:
 - `GL_LIGHT0` and `GL_LIGHT1`, both **directional** (`w = 0`): toward `(2, 2, 2)` and `(−2, 2, −2)`, i.e. unit
   directions `(1, 1, 1)/√3` and `(−1, 1, −1)/√3`.
 - Each: diffuse `0.65` (RGB), ambient `0.03`. Specular not set.
-- `GL_COLOR_MATERIAL` is enabled (`src/rendering.cpp:339`) with no `glColorMaterial` call (grep), so `glColor` sets
-  the material's ambient and diffuse. No `glMaterial`, `glLightModel`, fog, culling or multisampling anywhere in `src/`
+- `GL_COLOR_MATERIAL` is enabled (`src/rendering.cpp:339`) with no `glColorMaterial` call (grep), so with the default
+  mode `GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE` (spec default) `glColor` sets the material's ambient and diffuse. No `glMaterial`, `glLightModel`, fog, culling or multisampling anywhere in `src/`
   (grep of `glMaterial|glLightModel|GL_FOG|GL_CULL_FACE|GL_MULTISAMPLE`; the only culling line is commented out,
   `src/editor_canvas.cpp:631`).
 - The rest are OpenGL 1.x defaults (spec, not code; **[unverified]** against OSMesa 20.0.8 until the oracle images
   exist): global ambient `0.2`, material specular 0 (so no highlight even though `LIGHT0`'s default specular is 1),
-  one-sided lighting, no attenuation, per-vertex evaluation. That gives, per vertex and channel,
+  one-sided lighting, no attenuation, per-vertex evaluation; depth test `GL_LESS` (no `glDepthFunc` in the fixed path;
+  only `src/editor_canvas.cpp:629` sets it, to the same value). That gives, per vertex and channel,
   `color · (0.2 + 0.06 + 0.65·(max(0, n·l₀) + max(0, n·l₁)))`, clamped to `[0, 1]`.
 - The **grid is lit too** (normal `(0, 1, 0)`, `src/rendering.cpp:251`): factor `0.26 + 0.65·2/√3 ≈ 1.01`, so it shows
   at about its nominal color (clamped).
@@ -1345,12 +1348,14 @@ What the oracle's `--images` (`tools/oracle/README.md`, #35) will run:
   generate them at the pin (commented out, `src/headings.hpp:41-45`).
 - Clips (MP4 via ffmpeg, 200×150): per-frame heading camera with `ymax` smoothed 10 times over the frames by a
   3-tap mean (`src/images.cpp:36-53,431-463`); position rotation clips orbit yaw `0..355°` in 5° steps
-  (`src/images.cpp:388-409`). Frames come from §6.2 `smoothen(frames)` (`src/mkpospages.cpp:340,349`).
+  (`src/images.cpp:388-409`). Frames: `frames_for_sequence` (§6.2), then mkpospages' **own** `smoothen` with
+  `min(0.55, 0.3 + y)` (§6.3, `src/mkpospages.cpp:319-331`), not the one of `paths.cpp`; called at
+  `src/mkpospages.cpp:340,349`.
 
 ### 7.7 Input for ADR 0006 and phase 3 (no decision here)
 
 Visible in the oracle PNGs, so a pixel comparison depends on it:
-- Geometry: icosphere level per joint (2 / 1), radii and the +0.005 highlight, 10-face pillars with the `(1,1,1)`
+- Geometry: icosphere level per joint (2 / 1), radii, 10-face pillars with the `(1,1,1)`
   basis and axis-perpendicular normals, midpoint split, the five fat triangles with their exact vertices and normals.
 - Colors: players, `Style` grid/background, image backgrounds and `0.8·bg` grid.
 - Fixed-function lighting: two directional lights, 0.65 diffuse, 0.03 + 0.2 ambient, no specular, per-vertex Gouraud.
@@ -1363,6 +1368,8 @@ Not visible in the oracle images (free, or to be chosen for UX):
   match within the tolerance ADR 0006 sets; the shader renderer's look (§7.3) is not a reference.
 - Interactive camera: auto-orbit speed, jiggle, `setOffset` smoothing per frame vs per second, key/mouse bindings and
   their signs, window size, unclamped zoom, view layouts, overlay styling.
+- The +0.005 radius on override-colored joints: `ImageMaker` always passes `{}` as colors and no highlight
+  (`src/images.cpp:80-81,167-168,266-267`), so it never shows in the images (editor only; still part of fidelity).
 - Mesh layout details with no visual effect (winding, the pillar strip's degenerate triangles, the open seam).
 
 Open points: OSMesa's channel order and the lighting defaults above (oracle images, #35); whether a pillar basis ever
