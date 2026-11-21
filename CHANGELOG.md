@@ -5,8 +5,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+Unreleased changes live in `changelog.d/` until the next release.
+
 ### Added
-- `docs/architecture.md` (packages and dependency direction, data flow, memory and test strategy) and ADRs 0002 (oracle: the original built in Docker as the source of truth) and 0003 (numeric precision: `f64` in `core`, no FMA contraction, what is compared bit for bit and what may need a tolerance), proposed for acceptance (#43).
+- `docs/original.md` section 6: interpolation and playback (`between` and its term order, frame-based `follow`/`frames` with integer-halved frames per position for `detailed`, repeated boundaries and dropped last frame, `smoothen` with state across a script, time-based `Playback::progress` in segments per second with leftover time and pauses, the per-frame 0.2 chaser, chained transitions, input for phases 2/3), cited to the pinned original and cross-checked against the oracle test data (#41).
 - `docs/original.md` section 5: transforms (`mirror`, `swap_players`, `Reorientation`/`PositionReorientation` and their order of application, `compose`/`inverse` with derived formulas, canonical orientation with and without mirror, how the graph uses them, input for phase 2), cited to the pinned original (#40).
 - Oracle dumper part 2: `ops.ndjson` (`mirror`, `swap_players`, both canonical orientations, `heading`, `center` of every position), `between.ndjson` (`s` = 0.25/0.5/0.75 for every consecutive pair), `playback.ndjson` (`frames()` with frames-per-pos 11, 5 for `detailed`, raw and smoothed per transition, plus one 2-transition chain smoothed in one call) and `spring.ndjson` (every named position); files are streamed to temporaries and renamed at the end; full dump ~0.54 GB (#34).
 - Oracle dumper (`tools/oracle/dump`, linked against the original's `common` objects) and `./build.sh oracle --full|--test`: `meta.json`, `sequences.ndjson`, `graph.ndjson` (including anonymous nodes and the `.index`) and `body.json` of the whole DB to `build/oracle/full/`, plus a dumper test over `tools/oracle/dump/testdata/` (#34, part 1).

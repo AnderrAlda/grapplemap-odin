@@ -47,6 +47,7 @@ Nunca hagas sleep ni polling: `hc wait w-<slug>` (hasta que deje de trabajar; `r
 
 ## 4. Cerrar el PR
 Normalmente el worker ya dejó el PR en ready (lo hace la skill `pr`). Compruébalo contra la evidencia, sobre el mismo commit (`gh pr view N --json headRefOid,statusCheckRollup`): CI verde, `code-reviewer` sin bloqueantes y checklist completo. Si se cumple y sigue en draft, `gh pr ready N` sin preguntar (regla de autonomía de `CLAUDE.md`). Si algo falla, el PR sigue en draft y se lo mandas al worker. Dímelo cuando haya PRs listos para tu merge.
+**Tras cada merge de mi parte**, los PR abiertos del lote pueden quedar en conflicto con `main` en un fichero compartido. Pide a cada worker afectado (`hc send`, si está `idle`/`done`) que haga `git merge origin/main` (sin force-push), resuelva y consiga CI verde en el nuevo HEAD. El merge cambia el HEAD: hace falta nueva revisión (`code-reviewer` sobre el nuevo HEAD) antes de dejarlo ready, sea cual sea el conflicto.
 **Nunca `gh pr merge`.** Tras mi merge, limpia (paso 4b).
 
 ## 4b. Limpiar lo terminado

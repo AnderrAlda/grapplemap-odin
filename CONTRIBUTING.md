@@ -18,7 +18,7 @@ No hay branch protection de GitHub (repo privado sin plan Pro): `main` está pro
 - Plan in `docs/plans/` linked in the PR (skip for one-sentence changes).
 - `./build.sh ci` passes locally; CI green.
 - Tests added/updated (TDD in `core`); zero leaks in debug.
-- Docs, nested `CLAUDE.md`, CHANGELOG (Unreleased) and ADR updated where applicable.
+- Docs, nested `CLAUDE.md`, changelog fragment (`changelog.d/`, never `CHANGELOG.md`) and ADR updated where applicable.
 - Reviewed with no blockers; screenshots/GIF for visual changes.
 
 ## Rules
