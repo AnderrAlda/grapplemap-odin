@@ -43,20 +43,19 @@ El repo es privado sin plan Pro, así que GitHub no puede proteger `main`. La pr
 La app Herdr corre sus terminales en herdr-core (`hc`); el CLI `herdr` antiguo no los ve. `herdr-app` solo coloca ventanas (y solo existe en el Mac); `hc` funciona igual en el Mac y en el servidor.
 La sesión `MAIN` (raíz del repo, en `main`, sin editar código; recomendado en el servidor de Hetzner, para que siga aunque el portátil duerma, pero lanza los workers en la máquina donde corre) coordina los workers con `/orchestrate`:
 1. Inventario de issues, PRs, worktrees y agentes (`gh`, `git worktree list`, `hc ls`).
-2. Por cada issue con **plan aprobado por ti**: `./build.sh worktree <rama>` → `hc run --bg --name <slug> --cwd <worktree> --label herdr.space=<space de MAIN> claude --permission-mode auto "…"`
-   (así aparece como pestaña en la app) → mensajes separados con `hc send`: `/start-task <N>` y `/pr`. El primer mensaje (lenguaje natural) hace `./build.sh setup`
-   y copia el plan aprobado a la rama del worker, porque `main` no lo tiene commiteado. Como mucho 3 workers a la vez.
-3. Vigila con `hc wait` / `hc read` (nunca sleep ni polling). Cuando un PR cumple CI verde + `code-reviewer` sin bloqueantes + checklist completo
-   (mismo commit), lo pasa a ready sin preguntar y te avisa. **El merge es siempre tuyo** (`gh pr merge` sigue en `deny`).
+2. Por cada issue con **plan aprobado por ti** (o un cambio de una frase): `./build.sh worktree <rama>` → `hc run --bg --outlive-parent --name w-<slug> --cwd <worktree> --label herdr.space=<space de MAIN> claude --permission-mode auto "/start-task <N> <ruta del plan>"`
+   (aparece como pestaña en la app). La slash command va como **prompt inicial** porque `claude` la interpreta como escrita por el usuario; con `hc send` llegaría envuelta en `<hc from=...>` como texto
+   y no se ejecutaría. Cada worker hace **todo el recorrido solo**: `/start-task` (setup, copia y commitea el plan aprobado, implementa, `./build.sh ci`) y luego la skill `pr`
+   (invocable por workers: revisión, PR draft, espera de CI, ready). Como mucho 3 workers a la vez.
+3. MAIN vigila con `hc wait` / `hc read` (nunca sleep ni polling; el estado está en `.status.state` de `hc get --json`) y verifica el resultado contra la evidencia: CI verde + `code-reviewer`
+   sin bloqueantes + checklist completo (mismo commit). Si el worker no lo dejó ready, lo pasa a ready sin preguntar y te avisa. **El merge es siempre tuyo** (`gh pr merge` sigue en `deny`).
 4. Solo te pregunta en: aprobar un plan, merge, plan erróneo o alcance ambiguo, dependencia nueva, tocar `reference/` o golden,
    editar workflows de CI, worker `blocked`, CI rojo tras 2 intentos, tope del Stop hook, conflicto entre workers o una acción
    irreversible no cubierta por `allow`.
 Para que los workers no se detengan a pedir permiso, `git push`, `gh pr create/ready/edit/comment`, `gh issue create/edit/comment`
-y los subcomandos `hc` que usa la skill (`ls`, `get`, `read`, `wait`, `send`, `run --bg`) están en `allow` en
-`.claude/settings.json`. `hc exec`, `hc keys`, `hc interrupt`, `hc kill/rm` y `hc run` sin `--bg` NO están en `allow`. Pero `hc send` (teclea en
-cualquier terminal) y `hc run --bg` (arranca cualquier programa) sí lo están, porque MAIN y los workers los necesitan, y **ni los `deny` ni el guard analizan
-el texto interior**: es un riesgo residual asumido, mitigado por convención (MAIN solo habla con sus workers, comprobar el estado con `hc get` antes de enviar, nunca `--force`, que
-además está en `deny`). Los `deny` (merge, force-push, push a `main`) siguen igual y el guard de push bloquea además
+y estos subcomandos `hc` están en `allow` en `.claude/settings.json`: `ls|get|read|wait` (solo lectura), `run --bg`, y `send|kill|rm` **solo para terminales llamados `w-*`**,
+con un `deny` de `hc send --force`. `hc exec`, `hc keys`, `hc interrupt` y `hc run` sin `--bg` NO están en `allow`. Riesgo residual asumido: `hc run --bg` puede arrancar cualquier
+programa y ni los `deny` ni el guard analizan ese texto interior; se mitiga por convención (MAIN solo lanza `claude` para sus workers). Los `deny` (merge, force-push, push a `main`) siguen igual y el guard de push bloquea además
 `--mirror`, `--all` y `+refspec`.
 Limpieza: tras cada merge MAIN elimina el worktree, borra la rama local (`-D`, por el squash) y hace `git fetch --prune` (GitHub ya borra la remota),
 solo si el PR está `MERGED`, el HEAD del worktree (no solo la rama) es el `headRefOid` del PR, el árbol está limpio (incluidos ignorados no regenerables)

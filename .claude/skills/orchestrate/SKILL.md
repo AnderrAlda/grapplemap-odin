@@ -25,26 +25,23 @@ La app Herdr corre sus terminales en **herdr-core (`hc`)**: usa `hc` para lanzar
 Si dos issues tocan los mismos ficheros, no los lances a la vez: encadénalos.
 
 ## 2. Lanzar un worker
-1. `git fetch origin` y `./build.sh worktree <type>/<slug>` desde la raíz (crea `../grapplemap-odin-wt/<type>-<slug>` y el submódulo; el `type` sale del label `type:` del issue). Usa la ruta **absoluta** del worktree. El nombre del terminal (`<slug>`) son 1-32 caracteres de `a-z0-9-_` y único entre los vivos: deriva del nombre de la rama (minúsculas, `/` → `-`, recortado).
-2. El plan aprobado vive sin commit en `docs/plans/` de `main`; el worktree no lo tiene. Díselo al worker en su primer mensaje (ruta absoluta) para que lo copie y lo commitee en su rama antes de implementar.
-3. Lanza el worker con su primer mensaje (un `/comando` solo se interpreta al inicio de un mensaje, así que este primero va en lenguaje natural):
+Cada worker hace **todo el recorrido por sí mismo** en su worktree: `/start-task` (setup, plan, implementar, `./build.sh ci`) y luego la skill `pr` (revisión, PR draft, CI, ready). Tú solo lanzas, vigilas, verificas y limpias.
+1. `git fetch origin` y `./build.sh worktree <type>/<slug>` desde la raíz (crea `../grapplemap-odin-wt/<type>-<slug>` y el submódulo; el `type` sale del label `type:` del issue). Usa la ruta **absoluta** del worktree. El nombre del terminal es siempre `w-<slug>`: 1-32 caracteres de `a-z0-9-_`, único entre los vivos (deriva del nombre de la rama: minúsculas, `/` → `-`, recortado). El prefijo `w-` es lo que permiten las reglas `allow` de `hc send/kill/rm`.
+2. Lanza el worker con la slash command como **prompt inicial** (así `claude` la interpreta como escrita por el usuario; con `hc send` llegaría envuelta en `<hc from=...>` como texto y no se ejecutaría):
    ```
-   hc run --bg --outlive-parent --name <slug> --cwd <ruta-absoluta-del-worktree> --label herdr.space=<tu-space> claude --permission-mode auto "Ejecuta ./build.sh setup (activa los hooks git anti-main). Copia el plan aprobado <ruta-absoluta>/docs/plans/<N>-<slug>.md a docs/plans/ de este worktree y commitéalo (docs(plan): ... (#N)). Cuando termines o te atasques, avisa con: hc send ${HC_TERMINAL_ID} 'listo o atascado'."
+   hc run --bg --outlive-parent --name w-<slug> --cwd <ruta-absoluta-del-worktree> --label herdr.space=<tu-space> claude --permission-mode auto "/start-task <N> <ruta-absoluta>/docs/plans/<N>-<slug>.md"
    ```
-   `${HC_TERMINAL_ID}` se expande en tu shell (es tu id, el de MAIN), no lo escribas como marcador. `--outlive-parent` evita que reiniciar MAIN mate a un worker con trabajo sin commitear.
-   Comprueba `first_message.sent` en el resultado; si es `false` o no aparece, la tarea puede NO haberse enviado: `hc read <slug>`, confirma que el worker empezó, y reenvía solo tras leer.
-4. Cuando el worker esté parado (`hc wait <slug>`), comprueba con `hc get <slug> --json` que su `status` es `idle` o `done` (nunca `working`, `blocked` ni `error`; un worker parado y sin ver queda en `done`) y envía `hc send <slug> "/start-task <N>"` (la rama ya existe y es la del worktree: no crees otra). Nunca uses `--force`; no uses `--if idle`, que solo acepta `idle` o `working` y rechazaría `done`. Al terminar: `hc send <slug> "/pr"`, con la misma comprobación previa.
-   Verifica en la primera ejecución real que un `/comando` enviado con `hc send` se interpreta como slash command; si no, escala.
+   El segundo argumento (ruta del plan aprobado, sin commit en `main`) se omite si el cambio no necesita plan. `hc run` no devuelve `first_message` con flags extra: confirma que arrancó con `hc read --lines 40 w-<slug>`. Si aparece un diálogo (p. ej. de confianza), escala: nunca `hc keys`.
+3. No hace falta mandarle nada más. Para corregir o contestar a una escalación suya, `hc send w-<slug> "<texto en lenguaje natural>"` (nunca otro `/comando`; llegaría como texto) y solo si su estado es `idle` o `done`.
 
 ## 3. Vigilar
-Nunca hagas sleep ni polling: `hc wait <slug>` (hasta que deje de trabajar), `hc wait --children any|all` o `hc send --wait <slug> ...`, y lee con `hc read --lines 60 <slug>`. Los avisos llegan como `<hc from=...>`.
-- `done` / `idle`: comprueba el resultado (PR draft abierto, evidencia de `./build.sh ci`, labels y milestone) y manda el siguiente paso.
+Nunca hagas sleep ni polling: `hc wait w-<slug>` (hasta que deje de trabajar; `reason: timeout` es un chequeo, vuelve a esperar) y lee con `hc read --lines 60 w-<slug>`. Su estado está en `hc get w-<slug> --json | jq -r '.status.state'` (puede estar ausente: no envíes nada en ese caso); un worker parado suele quedar en `done`.
+- `done` / `idle`: comprueba el resultado con `gh pr list --head <rama>` y `gh pr view N --json isDraft,headRefOid,statusCheckRollup,labels,milestone`: PR abierto, labels y milestone, evidencia de `./build.sh ci`. Si el worker no abrió PR, lee su pantalla y su último mensaje: normalmente es una escalación suya (plan erróneo, dependencia nueva, CI rojo tras 2 intentos): decide con la lista del paso 5.
 - `blocked` / `error`: lee la pantalla. **Nunca respondas tú a un diálogo de permisos de otro agente** (no uses `hc keys`); escala con el contexto.
-- `reason: timeout` de `hc wait` es un chequeo, no un fallo: vuelve a esperar.
+- Hooks Stop: si un worker se queda atascado por el Stop hook (8 bloqueos seguidos), escala.
 
 ## 4. Cerrar el PR
-Con CI verde, `code-reviewer` sin bloqueantes y checklist completo, todo sobre el mismo commit (`gh pr view N --json headRefOid,statusCheckRollup`):
-`gh pr ready N` sin preguntar (regla de autonomía de `CLAUDE.md`) y dímelo. Si algo falla, el PR sigue en draft y se lo mandas al worker.
+Normalmente el worker ya dejó el PR en ready (lo hace la skill `pr`). Compruébalo contra la evidencia, sobre el mismo commit (`gh pr view N --json headRefOid,statusCheckRollup`): CI verde, `code-reviewer` sin bloqueantes y checklist completo. Si se cumple y sigue en draft, `gh pr ready N` sin preguntar (regla de autonomía de `CLAUDE.md`). Si algo falla, el PR sigue en draft y se lo mandas al worker. Dímelo cuando haya PRs listos para tu merge.
 **Nunca `gh pr merge`.** Tras mi merge, limpia (paso 4b).
 
 ## 4b. Limpiar lo terminado
@@ -54,7 +51,7 @@ En cada inventario, y siempre que te diga que he mergeado, busca worktrees y ram
 3. `git -C <worktree> status --short --ignored` está vacío salvo ficheros ignorados que reconozcas como regenerables (salidas de build); `--force` los borra.
 4. Para las ramas de respaldo (`pre-rebase-*`): lista cada una con su SHA (`git branch -vv --list 'pre-rebase-*'`) y bórrala solo si es ancestro del `headRefOid` (`git merge-base --is-ancestor <rama> <headRefOid>`); si no, escala.
 Entonces, desde la raíz y con `main` al día (`git pull --ff-only`):
-- Worker: `hc kill <slug>`, comprueba con `hc get <slug>` que terminó y luego `hc rm <slug>` (no están en `allow`: pedirán confirmación). Hazlo antes de quitar el worktree.
+- Worker: `hc kill w-<slug>`, comprueba con `hc get w-<slug>` que terminó y luego `hc rm w-<slug>` (están en `allow` solo para nombres `w-*`). Hazlo antes de quitar el worktree.
 - Worktree: usa `./build.sh worktree-remove <rama>` cuando exista (#54). Mientras no exista, `git worktree remove <ruta>`; si git se niega solo por tener submódulos, `--force` es aceptable **únicamente** tras las comprobaciones 1-3 y **solo en `git worktree remove`, nunca en un push** (no está en `allow`: pedirá confirmación). Luego `git worktree prune`.
 - Rama local: `git branch -D <rama>` (un squash no hace la rama «mergeada» para git, por eso `-D` y no `-d`; las comprobaciones son la garantía, y `git branch -D main*` está en `deny`).
 - Remoto: GitHub borra la rama al mergear (`delete_branch_on_merge`); solo `git fetch --prune`. Nunca `git push --delete`.
@@ -70,6 +67,6 @@ Pregúntame solo si ocurre alguno de estos casos; lo demás se resuelve y se res
 
 ## Reglas
 - Todo issue y PR con labels (`type:`, `area:`, `phase-N`) y milestone de su fase desde que se crean: `gh issue create`/`gh pr create` no se ejecutan sin ambos.
-- Solo `hc ls|get|read|wait|send|run --bg` están en `allow`. `hc exec`, `hc keys`, `hc interrupt`, `hc kill/rm` y `hc run` sin `--bg` no lo están a propósito. Ojo: `hc send` puede teclear en cualquier terminal y `hc run --bg` puede arrancar cualquier programa, y ni los `deny` ni el guard analizan ese texto interior; el riesgo residual se acepta porque MAIN y los workers lo necesitan, y se mitiga solo por convención (solo tus workers, comprobar el estado antes de enviar, nunca `--force`) y con un `deny` de `hc send --force`.
+- `allow`: `hc ls|get|read|wait` (solo lectura), `hc run --bg`, y `hc send|kill|rm` **solo para terminales llamados `w-*`**, más un `deny` de `hc send --force`. `hc exec`, `hc keys`, `hc interrupt` y `hc run` sin `--bg` no están en `allow`. Riesgo residual asumido: `hc run --bg` puede arrancar cualquier programa y ni los `deny` ni el guard analizan ese texto interior; se mitiga por convención (solo lanzas `claude` para tus workers).
 - Sin mención a Claude/Anthropic ni `Co-Authored-By` en commits, PRs o issues.
 - El estado del trabajo vive en issues/PRs, no en la memoria de la sesión.
