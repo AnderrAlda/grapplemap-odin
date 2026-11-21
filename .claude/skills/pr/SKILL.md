@@ -14,6 +14,7 @@ Un PR nunca se abre ni se marca ready sin **label + milestone** y con el **check
 3. **Todo PR se revisa, sin excepción por tamaño** (ni «n/a» en la casilla). Lanza `code-reviewer` con `model: opus` si toca `src/core`, `src/render`, shaders o ADRs/arquitectura; `model: sonnet` en el resto. Guarda qué modelo se usó.
 4. Corrige los bloqueantes y vuelve a lanzar la revisión hasta que no queden; los bloqueantes de cualquier revisión se corrigen siempre.
    **Máximo una ronda de no bloqueantes aplicados por PR; el resto va a issues.** Una ronda = los no bloqueantes que decidas aplicar de una revisión, en un solo commit, que se vuelve a revisar. Los no bloqueantes de esa re-revisión y de las siguientes, y los que no apliques, van como comentario en el issue que corresponda o en un issue nuevo (con label y milestone); enlázalos en el cuerpo del PR.
+   Los hallazgos no bloqueantes del revisor que van a issue se crean con label `tech-debt` y milestone `Backlog`, salvo que sean `priority:high` (esos van al milestone de la fase en curso).
 
 ## 3. Metadatos (obligatorios)
 5. **Labels** (al menos tres), derivados del tipo del título Conventional y de las rutas tocadas:
