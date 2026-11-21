@@ -33,7 +33,7 @@ Si dos issues tocan los mismos ficheros, no los lances a la vez: encadénalos.
    ```
    `${HC_TERMINAL_ID}` se expande en tu shell (es tu id, el de MAIN), no lo escribas como marcador. `--outlive-parent` evita que reiniciar MAIN mate a un worker con trabajo sin commitear.
    Comprueba `first_message.sent` en el resultado; si es `false` o no aparece, la tarea puede NO haberse enviado: `hc read <slug>`, confirma que el worker empezó, y reenvía solo tras leer.
-4. Cuando el worker esté parado (`hc wait <slug>`): `hc send --if idle <slug> "/start-task <N>"` (`--if idle` solo escribe si no está trabajando ni bloqueado; nunca uses `--force`) (la rama ya existe y es la del worktree: no crees otra). Al terminar: `hc send --if idle <slug> "/pr"`.
+4. Cuando el worker esté parado (`hc wait <slug>`), comprueba con `hc get <slug> --json` que su `status` es `idle` o `done` (nunca `working`, `blocked` ni `error`; un worker parado y sin ver queda en `done`) y envía `hc send <slug> "/start-task <N>"` (la rama ya existe y es la del worktree: no crees otra). Nunca uses `--force`; no uses `--if idle`, que solo acepta `idle` o `working` y rechazaría `done`. Al terminar: `hc send <slug> "/pr"`, con la misma comprobación previa.
    Verifica en la primera ejecución real que un `/comando` enviado con `hc send` se interpreta como slash command; si no, escala.
 
 ## 3. Vigilar
@@ -70,6 +70,6 @@ Pregúntame solo si ocurre alguno de estos casos; lo demás se resuelve y se res
 
 ## Reglas
 - Todo issue y PR con labels (`type:`, `area:`, `phase-N`) y milestone de su fase desde que se crean: `gh issue create`/`gh pr create` no se ejecutan sin ambos.
-- Solo `hc ls|get|read|wait|send|run --bg` están en `allow`. `hc exec`, `hc keys`, `hc interrupt`, `hc kill/rm` y `hc run` sin `--bg` no lo están a propósito. Ojo: `hc send` puede teclear en cualquier terminal y `hc run --bg` puede arrancar cualquier programa, y ni los `deny` ni el guard analizan ese texto interior; el riesgo residual se acepta porque MAIN y los workers lo necesitan, y se mitiga solo por convención (solo tus workers, `--if idle`, nunca `--force`) y con un `deny` de `hc send --force`.
+- Solo `hc ls|get|read|wait|send|run --bg` están en `allow`. `hc exec`, `hc keys`, `hc interrupt`, `hc kill/rm` y `hc run` sin `--bg` no lo están a propósito. Ojo: `hc send` puede teclear en cualquier terminal y `hc run --bg` puede arrancar cualquier programa, y ni los `deny` ni el guard analizan ese texto interior; el riesgo residual se acepta porque MAIN y los workers lo necesitan, y se mitiga solo por convención (solo tus workers, comprobar el estado antes de enviar, nunca `--force`) y con un `deny` de `hc send --force`.
 - Sin mención a Claude/Anthropic ni `Co-Authored-By` en commits, PRs o issues.
 - El estado del trabajo vive en issues/PRs, no en la memoria de la sesión.
