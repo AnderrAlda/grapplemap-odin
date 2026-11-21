@@ -1,7 +1,7 @@
 # Oracle image: builds the original GrappleMap tools (reference/GrappleMap, read-only submodule)
 # out of tree, with the original SConstruct and flags. See README.md.
 # Ubuntu 18.04 (amd64 manifest): Boost 1.65 still ships the legacy GIL png_io the original uses.
-FROM ubuntu:18.04@sha256:dca176c9663a7ba4c1f0e710986f5a25e672842963d95b960191e2d9f7185ebe
+FROM ubuntu:18.04@sha256:dca176c9663a7ba4c1f0e710986f5a25e672842963d95b960191e2d9f7185ebe AS original
 
 ENV LC_ALL=C DEBIAN_FRONTEND=noninteractive
 
@@ -45,3 +45,14 @@ RUN scons -C /oracle/src -j"$(nproc)" \
 RUN { gcc --version | head -n1; \
       dpkg-query -W -f='${Package} ${Version}\n' libc6 libboost-program-options-dev libboost-filesystem-dev libboost-system-dev libosmesa6 libftgl2 libgraphviz-dev libpng-dev | sort; \
     } > /oracle/VERSIONS
+
+# Dumper (#34): own code linked against the original's `common` objects (SConstruct:33) and cmdlibs.
+# -ffp-contract=off: no FMA contraction in the dumper's own arithmetic (the generic x86-64 target has no FMA anyway).
+FROM original AS dumper
+COPY tools/oracle/dump /oracle/dump
+RUN cd /oracle/src \
+ && g++ -std=c++1y -O3 -DNDEBUG -ffp-contract=off -Wall -Wextra -pedantic -Wno-missing-field-initializers -Werror \
+      -I/oracle/src -o /usr/local/bin/grapplemap-dump /oracle/dump/dump.cpp \
+      graph.o graph_util.o positions.o viables.o persistence.o paths.o playback.o icosphere.o editor.o metadata.o \
+      md5.o js_conversions.o -lboost_program_options \
+ && install -m 0755 /oracle/dump/run.sh /usr/local/bin/grapplemap-oracle-dump

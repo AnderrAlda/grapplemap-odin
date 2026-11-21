@@ -1,3 +1,5 @@
 *
 !reference/GrappleMap/src
 !reference/GrappleMap/GrappleMap.txt
+!tools/oracle/dump
+tools/oracle/dump/testdata

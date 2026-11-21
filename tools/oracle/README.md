@@ -2,7 +2,7 @@
 
 Docker image that builds the **original GrappleMap** tools (`reference/GrappleMap`, read-only submodule, pinned
 at `032c8f9`) out of tree, using the original `SConstruct` and its flags unchanged. It is the oracle that later
-phase-1 deliverables (dumper, sample, oracle CI) build on. Issue: #33.
+phase-1 deliverables (dumper, sample, oracle CI) build on. Issues: #33 (image), #34 (dumper).
 
 ## Build
 
@@ -12,7 +12,8 @@ From the repository root:
 docker build --platform linux/amd64 -f tools/oracle/Dockerfile -t grapplemap-oracle .
 ```
 
-`Dockerfile.dockerignore` limits the build context to `reference/GrappleMap/src` and `GrappleMap.txt`.
+`Dockerfile.dockerignore` limits the build context to `reference/GrappleMap/src`, `GrappleMap.txt` and
+`tools/oracle/dump` (without its `testdata/`). Stages: `original` (the original tools) and `dumper` (the final image).
 On Apple Silicon the image runs emulated (slow `-O3` build, a few minutes); on amd64 CI it is native.
 
 ## What it contains
@@ -22,6 +23,50 @@ On Apple Silicon the image runs emulated (slow `-O3` build, a few minutes); on a
   need OSMesa/ftgl/gvc/png and are required by `--images` in #35)
 - `/oracle/GrappleMap.txt`: the original database
 - `/oracle/VERSIONS`: compiler and library versions, for recording in `meta.json`
+- `/usr/local/bin/grapplemap-dump` and `grapplemap-oracle-dump` (the dumper, see below)
+
+## Dumper (#34)
+
+`tools/oracle/dump/dump.cpp` (+ `json.hpp`, no extra dependencies) is linked against the original's `common` objects
+(`SConstruct:33`) and `boost_program_options`, built with `-std=c++1y -O3 -DNDEBUG -ffp-contract=off` and `-Werror`.
+`grapplemap-oracle-dump DB OUT [--versions FILE] [--commit SHA]` (`dump/run.sh`) runs `grapplemap-indexer` on a
+**copy** of `DB`, then the dumper, which always loads `DB` with `loadGraph(std::istream&)` (no `.index`; one code
+path) and only reads the copy's `.index` to dump it and check it.
+
+```sh
+./build.sh oracle --full   # whole DB -> build/oracle/full/ (git-ignored; wiped first; prints sha256 of each file)
+./build.sh oracle --test   # tools/oracle/dump/testdata/*.txt -> build/oracle/test/<name>/, diff -r with testdata/<name>/
+```
+
+Both build the image first (`docker build`, cached) and fail with a clear message when Docker or its daemon is
+missing. They are not part of `./build.sh ci`. `--sample`, `--images` and `--update-full-hashes` arrive with #35.
+
+Output (format of `docs/specs/phase-1-original-research.md`, "Dump format"; one JSON value per line, fixed order, no
+timestamps, doubles as `%.17g`, strings as UTF-8 with JSON escapes):
+
+| File | Content |
+|---|---|
+| `meta.json` | `dumper_version`, `submodule_commit`, `db_md5`, `index_md5`, `index_matches_db`, `index_consistent` (the `.index` pairs equal the `from`/`to` of `loadGraph(istream)`), `versions` (lines of `/oracle/VERSIONS`), `counts` (`blocks`, `positions`, `named_positions`, `transitions`, `nodes`, `anonymous_nodes`), `errors`: the original's exception message verbatim when `loadGraph` fails, or a message starting with `dumper: ` (the dumper is strict: invalid UTF-8, a coordinate off the base62 grid, an unreadable `.index`). On an error during loading or dumping only `meta.json` is written; on an `.index` mismatch all files are written. In every case with errors the exit status is 1 |
+| `sequences.ndjson` | one line per block in file order: `index`, `kind` (`position`/`transition`), `line_nr` (the original's value), `description`, `tags`, `properties` (sorted, as the original's `set`s), `refs` (lines starting `ref:`), `notes` (lines starting `note:`/`todo:`), `detailed`, `bidirectional`, `positions_q` |
+| `graph.ndjson` | nodes (`index`, `block` or `null` for anonymous nodes, `description`, `tags`, `position_q`), then transitions (`index`, `block`, `from`, `to`, `reorientation_from`/`_to` = `{translation, angle, swap, mirror}`), then one `{"type":"index", md5, pairs}` line with the `.index` |
+| `body.json` | `joints` (`jointDefs`: name, radius, draggable, mirror joint), `segments` (`limbs()`: ends, length, `mid_radius` or `null`, visible), `players` (code, color), `draw` (constants of `playerdrawer.{hpp,cpp}` with their source lines; `rendering.cpp` has none that affect body geometry) |
+
+Positions are quantized: `positions_q[k][player][joint] = [qx, qy, qz]`, integers `0…3843`, with
+`x = qx/1000 − 2`, `y = qy/1000`, `z = qz/1000 − 2` (exact: the dumper checks each value decodes back bit for bit).
+`refs`/`notes` are derived by the dumper (the original has no parser for them, `docs/original.md` §1.2).
+`line_nr` is the 0-based line of the block's first **position** line: the original evaluates `desc.size()` after
+`move(desc)` (`src/persistence.cpp:80-85`), which confirms the open point of `docs/original.md` §1.4.
+
+Full dump (pin `032c8f9`): 2,086 blocks, 8,323 positions, 601 named positions, 1,485 transitions, 725 nodes
+(124 anonymous); `.index` consistent. Two runs give identical bytes.
+
+Test DB: `testdata/basic.txt` is generated by `testdata/make_basic.py` (deterministic): a named position with quotes
+and `ref:`, a transition from it translated by +0.5 in x to an anonymous node (literal `\n`, UTF-8, `note:`/`todo:`, a
+tab, coordinates `q = 0` and `3843`), a bidirectional transition ending at the mirror of the second named position.
+`testdata/bad_digit.txt` has a non-base62 digit: the original rejects it, so its expected directory holds only
+`meta.json` with the original's error. A test whose expected directory has no `graph.ndjson` must make the dumper
+fail, and any other test must make it succeed. `testdata/<name>/` is the expected output, reviewed by hand: change it
+only together with the dumper and say why in the PR.
 
 ## Smoke checks
 
