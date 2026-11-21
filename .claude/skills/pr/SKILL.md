@@ -37,8 +37,8 @@ Un PR nunca se abre ni se marca ready sin **label + milestone** y con el **check
 ## 5. Reglas
 - Sin ninguna mención a Claude/Anthropic ni «Generated with» en título o cuerpo; el PR figura como hecho por el usuario.
 - Nunca marques ready sin: CI verde en el último commit, `code-reviewer` sin bloqueantes sobre ese mismo commit y checklist completo. Si el commit cambia después, repite la revisión.
-## 6. Esperar la CI y pasar a ready
-11. Tras abrir el draft, espera la CI sobre el último commit: `gh pr checks <N> --watch`. Si falla, corrige (como mucho 2 intentos; luego para y cuéntalo) y repite la revisión si el commit cambió.
-12. Con CI verde, marca la casilla de CI en el cuerpo (`gh pr edit --body`) y, si se cumplen las tres condiciones de la regla de abajo, `gh pr ready <N>`. Termina con un resumen corto: PR, CI, revisión, hallazgos enviados a issues. El merge nunca es tuyo.
+- Abre con `gh pr create --draft` sin pedir confirmación. Cuando se cumplan esas tres condiciones, pasa a ready con `gh pr ready` sin preguntar y avísame. NO hagas merge.
 
-- Abre con `gh pr create --draft` sin pedir confirmación. Cuando se cumplan las tres condiciones de arriba (CI verde, revisión sin bloqueantes y checklist completo, sobre el mismo commit), pasa a ready con `gh pr ready` sin preguntar y avísame. NO hagas merge.
+## 6. Esperar la CI y pasar a ready
+11. Tras abrir el draft, espera la CI sobre el último commit con `gh pr checks <N> --watch`, llamándolo con `timeout: 600000` en la herramienta Bash. Si la llamada expira por timeout, repite `--watch` (es idempotente): un timeout NO es un fallo de CI. Justo tras crear el PR puede salir «no checks reported»: espera unos segundos y reintenta. Solo cuenta como fallo un check en `fail`; entonces corrige (como mucho 2 intentos; luego para y cuéntalo) y repite la revisión si el commit cambió.
+12. Con CI verde, marca la casilla de CI en el cuerpo (`gh pr edit --body`) y, si se cumplen las tres condiciones de la sección 5, `gh pr ready <N>`. Termina con un resumen corto: PR, CI, revisión, hallazgos enviados a issues. El merge nunca es tuyo.

@@ -26,16 +26,17 @@ Si dos issues tocan los mismos ficheros, no los lances a la vez: encadénalos.
 
 ## 2. Lanzar un worker
 Cada worker hace **todo el recorrido por sí mismo** en su worktree: `/start-task` (setup, plan, implementar, `./build.sh ci`) y luego la skill `pr` (revisión, PR draft, CI, ready). Tú solo lanzas, vigilas, verificas y limpias.
-1. `git fetch origin` y `./build.sh worktree <type>/<slug>` desde la raíz (crea `../grapplemap-odin-wt/<type>-<slug>` y el submódulo; el `type` sale del label `type:` del issue). Usa la ruta **absoluta** del worktree. El nombre del terminal es siempre `w-<slug>`: 1-32 caracteres de `a-z0-9-_`, único entre los vivos (deriva del nombre de la rama: minúsculas, `/` → `-`, recortado). El prefijo `w-` es lo que permiten las reglas `allow` de `hc send/kill/rm`.
+1. `git fetch origin` y `./build.sh worktree <type>/<slug>` desde la raíz (crea `../grapplemap-odin-wt/<type>-<slug>` y el submódulo; el `type` sale del label `type:` del issue). Usa la ruta **absoluta** del worktree. El nombre del terminal es siempre `w-<slug>`: 1-32 caracteres de `a-z0-9-_`, único entre los vivos (deriva del nombre de la rama: minúsculas, `/` → `-`, recortado a 30 caracteres para dejar sitio al prefijo `w-`). El prefijo `w-` es lo que permiten las reglas `allow` de `hc send/kill/rm`.
 2. Lanza el worker con la slash command como **prompt inicial** (así `claude` la interpreta como escrita por el usuario; con `hc send` llegaría envuelta en `<hc from=...>` como texto y no se ejecutaría):
    ```
    hc run --bg --outlive-parent --name w-<slug> --cwd <ruta-absoluta-del-worktree> --label herdr.space=<tu-space> claude --permission-mode auto "/start-task <N> <ruta-absoluta>/docs/plans/<N>-<slug>.md"
    ```
    El segundo argumento (ruta del plan aprobado, sin commit en `main`) se omite si el cambio no necesita plan. `hc run` no devuelve `first_message` con flags extra: confirma que arrancó con `hc read --lines 40 w-<slug>`. Si aparece un diálogo (p. ej. de confianza), escala: nunca `hc keys`.
-3. No hace falta mandarle nada más. Para corregir o contestar a una escalación suya, `hc send w-<slug> "<texto en lenguaje natural>"` (nunca otro `/comando`; llegaría como texto) y solo si su estado es `idle` o `done`.
+3. No hace falta mandarle nada más. Para corregir, contestar a una escalación suya o reanudarlo, `hc send w-<slug> "<texto en lenguaje natural>"` (nunca otro `/comando`; llegaría como texto) y solo si su estado es `idle` o `done`. `/start-task` no se puede reinvocar así, pero `/pr` sí: «invoca la skill pr» lo reanuda desde la revisión.
 
 ## 3. Vigilar
 Nunca hagas sleep ni polling: `hc wait w-<slug>` (hasta que deje de trabajar; `reason: timeout` es un chequeo, vuelve a esperar) y lee con `hc read --lines 60 w-<slug>`. Su estado está en `hc get w-<slug> --json | jq -r '.status.state'` (puede estar ausente: no envíes nada en ese caso); un worker parado suele quedar en `done`.
+- `idle` al principio puede ser solo el arranque (el prompt inicial no cuenta como tarea de lanzamiento para `hc wait`): si no hay PR, ni commits en el worktree, ni actividad en `hc read`, vuelve a esperar antes de tratarlo como escalación.
 - `done` / `idle`: comprueba el resultado con `gh pr list --head <rama>` y `gh pr view N --json isDraft,headRefOid,statusCheckRollup,labels,milestone`: PR abierto, labels y milestone, evidencia de `./build.sh ci`. Si el worker no abrió PR, lee su pantalla y su último mensaje: normalmente es una escalación suya (plan erróneo, dependencia nueva, CI rojo tras 2 intentos): decide con la lista del paso 5.
 - `blocked` / `error`: lee la pantalla. **Nunca respondas tú a un diálogo de permisos de otro agente** (no uses `hc keys`); escala con el contexto.
 - Hooks Stop: si un worker se queda atascado por el Stop hook (8 bloqueos seguidos), escala.

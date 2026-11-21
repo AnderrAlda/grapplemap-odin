@@ -37,7 +37,6 @@
       "Bash(hc read *)",
       "Bash(hc wait *)",
       "Bash(hc send w-*)",
-      "Bash(hc send --wait w-*)",
       "Bash(hc kill w-*)",
       "Bash(hc rm w-*)",
       "Bash(hc run --bg *)"
