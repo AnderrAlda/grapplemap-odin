@@ -19,6 +19,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
   refs, only when the PR is merged, the local head equals the PR head and the tree is clean (#62).
 - `tools/oracle`: Docker image (Ubuntu 18.04 pinned by digest, linux/amd64) that builds the original
   `grapplemap-indexer`, `-dbtojs` and `-mkpospages` out of tree, plus the object files for `--images` (#33).
+- `./build.sh space-id <branch>`: stable Herdr space id (`sp` + 32 hex) derived from the branch name; `/orchestrate` uses it so each
+  worker opens in its own Herdr space (named after the worktree folder) instead of a tab of MAIN's space (#79).
 
 ### Changed
 - `/pr` verifies every PR body edit by reading the body back and falls back to the REST API (`gh api -X PATCH`, with a narrow `allow` rule for `repos/{owner}/{repo}/pulls/*`) when `gh pr edit` fails, as it does with the old `gh` on the server; it marks ready only after seeing the CI box ticked, which the PR template now includes (#76).

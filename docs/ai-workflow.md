@@ -43,8 +43,8 @@ El repo es privado sin plan Pro, así que GitHub no puede proteger `main`. La pr
 La app Herdr corre sus terminales en herdr-core (`hc`); el CLI `herdr` antiguo no los ve. `herdr-app` solo coloca ventanas (y solo existe en el Mac); `hc` funciona igual en el Mac y en el servidor.
 La sesión `MAIN` (raíz del repo, en `main`, sin editar código; recomendado en el servidor de Hetzner, para que siga aunque el portátil duerma, pero lanza los workers en la máquina donde corre) coordina los workers con `/orchestrate`:
 1. Inventario de issues, PRs, worktrees y agentes (`gh`, `git worktree list`, `hc ls`).
-2. Por cada issue con **plan aprobado por ti** (o un cambio de una frase): `./build.sh worktree <rama>` → `hc run --bg --outlive-parent --name w-<slug> --cwd <worktree> --label herdr.space=<space de MAIN> claude --permission-mode auto "/start-task <N> <ruta del plan>"`
-   (aparece como pestaña en la app). La slash command va como **prompt inicial** porque `claude` la interpreta como escrita por el usuario; con `hc send` llegaría envuelta en `<hc from=...>` como texto
+2. Por cada issue con **plan aprobado por ti** (o un cambio de una frase): `./build.sh worktree <rama>` → `hc run --bg --outlive-parent --name w-<slug> --cwd <worktree> --label herdr.space=sp<32 hex de ./build.sh space-id <rama>> claude --permission-mode auto "/start-task <N> <ruta del plan>"`
+   (la app abre un space nuevo con el nombre de la carpeta del worktree; el id es estable por rama). La slash command va como **prompt inicial** porque `claude` la interpreta como escrita por el usuario; con `hc send` llegaría envuelta en `<hc from=...>` como texto
    y no se ejecutaría. Cada worker hace **todo el recorrido solo**: `/start-task` (setup, copia y commitea el plan aprobado, implementa, `./build.sh ci`) y luego la skill `pr`
    (invocable por workers: revisión, PR draft, espera de CI, ready). Como mucho 3 workers a la vez.
 3. MAIN vigila con `hc wait` / `hc read` (nunca sleep ni polling; el estado está en `.status.state` de `hc get --json`) y verifica el resultado contra la evidencia: CI verde + `code-reviewer`
