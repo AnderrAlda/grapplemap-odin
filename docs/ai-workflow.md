@@ -43,7 +43,7 @@ El repo es privado sin plan Pro, así que GitHub no puede proteger `main`. La pr
 La sesión `MAIN` (raíz del repo, en `main`, sin editar código) coordina los worktrees con `/orchestrate`:
 1. Inventario de issues, PRs, worktrees y agentes (`gh`, `git worktree list`, `herdr agent list`).
 2. Por cada issue con **plan aprobado por ti**: `herdr worktree create` → `herdr agent start <slug> --kind claude -- --permission-mode auto`
-   → `herdr agent prompt` con `./build.sh setup` + `/start-task <N>` + `/pr`. Como mucho 3 workers a la vez.
+   → `herdr agent prompt` en mensajes separados: `./build.sh setup`, `/start-task <N>` y `/pr`. Como mucho 3 workers a la vez.
 3. Vigila con `herdr agent wait/read`. Cuando un PR cumple CI verde + `code-reviewer` sin bloqueantes + checklist completo
    (mismo commit), lo pasa a ready sin preguntar y te avisa. **El merge es siempre tuyo** (`gh pr merge` sigue en `deny`).
 4. Solo te pregunta en: aprobar un plan, merge, plan erróneo o alcance ambiguo, dependencia nueva, tocar `reference/` o golden,

@@ -1,7 +1,7 @@
 # Plan: #55 MAIN orchestrates worktrees with Herdr
 Spec: docs/ai-workflow.md (Worktrees)
 ## Pasos
-1. `.claude/settings.json`: move the push, PR-create/ready and issue-create rules from `ask` to `allow`; add PR/issue edit and comment, `git worktree list` and `herdr *`. `deny` rules and hooks unchanged.
+1. `.claude/settings.json`: move the push, PR-create/ready and issue-create rules from `ask` to `allow`; add PR/issue edit and comment, `git worktree list` and only the `herdr` subcommands the skill uses. `deny` rules and hooks unchanged.
 2. New skill `.claude/skills/orchestrate/SKILL.md` (inventory, launch worker, watch, close PR, closed escalation list).
 3. Docs: `docs/ai-workflow.md` section "Orquestación (MAIN + Herdr)", one line in `CLAUDE.md`, `CHANGELOG.md`.
 ## Ficheros a tocar

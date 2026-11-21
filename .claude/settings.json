@@ -33,7 +33,7 @@
       "Bash(git worktree list *)",
       "Bash(herdr pane current *)",
       "Bash(herdr worktree create *)",
-      "Bash(herdr agent list*)",
+      "Bash(herdr agent list *)",
       "Bash(herdr agent start *)",
       "Bash(herdr agent prompt *)",
       "Bash(herdr agent wait *)",

@@ -11,7 +11,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
   and the initial ADRs (#3).
 - Original GrappleMap as a read-only submodule `reference/GrappleMap`, pinned at `032c8f9`, with `reference/CLAUDE.md`
   (read-only and pin-bump rules) (#32).
-
 - `/orchestrate` skill: the MAIN session coordinates worktrees through Herdr (launch workers, watch them, take PRs to ready);
   merge and plan approval stay with the user (#55).
 
