@@ -32,8 +32,8 @@ Un PR nunca se abre ni se marca ready sin **label + milestone** y con el **check
    - Sin leaks → solo si los tests/smoke en debug lo confirman.
    - CI verde → solo cuando `gh pr checks` lo muestre en el último commit.
    - `code-reviewer` sin bloqueantes → solo tras ejecutarlo; indica modelo y resultado en el cuerpo.
-10. **Mantén el cuerpo al día**: tras la revisión o cuando la CI termine, actualiza las casillas con `gh pr edit --body-file <fichero>`. Antes de `gh pr ready` repasa el checklist completo contra la evidencia.
-    **Verifica siempre cada edición leyendo el cuerpo de vuelta** (`gh pr view <N> --json body`): no te fíes de que el comando no haya dado error. Si `gh pr edit` falla (los `gh` antiguos, como el del servidor, dan un error de Projects classic y no aplican el cambio), usa la API REST: `gh api -X PATCH repos/{owner}/{repo}/pulls/<N> -F body=@<fichero>` (`{owner}` y `{repo}` los resuelve `gh`) y vuelve a verificar.
+10. **Mantén el cuerpo al día**: tras la revisión o cuando la CI termine, actualiza las casillas. Parte del cuerpo actual (`gh pr view <N> --json body -q .body > <fichero temporal>`), edita las casillas en ese fichero y aplícalo con `gh pr edit <N> --body-file <fichero temporal>`. Antes de `gh pr ready` repasa el checklist completo contra la evidencia.
+    **Verifica siempre cada edición leyendo el cuerpo de vuelta** con un criterio concreto, p. ej. `gh pr view <N> --json body -q .body | grep -F '[x] CI verde'`: no te fíes de que el comando no haya dado error. Si `gh pr edit` falla (versiones antiguas de `gh`, p. ej. 2.45, dan un error de Projects classic y no aplican el cambio: ver #76), usa la API REST: `gh api -X PATCH repos/{owner}/{repo}/pulls/<N> -F body=@<fichero temporal>` (`{owner}` y `{repo}` los resuelve `gh`; escríbelos tal cual) y vuelve a verificar. `gh api` no está en `allow`: si no lo permite el modo en que corres, para y dilo en tu último mensaje en lugar de marcar ready.
 
 ## 5. Reglas
 - Sin ninguna mención a Claude/Anthropic ni «Generated with» en título o cuerpo; el PR figura como hecho por el usuario.
