@@ -81,6 +81,7 @@ test_swap_players :: proc(t: ^testing.T) {
 	testing.expect(t, same_position(swap_players(s), p), "swap_players is an involution")
 	testing.expect(t, same_v3(s[0][.Head], p[1][.Head]))
 	testing.expect(t, same_v3(s[1][.LeftToe], p[0][.LeftToe]))
+	// Bitwise −h only because the two cores differ: with equal cores a − b = +0 but −(b − a) = −0.
 	h, hs := heading(p), heading(swap_players(p))
 	testing.expect_value(t, bits(hs.x), bits(-h.x))
 	testing.expect_value(t, bits(hs.y), bits(-h.y))

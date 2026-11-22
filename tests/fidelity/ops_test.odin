@@ -34,7 +34,8 @@ Ops_State :: struct {
 
 // keep_negative_zero rewrites every JSON number token `-0` as `-0.0`. `json.unmarshal` reads a token without '.' or
 // exponent as an integer and converts it to f64, so `-0` (what `%.17g` writes for -0) decodes as +0 and a bit comparison
-// would fail on the sign. The copy goes to `allocator` (the line's arena in an `Ndjson_Line_Proc`).
+// would fail on the sign. Assumes the dumper's format: compact NDJSON (no whitespace) with no string values. The copy
+// goes to `allocator` (the line's arena in an `Ndjson_Line_Proc`).
 keep_negative_zero :: proc(line: []byte, allocator := context.allocator) -> []byte {
 	is_end :: proc(line: []byte, i: int) -> bool {
 		return i == len(line) || line[i] == ',' || line[i] == ']' || line[i] == '}'
@@ -76,6 +77,8 @@ test_keep_negative_zero :: proc(t: ^testing.T) {
 	testing.expect_value(t, transmute(u64)v.a, transmute(u64)f64(-0.0))
 	testing.expect_value(t, transmute(u64)v.b, transmute(u64)f64(-0.5))
 	testing.expect_value(t, transmute(u64)v.d, 0)
+	// A token with an exponent is already a float token: left alone, it keeps its sign.
+	testing.expect_value(t, transmute(u64)v.c, transmute(u64)f64(-0.0))
 	testing.expect_value(t, transmute(u64)v.e[1], transmute(u64)f64(-0.0))
 }
 
