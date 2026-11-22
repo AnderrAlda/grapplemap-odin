@@ -268,8 +268,9 @@ oracle_manifest() {
 		| while read -r f; do sha256sum -- "$f"; done >MANIFEST.sha256 && cat MANIFEST.sha256)
 }
 
-# oracle_images_check DIR: DIR holds exactly one p<node>-480x360.png per row of images.tsv plus meta.json, meta.json
-# lists exactly those PNGs, and MANIFEST.sha256 lists every file of DIR (as images/<file>) with its current hash.
+# oracle_images_check DIR [manifest]: DIR holds exactly one p<node>-480x360.png per row of images.tsv plus meta.json,
+# meta.json lists exactly those PNGs and the blocks of images.tsv in its order; with "manifest", MANIFEST.sha256 also
+# lists every file of DIR (as images/<file>) with its current hash.
 oracle_images_check() {
 	local dir="$1" rows files pngs listed line f
 	rows=$(tail -n +2 "$ORACLE_IMAGES_LIST" | grep -c .) || true
@@ -282,6 +283,9 @@ oracle_images_check() {
 		return 1
 	fi
 	[ "$pngs" = "$listed" ] || { echo "FAIL images: meta.json lists '$listed', $dir has '$pngs'" >&2; return 1; }
+	[ "$(jq -r '.images[].block' "$dir/meta.json")" = "$(tail -n +2 "$ORACLE_IMAGES_LIST" | cut -f1)" ] \
+		|| { echo "FAIL images: the blocks of meta.json differ from $ORACLE_IMAGES_LIST" >&2; return 1; }
+	[ "${2:-}" = manifest ] || return 0
 	for f in meta.json $pngs; do
 		line="$(cd "$dir" && sha256sum -- "$f" | cut -d' ' -f1)  images/$f"
 		grep -qxF "$line" "$ORACLE_FIXTURES/MANIFEST.sha256" \
@@ -302,11 +306,12 @@ oracle_images() {
 	oracle_run -e GALLIUM_DRIVER=softpipe -v "$PWD/$out:/out" -v "$PWD/$ORACLE_IMAGES_LIST:/images.tsv:ro" "$ORACLE_IMAGE" \
 		grapplemap-images --db /oracle/GrappleMap.txt --list /images.tsv --out /out --versions /oracle/VERSIONS \
 		--commit "$commit"
+	oracle_images_check "$out" # before touching the fixtures
 	rm -r -f "$ORACLE_FIXTURES/images"
 	mkdir -p "$ORACLE_FIXTURES/images"
 	cp "$out"/* "$ORACLE_FIXTURES/images/"
 	oracle_manifest
-	oracle_images_check "$ORACLE_FIXTURES/images"
+	oracle_images_check "$ORACLE_FIXTURES/images" manifest
 }
 
 oracle_test() {

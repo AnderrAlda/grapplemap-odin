@@ -10,8 +10,6 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <sstream>
-#include <unistd.h>
 
 using namespace GrappleMap;
 namespace po = boost::program_options;
@@ -101,7 +99,9 @@ int run(int argc, char const * const * argv)
 	auto const rows = read_list(list);
 	std::ifstream dbin(db);
 	if (!dbin) throw std::runtime_error("cannot read " + db);
-	Graph const g = loadGraph(dbin); // the istream path, like the dumper
+	// The istream path, like the dumper; mkpospages uses loadGraph(filename) (the .index path), equivalent here since
+	// the dumper checks that both agree (meta.json index_consistent).
+	Graph const g = loadGraph(dbin);
 
 	// ImageMaker writes into res/store/ and symlinks res/<linkname> to it (src/images.cpp:318-338).
 	char tmpl[] = "/tmp/grapplemap-images.XXXXXX";
