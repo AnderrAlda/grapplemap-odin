@@ -1,0 +1,59 @@
+# Fidelity workflow (#147): runs tests/fidelity (core vs the oracle) over the FULL oracle dump, on linux and macOS
+# (ADR 0003: the libm of each platform over the whole DB). The dump is the `oracle-full-dump` artifact of the latest
+# successful `oracle` run on main (7-day retention) and is checked against tests/fixtures/oracle/FULL.sha256.
+# Separate from ci.yml (unchanged) and not a required check.
+name: fidelity
+on:
+  pull_request:
+    paths:
+      - src/core/**
+      - tests/fidelity/**
+      - tests/fixtures/oracle/**
+      - build.sh
+      - .github/workflows/fidelity.yml
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *" # two hours after the nightly oracle (03:17)
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: fidelity-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  fidelity:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: true
+      - uses: ./.github/actions/setup
+      - name: Download the full oracle dump
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          msg="no successful oracle run on main with an oracle-full-dump artifact (7-day retention): run the oracle workflow (workflow_dispatch)"
+          run=$(gh run list --workflow oracle.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -z "$run" ]; then
+            echo "::error::$msg"
+            exit 1
+          fi
+          echo "Using oracle run $run"
+          if ! gh run download "$run" -n oracle-full-dump -D "$RUNNER_TEMP/oracle-full"; then
+            echo "::error::$msg"
+            exit 1
+          fi
+      - name: Check the dump against FULL.sha256
+        run: |
+          if ! (cd "$RUNNER_TEMP/oracle-full" && shasum -a 256 -- *) | diff tests/fixtures/oracle/FULL.sha256 -; then
+            echo "::error::the oracle-full-dump does not match this commit's FULL.sha256 (another dumper version?)"
+            exit 1
+          fi
+      - name: Fidelity tests over the full dump
+        run: GM_ORACLE_DIR="$RUNNER_TEMP/oracle-full" ./build.sh test
