@@ -7,7 +7,9 @@ COLLECTION="-collection:app=src"
 VET="-vet -strict-style -warnings-as-errors"
 OUT="build"
 BIN="$OUT/grapplemap"
-TEST_PKGS=(src src/core src/ui src/editor)
+TEST_PKGS=(src src/core src/ui src/editor tests/fidelity)
+# Odin dirs formatted and fmt-checked besides src/ (bench/ only once it exists).
+FMT_DIRS=(src tests/fidelity bench)
 
 # AddressSanitizer: Linux and macOS. Skipped on macOS CI runners, where the Odin-bundled
 # LLVM and Apple's ASan runtime disagree on the ASan ABI version (link error).
@@ -57,13 +59,21 @@ cmd_changelog_check() {
 cmd_check() {
 	cmd_changelog_check
 	odin check src $COLLECTION $VET
+	odin check tests/fidelity $COLLECTION $VET -no-entry-point
 }
 
-cmd_fmt() { odinfmt -w src; }
+cmd_fmt() {
+	local d
+	for d in "${FMT_DIRS[@]}"; do
+		[ -d "$d" ] && odinfmt -w "$d"
+	done
+	return 0
+}
 
 cmd_fmt_check() {
-	local bad=0 f
-	for f in $(odin_files | grep '^src/' || true); do
+	local bad=0 f re
+	re="^($(IFS='|'; echo "${FMT_DIRS[*]}"))/"
+	for f in $(odin_files | grep -E "$re" || true); do
 		if ! odinfmt -stdin <"$f" | diff -q - "$f" >/dev/null; then
 			echo "needs formatting: $f"
 			bad=1
@@ -104,8 +114,9 @@ cmd_test() {
 	for pkg in "${TEST_PKGS[@]}"; do
 		[ -d "$pkg" ] || continue
 		ls "$pkg"/*.odin >/dev/null 2>&1 || continue
+		# Leaks and bad frees fail the test, not only a log line (#151).
 		# shellcheck disable=SC2046
-		odin test "$pkg" $COLLECTION $VET -debug $(sanitize_flag) -out:"$OUT/test-$(basename "$pkg")"
+		odin test "$pkg" $COLLECTION $VET -debug $(sanitize_flag) -define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true -out:"$OUT/test-$(basename "$pkg")"
 	done
 }
 
