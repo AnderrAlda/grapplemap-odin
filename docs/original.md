@@ -435,8 +435,7 @@ The `loadGraph` overloads are used by every tool (`src/glfw_editor.cpp:67`, `src
 **For the Odin port:** the index is an optimisation of §2.3; reimplementing it is optional. The matching must produce
 the same node numbering with or without it. A cached index from the original, if used, must turn into errors (not
 `abort()`): `n > num_nodes()`, `is_reoriented` failing for `n < num_nodes()` (`src/graph.cpp:327-328`), and a number
-of pairs different from the number of transitions (out-of-bounds `index[i]`, `src/graph.cpp:339-340`). [unverified] on the DB: that the cached and uncached paths give identical graphs
-(needs the dumper run with and without the `.index`).
+of pairs different from the number of transitions (out-of-bounds `index[i]`, `src/graph.cpp:339-340`). On the DB the cached and uncached paths agree (§10.1): the dump checks that the `.index` pairs equal what `loadGraph(istream)` computes (`index_consistent`), and the indexed constructor recomputes `r` with the same `is_reoriented` (`src/graph.cpp:304-345`); the indexed constructor itself was not run.
 
 ### 2.6 `in`, `out`, `in_out`
 
@@ -527,9 +526,9 @@ Recorded here because they use the matching of §2.3; full editor behaviour is s
 
 ### 2.10 Open points (need the oracle/dumper)
 
-Answered in §10 (§10.3 unless noted): number of anonymous nodes (124), self-loops (one), equality of indexed and non-indexed loads (equal, §10.1). Still open (not verifiable by reading, not in the dump): whether any pair of named positions or transition ends are reorientations
-of each other; whether any DB endpoint is within the threshold of two nodes (so that order matters); the `line_nr`
-offset (§1.4; the dumper's `line_nr` follows the 0-based first position line, `tools/oracle/README.md`); floating-point boundary cases of `basicallySame`.
+Answered in §10 (§10.3 unless noted): number of anonymous nodes (124), self-loops (one), equality of indexed and non-indexed loads (agree, §10.1, §2.5). Still open (not verifiable by reading, not in the dump; the `line_nr` offset of §1.4 is confirmed by the dumper, `tools/oracle/README.md`): whether any pair of named positions or transition ends are reorientations
+of each other; whether any DB endpoint is within the threshold of two nodes (so that order matters);
+floating-point boundary cases of `basicallySame`.
 
 ---
 
@@ -988,7 +987,7 @@ coordinate, `a + ((b − a) · s)`: one subtraction, one multiplication, one add
 - Direction is chosen by **node equality, not by the step's `reverse` flag**: forwards if `*g[s].from == *n`
   (tested first), else backwards if `*g[s].to == *n`, else it throws (`src/graph_util.cpp:65,83,101-102`). A step whose
   two endpoints are the same node is therefore always walked forwards. One such transition
-  exists in the DB (§10.3); it is not `bidirectional`, so it is never reversed.
+  exists in the DB (§10.3); it is not `bidirectional`, so no `in`/`out` path (the lists `follow` is fed from) reverses it.
 - Frame of reference: `r = compose(inverse(E), N)` with `E` the edge's reorientation at the entry end and `N` the
   view of `n` (§5.4).
 - For each segment (consecutive pair `A`, `B` of keyframes, in walking order) it emits `fpp + 1` frames,
@@ -1379,8 +1378,8 @@ Not visible in the oracle images (free, or to be chosen for UX):
 - Mesh layout details with no visual effect (winding, the pillar strip's degenerate triangles, the open seam).
 
 Open points: OSMesa's channel order and the lighting defaults above (oracle images, #35); the on-screen orientation of
-the default camera left open in §4.2 (same images); a pillar basis never degenerates on the DB's stored, canonical or playback positions (§10.3);
-the JS viewers' handedness (§3.2), not covered here (ADR 0004 / section 8).
+the default camera left open in §4.2 (same images); the JS viewers' handedness (§3.2), not covered here (ADR 0004 / section 8). Closed in §10.3: a
+pillar basis never degenerates on the DB's stored, canonical or playback positions.
 
 ---
 
@@ -1937,7 +1936,7 @@ the named positions have no property. Block descriptions have 1-8 lines (first l
 
 **Tags** (`tags:` lines, §1.2): 161 distinct tags. Most used: `bottom_supine` 246, `top_kneeling` 203, `standing` 125,
 `bottom_turned_in` 68, `half_guard` 55, `full_guard` 51; 27 tags occur once. These are a block's own tags: of the
-1,485 transitions, 1,159 have none (the original's `is_tagged` adds the endpoints', `src/metadata.hpp:32-37`).
+1,485 transitions, 1,159 have none. The `family` below uses `is_tagged` instead (own tags plus those both endpoints have, `src/metadata.hpp:32-37`), which is why only 850 transitions are `other`.
 
 **Family** (the dumper's fixed tag table, first match, `family` of `inventory.ndjson`; it is an inventory aid, not a
 concept of the original):
@@ -1961,7 +1960,7 @@ lists the blocks of any class. First description lines have the literal `\n` sho
 | `bidirectional` | 38 | **All cases**: 621, 653, 817, 838, 1001, 1158, 1275, 1295, 1483, 1627, 1881, 1951, 1964, 2059 (all `...`; 14); 639, 842 `switch\nbase`; 662 `get to\nelbow`; 670, 671 `turn`; 685 `move head\nto other side`; 783 `drop\nknee`; 815 `(un)pin\nknee`; 834 `switch\ngrips`; 836 `(un)mount`; 845 `bottom trades\nneck frame\nfor overhook`; 857 `switch near\nleg control`; 1021, 1086 `reverse`; 1048 `switch\nstance`; 1058 `flatten`; 1161 `(un)kneel`; 1236 `to 50/50`; 1312 `step in/out`; 1347 `switch\nhead side`; 1414 `to/from\nkimura`; 1421 `top bends`; 1825 `control hip\nand shoulder`; 1894 `switch\nframe`. Lengths 2-7. |
 | `detailed` | 159 | Count and the command only (6 are also `bidirectional`: `jq -c 'select(.classes|index("detailed") and index("bidirectional"))|.block' inventory.ndjson`). |
 | `endpoint_mirror` / `endpoint_swap` / `endpoint_mirror_swap` | 217 / 332 / 75 | Transitions whose `reorientation_from` or `_to` has mirror only / swap only / both (§5.4). The classes overlap when the two ends differ (43 transitions are in two): 581 of 1,485 transitions have a mirror or a swap at some end, 904 are pure rotation + translation at both. |
-| `duplicate_description` | 894 | 892 transitions and **2** named positions (249 `spiderweb w/o\nleg over head`, 477 `spiderweb\nw/o leg\nover head`: the lookup name replaces `\n` by a space and so differs only in the `w/o` line break, hence the same name; `node_by_desc`, `src/metadata.cpp:81-89`). Of the transitions, **136 are named `...`** (the continuation marker, which `step_by_desc` cannot tell apart, `src/metadata.cpp:66-69`) and 756 others share a name with another transition (`escape` 23, `tap` 22, `stand up` 18, `sweep` 18, `pass` 14, …). Duplicates among transitions are accepted by the loader (no uniqueness check, §1.7); two named positions with an identical **full** description would be rejected (§2.1), which is not the case here. |
+| `duplicate_description` | 894 | 892 transitions and **2** named positions (249 `spiderweb w/o\nleg over head`, 477 `spiderweb\nw/o leg\nover head`: the lookup name replaces `\n` by a space and so differs only in where the line breaks fall, hence the same name; `node_by_desc`, `src/metadata.cpp:81-89`). Of the transitions, **136 are named `...`** (the continuation marker, which `step_by_desc` cannot tell apart, `src/metadata.cpp:66-69`) and 756 others share a name with another transition (`escape` 23, `tap` 22, `stand up` 18, `sweep` 18, `pass` 14, …). Duplicates among transitions are accepted by the loader (no uniqueness check, §1.7); two named positions with an identical **full** description would be rejected (§2.1), which is not the case here. |
 | `description_newline` | 1,281 | 549 of 601 named positions and 732 transitions have a literal `\n` in some line. (§1.8 counts 1,282 *lines*: block 389 has it in two lines, `triangle\nbroken by\nknee in butt` and `freshly broken\nstanding\ntriangle`.) The 52 named positions without one have single-line names (74 `toe hold`, 84 `gator roll`, 105 `chill dog`, 109 `swim move`, 112 `new jersey`, …). |
 | `description_utf8` | 9 | **All cases**, the 9 lines of §1.8: `¼` in 20 `smashed ¼\nvs whizzer`, 38 `¼ clinch w/\nknee on ground`, 56 `flat ¼ w/\nhead+arm`, 178 `¼ clinch\nknee battle`, 191 `¼ clinch\nw/ underhook`, 200 `¼ clinch`; `¾` in 201 `¾ mount`, 414 `¾ mount\nw/ head&arm`; and 1568 (a 12-position transition) `escape\nto honey`. In 1568 the non-ASCII is in the `ref:` line (curly quotes `‘ ’`), not in the first line; the other 8 are `¼`/`¾` in the name. |
 | `description_quote` | 997 | A `"` in a line: 1,136 of the 1,142 such lines are `ref:` lines (book/DVD titles), 5 other description lines, 1 `note:`. Named positions: only 3 (164 `coming up\non distant\nsingle`, 203 `mount w/\ndouble unders`, 273 `power\ndogfight`), each in its `ref:` line. |
@@ -1990,21 +1989,24 @@ the 601 are distinct as a full description (the graph constructor accepts the DB
   a genuine "switch side", not a degenerate edge. Node 506 also has 5 other transitions (blocks 1825, 1831, 1929, 1974,
   1992). It is the §2.4 mechanism (the same node found for both ends).
   - **Consequence for §6.2 / §6.8.** The direction rule of `follow` (forwards if `from == n`, tested first) walks it
-    forwards. A *reversed* step only exists for `bidirectional` edges (`src/graph.cpp:265-268` adds `{s, true}` to
-    `in`/`out` only then), and this one is not
-    bidirectional, so the problematic case (reversed self-loop as first step) does not occur in the DB. The dump plays
+    forwards. In `in`/`out`, the lists that `in_paths`/`out_paths` (`src/paths.cpp:262-300`) and `step_by_desc` use, a
+    *reversed* step only exists for `bidirectional` edges (`src/graph.cpp:265-268`), and this one is not
+    bidirectional, so no such path starts with it reversed. Reversed entries do exist elsewhere: `in_out` gets
+    `{s, true}` for every edge ending at the node (`src/graph.cpp:256`, §2.6; node 506 has `{1225, true}`), used by the
+    editor's `gp_connect`/viables (`src/viables.cpp:69-72`), and the composer parses `-N` as `reverse` for any transition
+    (`src/composer.js:568-574`); those are phase-6 concerns, not the `follow` case. The dump plays
     it forwards like any other transition (`playback.ndjson` line for block 1826: 95 frames, caption `switch side`).
-    A port must still accept it (§2.1), and a *new* bidirectional self-loop made in the editor would hit the case.
+    A port must still accept it (§2.1), and a *new* bidirectional self-loop made in the editor would hit the `follow` case.
 - **Pillar basis degeneracy (§7.1): none.** `a = normalize(cross(to − from, (1,1,1) − from))` is zero only if the
   limb's pillar line passes through `(1,1,1)` or `from == to`. Computed with the §7.1 rule over **every pillar** (the 15
   visible limbs of `body.json`; the 7 with a `mid_radius` split in two, so 22 per player) of: the stored positions of
   all 8,323 positions (366,212 pillars), their two canonical orientations (`orient_canonically_with_mirror` and
-  `_without_mirror` of `ops.ndjson`, the same count each), and all 135,594 `raw` and `smooth` frames of
+  `_without_mirror` of `ops.ndjson`, the same count each), and all `raw` and `smooth` frames of the 1,485 transition lines (135,594 frames; the `chain` line's 140 give the same result) in
   `playback.ndjson` (5,966,136 pillars). Result: 0 pillars with a zero `cross` (so no NaN). Tightest margin, as
   `|cross| / (|to − from|·|(1,1,1) − from|)` (the sine of the angle between the limb and the direction to `(1,1,1)`): 0.0042
   stored (block 1669, position 1, limb 4-6), 0.0057 / 0.0047 canonical, 0.00047 over the playback frames (block 1032,
-  smoothed frame 42, limb 4-6): about 0.03°-0.24°, small but not zero. **Scope:** this covers the orientations the dump
-  has, not the world positions of an interactive session (camera, `Playback` chaser positions, editor drags), where
+  smoothed frame 42, limb 4-6): about 0.03°-0.33° (limb 4-6 in the stored and playback cases, player 0 and player 1 respectively), small but not zero. **Scope:** this covers the orientations the dump
+  has, not the world positions of an interactive session (`Playback` chaser positions, editor drags), where
   `(1,1,1)` is the same fixed point but the figure is placed freely (§7.1, `[unverified]` there remains for those). The
   second basis vector is `cross(to − from, a)`, which cannot vanish if `a` exists.
 - **Not answered by this dump** (left open): whether a transition end is within the `basicallySame` threshold of two
