@@ -5,28 +5,21 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 HOOK="$ROOT/.claude/hooks/guard-bash.sh"
 command -v jq >/dev/null || { echo "jq required"; exit 1; }
 
-# Fail-safe isolation. An inherited GIT_DIR (pointing at a linked worktree) makes `git init` below rewrite
-# core.bare=true in the SHARED config of the real repo, so: clear all repo-redirecting env, forbid upward discovery,
-# refuse to run if the scratch repo resolves inside the real one, and fail if the real .git/config changes.
-while IFS= read -r v; do unset "$v"; done < <(git rev-parse --local-env-vars)
+# Isolation: tests/lib/sandbox.sh clears the repo env and keeps everything in a temp dir. Extra tripwire kept on top:
+# an inherited GIT_DIR (pointing at a linked worktree) makes `git init` rewrite core.bare=true in the SHARED config
+# of the real repo, so fail if the real .git/config changes.
+source "$ROOT/tests/lib/sandbox.sh"
+sandbox_init
+TMP=$SANDBOX
 REAL_COMMON=$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd -P) || { echo "no real repo"; exit 1; }
 REAL_CONFIG_SUM=$(cksum <"$REAL_COMMON/config")
-TMP=$(mktemp -d) || exit 1
-TMP=$(cd "$TMP" && pwd -P)
-export GIT_CEILING_DIRECTORIES="$TMP"
 real_config_unchanged() { [ "$(cksum <"$REAL_COMMON/config")" = "$REAL_CONFIG_SUM" ]; }
-cleanup() {
-	real_config_unchanged || { echo "FATAL: real repo config ($REAL_COMMON/config) changed during the test"; exit 1; }
-	rm -rf "$TMP"
+sandbox_on_exit() {
+	real_config_unchanged || { echo "FATAL: real repo config ($REAL_COMMON/config) changed during the test"; return 1; }
 }
-trap cleanup EXIT
 git init -q -b main "$TMP/repo"
 if ! real_config_unchanged; then echo "FATAL: git init modified the real repo config"; exit 1; fi
-SCRATCH_COMMON=$(cd "$TMP/repo" && cd "$(git rev-parse --git-common-dir)" && pwd -P)
-case $SCRATCH_COMMON in
-"$TMP"/repo/*) ;;
-*) echo "FATAL: scratch repo not isolated (common dir: $SCRATCH_COMMON, real: $REAL_COMMON)"; exit 1 ;;
-esac
+sandbox_assert_repo "$TMP/repo"
 git -C "$TMP/repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 git -C "$TMP/repo" branch feat/x
 
