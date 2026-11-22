@@ -1,0 +1,2 @@
+### Added
+- Oracle fixture sample: the dumper takes `--sample` (same code path as the full dump, filtered by block index); `tools/oracle/sample.tsv` lists 69 rows over 62 blocks covering every class, and the dumper fails on an empty or wrong class; `./build.sh oracle [--sample]` (the default) writes `tests/fixtures/oracle/` (1.54 MB) with `MANIFEST.sha256`, `--update-full-hashes` writes `FULL.sha256` and `--full` checks against it; `.gitattributes` marks the fixtures as generated (#35).

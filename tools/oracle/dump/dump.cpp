@@ -2,8 +2,9 @@
 // docs/specs/phase-1-original-research.md ("Dump format") to --out. Linked against the original's
 // `common` objects (reference/GrappleMap/src/SConstruct:33); nothing of the original is modified.
 //
-// Usage: grapplemap-dump --db FILE --index FILE --out DIR [--versions FILE] [--commit SHA]
+// Usage: grapplemap-dump --db FILE --index FILE --out DIR [--versions FILE] [--commit SHA] [--sample TSV]
 //   --index: the .index written by grapplemap-indexer on a copy of the DB (only read, never used to load).
+//   --sample: tools/oracle/sample.tsv (#35); the same files, filtered to the listed blocks (see Sample).
 //
 // Files (fixed order, no timestamps): meta.json, sequences.ndjson, graph.ndjson, ops.ndjson, between.ndjson,
 // playback.ndjson, body.json, spring.ndjson, inventory.ndjson.
@@ -36,15 +37,16 @@ unsigned const FRAMES_PER_POS = 11;
 
 // Values of s for between(a, b, s) over every consecutive pair.
 double const BETWEEN_S[] = {0.25, 0.5, 0.75};
+double const BETWEEN_S_SAMPLE = 0.5; // the s every sampled transition keeps
 
 struct Args
 {
-	string db, index, out, versions, commit;
+	string db, index, out, versions, commit, sample;
 };
 
 [[noreturn]] void usage()
 {
-	std::cerr << "usage: grapplemap-dump --db FILE --index FILE --out DIR [--versions FILE] [--commit SHA]\n";
+	std::cerr << "usage: grapplemap-dump --db FILE --index FILE --out DIR [--versions FILE] [--commit SHA] [--sample TSV]\n";
 	std::exit(2);
 }
 
@@ -61,6 +63,7 @@ Args parse_args(int argc, char const * const * argv)
 		else if (k == "--out") a.out = v;
 		else if (k == "--versions") a.versions = v;
 		else if (k == "--commit") a.commit = v;
+		else if (k == "--sample") a.sample = v;
 		else usage();
 	}
 	if (a.db.empty() || a.index.empty() || a.out.empty()) usage();
@@ -248,11 +251,33 @@ vector<Block> blocks_in_file_order(Graph const & g)
 	return v;
 }
 
-void dump_sequences(std::ostream & out, Graph const & g, vector<Block> const & blocks)
+// --sample: the blocks listed in sample.tsv, and the subset of each file the spec gives for them
+// (docs/specs/phase-1-original-research.md, "Representative sample"). Every dump_* function takes a
+// `Sample const *` and filters by block index (nullptr: the full dump), so the sample and the full dump share one
+// code path.
+struct Sample
+{
+	vector<char> in;       // listed in sample.tsv
+	vector<char> all_s;    // between: also s = 0.25 and 0.75 (first BETWEEN_ALL_S transitions)
+	vector<char> playback; // the PLAYBACK_SHORT shortest non-bidirectional transitions and the shortest bidirectional
+	vector<char> spring;   // SPRING_POSITIONS positions: those listed under `named` first, in block order
+};
+
+size_t const BETWEEN_ALL_S = 10, PLAYBACK_SHORT = 2, SPRING_POSITIONS = 10;
+
+bool keep(Sample const * s, size_t const b) { return !s || s->in[b]; }
+
+// The one position of a transition that ops.ndjson keeps in the sample, and the one pair (its first index) that
+// between.ndjson keeps: the middle ones.
+size_t sample_pos(size_t const n) { return n / 2; }
+size_t sample_pair(size_t const n) { return (n - 2) / 2; }
+
+void dump_sequences(std::ostream & out, Graph const & g, vector<Block> const & blocks, Sample const * smp)
 {
 	Json j;
 	for (size_t b = 0; b != blocks.size(); ++b)
 	{
+		if (!keep(smp, b)) continue;
 		auto const & blk = blocks[b];
 		vector<string> const & desc = blk.is_node ? g[NodeNum{uint16_t(blk.index)}].description
 		                                          : g[SeqNum{blk.index}].description;
@@ -278,15 +303,22 @@ void dump_sequences(std::ostream & out, Graph const & g, vector<Block> const & b
 	}
 }
 
-void dump_graph(std::ostream & out, Graph const & g, vector<Block> const & blocks, Index const & ix)
+// In the sample: the listed transitions, and the listed nodes plus the endpoints of the listed transitions.
+void dump_graph(std::ostream & out, Graph const & g, vector<Block> const & blocks, Index const & ix, Sample const * smp)
 {
 	vector<long> node_block(g.num_nodes(), -1), seq_block(g.num_sequences(), -1);
 	for (size_t b = 0; b != blocks.size(); ++b)
 		(blocks[b].is_node ? node_block : seq_block)[blocks[b].index] = long(b);
+	vector<char> node_kept(g.num_nodes(), !smp);
+	foreach (n : nodenums(g))
+		if (node_block[n.index] >= 0 && keep(smp, size_t(node_block[n.index]))) node_kept[n.index] = true;
+	foreach (s : seqnums(g))
+		if (keep(smp, size_t(seq_block[s.index]))) node_kept[g[s].from->index] = node_kept[g[s].to->index] = true;
 
 	Json j;
 	foreach (n : nodenums(g))
 	{
+		if (!node_kept[n.index]) continue;
 		j.begin_object();
 		j.key("type").str("node");
 		j.key("index").integer(n.index);
@@ -300,6 +332,7 @@ void dump_graph(std::ostream & out, Graph const & g, vector<Block> const & block
 	}
 	foreach (s : seqnums(g))
 	{
+		if (!keep(smp, size_t(seq_block[s.index]))) continue;
 		auto const & e = g[s];
 		j.begin_object();
 		j.key("type").str("transition");
@@ -335,12 +368,17 @@ void each_position(Graph const & g, Block const & blk, F f)
 }
 
 // src/positions.hpp:37,68,132-184; src/positions.cpp:261-291.
-void dump_ops(std::ostream & out, Graph const & g, vector<Block> const & blocks)
+// In the sample: one position per transition (sample_pos) and every named position.
+void dump_ops(std::ostream & out, Graph const & g, vector<Block> const & blocks, Sample const * smp)
 {
 	Json j;
 	for (size_t b = 0; b != blocks.size(); ++b)
+	{
+		if (!keep(smp, b)) continue;
+		size_t const n = blocks[b].is_node ? 1 : g[SeqNum{blocks[b].index}].positions.size();
 		each_position(g, blocks[b], [&](size_t const pos, Position const & p)
 			{
+				if (smp && pos != sample_pos(n) && !blocks[b].is_node) return;
 				Position swapped = p;
 				swap_players(swapped); // in place in the original
 				V2 const h = heading(p);
@@ -357,19 +395,22 @@ void dump_ops(std::ostream & out, Graph const & g, vector<Block> const & blocks)
 				j.end_object();
 				out << j.take();
 			});
+	}
 }
 
 // between(a, b, s) (src/positions.hpp:42) for every consecutive pair of every transition; pos is a's index.
-void dump_between(std::ostream & out, Graph const & g, vector<Block> const & blocks)
+// In the sample: the middle pair (sample_pair) of each transition at BETWEEN_S_SAMPLE, and at every s for `all_s`.
+void dump_between(std::ostream & out, Graph const & g, vector<Block> const & blocks, Sample const * smp)
 {
 	Json j;
 	for (size_t b = 0; b != blocks.size(); ++b)
 	{
-		if (blocks[b].is_node) continue;
+		if (blocks[b].is_node || !keep(smp, b)) continue;
 		auto const & ps = g[SeqNum{blocks[b].index}].positions;
 		for (size_t k = 0; k + 1 < ps.size(); ++k)
 			for (double const s : BETWEEN_S)
 			{
+				if (smp && (k != sample_pair(ps.size()) || (s != BETWEEN_S_SAMPLE && !smp->all_s[b]))) continue;
 				j.begin_object();
 				j.key("block").integer(long(b));
 				j.key("seq").integer(long(blocks[b].index));
@@ -388,12 +429,18 @@ void frames_d(Json & j, Frames const & f, size_t const step) { positions_d(j, f.
 // smoothen() (src/paths.cpp:8-21). Each transition is played alone, forwards, and smoothed alone: smoothing per
 // transition is the dumper's choice (the original's callers smooth a whole script, src/makevideo.cpp:93,105), so a
 // "chain" record follows with the first pair a -> b (index order, b starts at a's end node) smoothed in one call.
-void dump_playback(std::ostream & out, Graph const & g, vector<Block> const & blocks)
+// In the sample: the `playback` transitions, and as chain the pair of listed transitions with the fewest positions
+// (ties in index order). That chain line is the one sample line that is not a line of the full dump.
+void dump_playback(std::ostream & out, Graph const & g, vector<Block> const & blocks, Sample const * smp)
 {
+	vector<long> seq_block(g.num_sequences(), -1);
+	for (size_t b = 0; b != blocks.size(); ++b)
+		if (!blocks[b].is_node) seq_block[blocks[b].index] = long(b);
+
 	Json j;
 	for (size_t b = 0; b != blocks.size(); ++b)
 	{
-		if (blocks[b].is_node) continue;
+		if (blocks[b].is_node || (smp && !smp->playback[b])) continue;
 		SeqNum const s{blocks[b].index};
 		Frames const raw = frames(g, Path{Step{s, false}}, FRAMES_PER_POS);
 		Frames const smooth = smoothen(raw);
@@ -412,11 +459,18 @@ void dump_playback(std::ostream & out, Graph const & g, vector<Block> const & bl
 	}
 
 	optional<pair<SeqNum, SeqNum>> chain;
+	size_t chain_positions = 0;
 	foreach (a : seqnums(g))
 	{
+		if (!keep(smp, size_t(seq_block[a.index]))) continue;
 		foreach (c : seqnums(g))
-			if (*g[c].from == *g[a].to) { chain = std::make_pair(a, c); break; }
-		if (chain) break;
+			if (keep(smp, size_t(seq_block[c.index])) && *g[c].from == *g[a].to)
+			{
+				size_t const n = g[a].positions.size() + g[c].positions.size();
+				if (!chain || n < chain_positions) { chain = std::make_pair(a, c); chain_positions = n; }
+				if (!smp) break; // full dump: the first pair
+			}
+		if (chain && !smp) break;
 	}
 	if (!chain) return;
 
@@ -440,12 +494,13 @@ void dump_playback(std::ostream & out, Graph const & g, vector<Block> const & bl
 
 // spring(Position&) (src/positions.cpp:183-194, apply_limits then spring per player, no fixed joint) on a copy of
 // every named position, in block order.
-void dump_spring(std::ostream & out, Graph const & g, vector<Block> const & blocks)
+// In the sample: the `spring` positions.
+void dump_spring(std::ostream & out, Graph const & g, vector<Block> const & blocks, Sample const * smp)
 {
 	Json j;
 	for (size_t b = 0; b != blocks.size(); ++b)
 	{
-		if (!blocks[b].is_node) continue;
+		if (!blocks[b].is_node || (smp && !smp->spring[b])) continue;
 		NodeNum const n{uint16_t(blocks[b].index)};
 		Position p = g[n].position;
 		spring(p);
@@ -602,11 +657,12 @@ vector<Block_Info> inventory(Graph const & g, vector<Block> const & blocks)
 	return v;
 }
 
-void dump_inventory(std::ostream & out, vector<Block> const & blocks, vector<Block_Info> const & inv)
+void dump_inventory(std::ostream & out, vector<Block> const & blocks, vector<Block_Info> const & inv, Sample const * smp)
 {
 	Json j;
 	for (size_t b = 0; b != blocks.size(); ++b)
 	{
+		if (!keep(smp, b)) continue;
 		j.begin_object();
 		j.key("block").integer(long(b));
 		j.key("kind").str(blocks[b].is_node ? "position" : "transition");
@@ -621,6 +677,77 @@ void dump_inventory(std::ostream & out, vector<Block> const & blocks, vector<Blo
 		j.end_object();
 		out << j.take();
 	}
+}
+
+vector<string> split_tabs(string const & line)
+{
+	vector<string> v(1);
+	foreach (ch : line)
+		if (ch == '\t') v.emplace_back(); else v.back() += ch;
+	return v;
+}
+
+// sample.tsv: a header "index<TAB>class<TAB>reason", then one row per (block, class), `reason` non-empty. The
+// dumper fails if a row names a block outside the class it is listed under, or if a class of CLASSES has no row.
+// A class with no block in the whole DB is listed with index "-": the dumper checks it really is empty.
+Sample read_sample(string const & path, vector<Block> const & blocks, vector<Block_Info> const & inv)
+{
+	auto const lines = split_lines(read_file(path));
+	if (lines.empty() || lines[0] != "index\tclass\treason") throw std::runtime_error("sample.tsv: bad header");
+	Sample s;
+	s.in.assign(blocks.size(), false);
+	vector<size_t> rows(NUM_CLASSES, 0);
+	vector<char> named_row(blocks.size(), false);
+	std::set<pair<string, string>> seen;
+	for (size_t i = 1; i != lines.size(); ++i)
+	{
+		string const where = "sample.tsv:" + std::to_string(i + 1) + ": ";
+		auto const f = split_tabs(lines[i]);
+		if (f.size() != 3 || f[0].empty() || f[2].empty()) throw std::runtime_error(where + "expected index, class, reason");
+		size_t k = 0;
+		while (k != NUM_CLASSES && f[1] != CLASSES[k]) ++k;
+		if (k == NUM_CLASSES) throw std::runtime_error(where + "unknown class " + f[1]);
+		if (!seen.insert({f[0], f[1]}).second) throw std::runtime_error(where + "duplicate row");
+		++rows[k];
+		if (f[0] == "-")
+		{
+			foreach (info : inv)
+				if (info.classes & (1u << k)) throw std::runtime_error(where + "class " + f[1] + " is not empty");
+			continue;
+		}
+		if (f[0].find_first_not_of("0123456789") != string::npos || f[0].size() > 9 || (f[0].size() > 1 && f[0][0] == '0'))
+			throw std::runtime_error(where + "bad index " + f[0]);
+		size_t const b = std::stoul(f[0]);
+		if (b >= blocks.size()) throw std::runtime_error(where + "no block " + f[0]);
+		if (!(inv[b].classes & (1u << k))) throw std::runtime_error(where + "block " + f[0] + " is not in class " + f[1]);
+		s.in[b] = true;
+		if (k == C_NAMED) named_row[b] = true;
+	}
+	string missing;
+	for (size_t k = 0; k != NUM_CLASSES; ++k)
+		if (rows[k] == 0) missing += string(missing.empty() ? "" : " ") + CLASSES[k];
+	if (!missing.empty()) throw std::runtime_error("sample.tsv: no row for class(es): " + missing);
+
+	// Subsets of the listed blocks, in block order (ties of length broken by block order too).
+	s.all_s = s.playback = s.spring = vector<char>(blocks.size(), false);
+	size_t n_all_s = 0, n_spring = 0;
+	vector<size_t> plain, bidi;
+	for (size_t b = 0; b != blocks.size(); ++b)
+	{
+		if (!s.in[b]) continue;
+		if (blocks[b].is_node) continue;
+		if (n_all_s != BETWEEN_ALL_S) { s.all_s[b] = true; ++n_all_s; }
+		(inv[b].classes & (1u << C_BIDIRECTIONAL) ? bidi : plain).push_back(b);
+	}
+	auto const shorter = [&](size_t x, size_t y) { return inv[x].length < inv[y].length; };
+	std::stable_sort(plain.begin(), plain.end(), shorter);
+	std::stable_sort(bidi.begin(), bidi.end(), shorter);
+	for (size_t i = 0; i != plain.size() && i != PLAYBACK_SHORT; ++i) s.playback[plain[i]] = true;
+	if (!bidi.empty()) s.playback[bidi[0]] = true;
+	for (bool const named_first : {true, false})
+		for (size_t b = 0; b != blocks.size() && n_spring != SPRING_POSITIONS; ++b)
+			if (s.in[b] && blocks[b].is_node && bool(named_row[b]) == named_first) { s.spring[b] = true; ++n_spring; }
+	return s;
 }
 
 void joint_name(Json & j, Joint const jt) { j.str(to_string(jt)); }
@@ -768,6 +895,9 @@ int run(Args const & a)
 
 		auto const blocks = blocks_in_file_order(g);
 		auto const inv = inventory(g, blocks);
+		optional<Sample> sample;
+		if (!a.sample.empty()) sample = read_sample(a.sample, blocks, inv);
+		Sample const * const smp = sample ? &*sample : nullptr;
 		Counts c;
 		c.blocks = blocks.size();
 		c.transitions = g.num_sequences();
@@ -782,14 +912,14 @@ int run(Args const & a)
 		if (ix.md5 != db_md5) errors.push_back("dumper: .index md5 differs from the DB md5");
 
 		Staged_Files out(a.out);
-		out.write("sequences.ndjson", [&](std::ostream & o) { dump_sequences(o, g, blocks); });
-		out.write("graph.ndjson", [&](std::ostream & o) { dump_graph(o, g, blocks, ix); });
-		out.write("ops.ndjson", [&](std::ostream & o) { dump_ops(o, g, blocks); });
-		out.write("between.ndjson", [&](std::ostream & o) { dump_between(o, g, blocks); });
-		out.write("playback.ndjson", [&](std::ostream & o) { dump_playback(o, g, blocks); });
+		out.write("sequences.ndjson", [&](std::ostream & o) { dump_sequences(o, g, blocks, smp); });
+		out.write("graph.ndjson", [&](std::ostream & o) { dump_graph(o, g, blocks, ix, smp); });
+		out.write("ops.ndjson", [&](std::ostream & o) { dump_ops(o, g, blocks, smp); });
+		out.write("between.ndjson", [&](std::ostream & o) { dump_between(o, g, blocks, smp); });
+		out.write("playback.ndjson", [&](std::ostream & o) { dump_playback(o, g, blocks, smp); });
 		out.write("body.json", [&](std::ostream & o) { o << dump_body(); });
-		out.write("spring.ndjson", [&](std::ostream & o) { dump_spring(o, g, blocks); });
-		out.write("inventory.ndjson", [&](std::ostream & o) { dump_inventory(o, blocks, inv); });
+		out.write("spring.ndjson", [&](std::ostream & o) { dump_spring(o, g, blocks, smp); });
+		out.write("inventory.ndjson", [&](std::ostream & o) { dump_inventory(o, blocks, inv, smp); });
 		out.write("meta.json", [&](std::ostream & o) { o << dump_meta(a, versions, db_md5, &ix, consistent, &c, errors); });
 		out.commit();
 
