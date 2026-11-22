@@ -82,14 +82,19 @@ What Odin does was checked, not assumed, with the pinned toolchain (`.odin-versi
 - The render boundary does one `f64 → f32` conversion per joint per frame.
 
 ### Open points (not verifiable now)
-- **`sin`/`cos` bits.** The original uses glibc 2.27; the port calls the libm of the machine it runs on (a newer
-  glibc on Linux, Apple's libm on macOS, the browser on wasm). None of them is required to be correctly rounded, so
-  equality over every angle in the DB is **unverified** (phase 2, with the full dump). Options if it fails: port
-  glibc 2.27's `sin`/`cos`/`atan2` (or a correctly rounded library), verified against the full dump, for every
-  target; or a tolerance (Ander decides).
-- **`atan2` bits.** Odin's `atan2` is Cephes, not glibc's: likely to differ in the last bit for some inputs
-  (**unverified**). The same options apply; it feeds node matching (`angleOff`), `normalRotation` and canonical
-  orientation.
+- **`sin`/`cos`/`atan2` bits: measured (#140), they do not match; decision pending (#161).** Full oracle dump
+  (8,323 positions, the pinned `FULL.sha256`), `orient_canonically_*` compared bit for bit, linux x86-64, Odin
+  `dev-2026-11-nightly:9a69916`, host glibc 2.39:
+  - Odin's `atan2` (Cephes) differs from the correctly rounded value in 2,152 of the 8,323 angles (±1 ULP), and
+    2,119 positions differ from the oracle; the sample already fails (block 654 pos 1).
+  - With a correctly rounded `atan2` and glibc 2.39's `sin`/`cos`, 29 positions still differ: those where glibc
+    2.39's `sin` (19 angles) or `cos` (10 angles) is not correctly rounded.
+  - With correctly rounded `atan2`, `sin` and `cos`, all 8,323 positions match: the oracle (glibc 2.27, with the IBM
+    libm's slow paths) behaves as correctly rounded. Neither Odin's `atan2` nor a modern libm reproduces it.
+  - macOS: first mismatch in the CI of the #140 PR.
+
+  Proposal in #161: correctly rounded `atan2`/`sin`/`cos` in `core`, the same on every target, verified against the
+  full dump. That needs an amendment to this ADR, and the decision is Ander's.
 - **Constant folding.** LLVM may evaluate `llvm.sin`/`llvm.cos` with constant arguments at compile time with its own
   implementation; whether that can differ from the runtime call is **unverified**. It matters only for
   compile-time constant angles.
