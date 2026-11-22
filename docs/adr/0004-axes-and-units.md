@@ -87,10 +87,11 @@ eye looking down `−z`, OpenGL clip space. raylib has no unit; meters are a cho
   checked against the same matrices, or not used for views compared with the oracle.
 
 ### Open points (not verifiable now)
-- **On-screen orientation of the default camera** (`docs/original.md` §4.2, §4.5): the algebra says that with
-  `yaw = 0` world `+x` is to the right and the eye is on the `+z` side; to be confirmed with the oracle PNGs (#35).
-  The images also flip vertically and swap channels 0 and 2 before writing (`src/images.cpp:89,111-112`, §7.6);
-  those belong to the image path, not to the world axes.
+- **On-screen orientation of the default camera** (`docs/original.md` §4.2, §4.5): **settled by the oracle PNGs
+  (#35)**: with `yaw = 0` (heading N) world `+x` is screen right and the eye is on the `+z` side, as the algebra
+  says (evidence: `tools/oracle/README.md`, "Reference images"). The images also flip vertically and swap channels
+  0 and 2 before writing (`src/images.cpp:89,111-112`, §7.6); OSMesa's buffer is RGB, so the PNGs are BGR (player 0
+  shows blue). Those belong to the image path, not to the world axes.
 - **raylib's C internals** (`BeginMode3D`, `rlFrustum`) were read in the upstream 6.2 source, not in the pinned
   binary (only the clip-plane defaults and `rlglInit` were checked in `libraylib.a`). Decision 3 does not depend on
   them, since the matrices are set explicitly.
