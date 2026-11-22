@@ -58,7 +58,7 @@ GrappleMap.txt (bytes) ──► parser ──► graph (arena) ──► transf
 |---|---|---|
 | Unit, property, round-trip, robustness | `core` (TDD: the failing test first), `ui` logic | `./build.sh test`, part of `./build.sh ci` |
 | Fidelity (sample) | package `fidelity` (`tests/fidelity/`) over the committed oracle sample `tests/fixtures/oracle/` and the real DB of the submodule (a missing submodule fails, never skips) | `./build.sh test`, locally, no Docker |
-| Fidelity (full DB) | the same package with `GM_ORACLE_DIR=<dir>` pointing at the full oracle dump (the `oracle` workflow's `oracle-full-dump` artifact) | by hand today; a CI job later (spec phase 2) |
+| Fidelity (full DB) | the same package with `GM_ORACLE_DIR=<dir>` pointing at the full oracle dump (the `oracle` workflow's `oracle-full-dump` artifact) | `fidelity` workflow (`.github/workflows/fidelity.yml`, linux + macOS, PRs touching core/fidelity/fixtures/build.sh, nightly, manual); or by hand |
 | Oracle self-check | the dumper over `tools/oracle/dump/testdata/` | `./build.sh oracle --test` (Docker) |
 | Golden images | our viewer against `tests/golden/` | `./build.sh test-golden` (phase 3) |
 | Hook tests | `tests/hooks/*.test.sh` | `./build.sh test` |
