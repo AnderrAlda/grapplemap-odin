@@ -30,8 +30,8 @@ On Apple Silicon the image runs emulated (slow `-O3` build, a few minutes); on a
 `tools/oracle/dump/dump.cpp` (+ `json.hpp`, no extra dependencies) is linked against the original's `common` objects
 (`SConstruct:33`) and `boost_program_options`, built with `-std=c++1y -O3 -DNDEBUG -ffp-contract=off` and `-Werror`.
 `grapplemap-oracle-dump DB OUT [--versions FILE] [--commit SHA] [--sample TSV]` (`dump/run.sh`) runs
-`grapplemap-indexer` on a **copy** of `DB`, then the dumper, which always loads `DB` with `loadGraph(std::istream&)` (no `.index`; one code
-path) and only reads the copy's `.index` to dump it and check it.
+`grapplemap-indexer` on a **copy** of `DB`, then the dumper, which always loads `DB` with `loadGraph(std::istream&)`
+(no `.index`; one code path) and only reads the copy's `.index` to dump it and check it.
 
 ```sh
 ./build.sh oracle --full                # whole DB -> build/oracle/full/ (git-ignored; wiped first); prints the sha256
