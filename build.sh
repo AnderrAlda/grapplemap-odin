@@ -198,7 +198,8 @@ cmd_space_id() {
 	printf 'sp%s\n' "${hash:0:32}"
 }
 
-# oracle --full|--sample|--update-full-hashes|--test: runs the oracle dumper (tools/oracle, #34, #35) in Docker.
+# oracle [--sample]|--full|--update-full-hashes|--test: runs the oracle dumper (tools/oracle, #34, #35) in Docker;
+# --sample is the default (spec, "UX / behaviour").
 # --full dumps the whole original DB to build/oracle/full/ (wiped first, so reruns give the same bytes) and checks it
 # against tests/fixtures/oracle/FULL.sha256 when that exists; --update-full-hashes rewrites FULL.sha256 instead.
 # --sample dumps the blocks of tools/oracle/sample.tsv and rewrites tests/fixtures/oracle/ (every file but
@@ -219,13 +220,15 @@ oracle_run() { docker run --rm --platform linux/amd64 -u "$(id -u):$(id -g)" "$@
 
 # oracle_dump OUT [dumper options]: dumps the original DB to OUT (wiped first).
 oracle_dump() {
-	local out="$1" commit
+	local out="$1" commit mounts=()
 	shift
+	# sample.tsv is mounted only for --sample (a missing file would make Docker create a root-owned directory).
+	[ "${1:-}" = --sample ] && mounts=(-v "$PWD/tools/oracle/sample.tsv:/sample.tsv:ro")
 	oracle_image
 	commit=$(git -C reference/GrappleMap rev-parse HEAD) || { echo "error: reference/GrappleMap not initialised" >&2; return 1; }
 	rm -r -f "$out"
 	mkdir -p "$out"
-	oracle_run -v "$PWD/$out:/out" -v "$PWD/tools/oracle/sample.tsv:/sample.tsv:ro" "$ORACLE_IMAGE" \
+	oracle_run -v "$PWD/$out:/out" ${mounts[@]+"${mounts[@]}"} "$ORACLE_IMAGE" \
 		grapplemap-oracle-dump /oracle/GrappleMap.txt /out --versions /oracle/VERSIONS --commit "$commit" "$@"
 }
 
@@ -253,7 +256,9 @@ oracle_sample() {
 	mkdir -p "$ORACLE_FIXTURES"
 	find "$ORACLE_FIXTURES" -maxdepth 1 -type f ! -name FULL.sha256 -delete
 	cp "$out"/* "$ORACLE_FIXTURES"/
-	(cd "$ORACLE_FIXTURES" && sha256sum -- *.json *.ndjson >MANIFEST.sha256 && cat MANIFEST.sha256)
+	# Every fixture but the manifests, images/*.png included (written by --images only), in C-locale order.
+	(cd "$ORACLE_FIXTURES" && find . -type f ! -name '*.sha256' | sed 's|^\./||' | LC_ALL=C sort \
+		| while read -r f; do sha256sum -- "$f"; done >MANIFEST.sha256 && cat MANIFEST.sha256)
 }
 
 oracle_test() {
@@ -293,10 +298,10 @@ cmd_oracle() {
 	case "${1:-}" in
 	--full) oracle_full ;;
 	--update-full-hashes) oracle_full update ;;
-	--sample) oracle_sample ;;
+	--sample | "") oracle_sample ;;
 	--test) oracle_test ;;
 	--images) echo "error: ./build.sh oracle --images arrives with #35 (PR 3)" >&2; return 2 ;;
-	*) echo "usage: ./build.sh oracle --full|--sample|--update-full-hashes|--test" >&2; return 2 ;;
+	*) echo "usage: ./build.sh oracle [--sample]|--full|--update-full-hashes|--test (default: --sample)" >&2; return 2 ;;
 	esac
 }
 
@@ -320,7 +325,7 @@ worktree-remove) cmd_worktree_remove "$@" ;;
 space-id) cmd_space_id "$@" ;;
 oracle) cmd_oracle "$@" ;;
 *)
-	echo "usage: ./build.sh {setup|check|changelog-check [dir]|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <branch>|worktree-remove <branch>|space-id <branch>|oracle --full|--sample|--update-full-hashes|--test}"
+	echo "usage: ./build.sh {setup|check|changelog-check [dir]|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <branch>|worktree-remove <branch>|space-id <branch>|oracle [--sample]|--full|--update-full-hashes|--test}"
 	exit 2
 	;;
 esac

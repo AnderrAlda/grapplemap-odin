@@ -37,6 +37,7 @@ unsigned const FRAMES_PER_POS = 11;
 
 // Values of s for between(a, b, s) over every consecutive pair.
 double const BETWEEN_S[] = {0.25, 0.5, 0.75};
+double const BETWEEN_S_SAMPLE = 0.5; // the s every sampled transition keeps
 
 struct Args
 {
@@ -259,7 +260,7 @@ struct Sample
 	vector<char> in;       // listed in sample.tsv
 	vector<char> all_s;    // between: also s = 0.25 and 0.75 (first BETWEEN_ALL_S transitions)
 	vector<char> playback; // the PLAYBACK_SHORT shortest non-bidirectional transitions and the shortest bidirectional
-	vector<char> spring;   // first SPRING_POSITIONS named positions
+	vector<char> spring;   // SPRING_POSITIONS positions: those listed under `named` first, in block order
 };
 
 size_t const BETWEEN_ALL_S = 10, PLAYBACK_SHORT = 2, SPRING_POSITIONS = 10;
@@ -398,7 +399,7 @@ void dump_ops(std::ostream & out, Graph const & g, vector<Block> const & blocks,
 }
 
 // between(a, b, s) (src/positions.hpp:42) for every consecutive pair of every transition; pos is a's index.
-// In the sample: the middle pair (sample_pair) of each transition at s = 0.5, and at every s for `all_s`.
+// In the sample: the middle pair (sample_pair) of each transition at BETWEEN_S_SAMPLE, and at every s for `all_s`.
 void dump_between(std::ostream & out, Graph const & g, vector<Block> const & blocks, Sample const * smp)
 {
 	Json j;
@@ -409,7 +410,7 @@ void dump_between(std::ostream & out, Graph const & g, vector<Block> const & blo
 		for (size_t k = 0; k + 1 < ps.size(); ++k)
 			for (double const s : BETWEEN_S)
 			{
-				if (smp && (k != sample_pair(ps.size()) || (s != 0.5 && !smp->all_s[b]))) continue;
+				if (smp && (k != sample_pair(ps.size()) || (s != BETWEEN_S_SAMPLE && !smp->all_s[b]))) continue;
 				j.begin_object();
 				j.key("block").integer(long(b));
 				j.key("seq").integer(long(blocks[b].index));
@@ -428,7 +429,8 @@ void frames_d(Json & j, Frames const & f, size_t const step) { positions_d(j, f.
 // smoothen() (src/paths.cpp:8-21). Each transition is played alone, forwards, and smoothed alone: smoothing per
 // transition is the dumper's choice (the original's callers smooth a whole script, src/makevideo.cpp:93,105), so a
 // "chain" record follows with the first pair a -> b (index order, b starts at a's end node) smoothed in one call.
-// In the sample: the `playback` transitions, and the chain is searched among the listed transitions only.
+// In the sample: the `playback` transitions, and as chain the pair of listed transitions with the fewest positions
+// (ties in index order). That chain line is the one sample line that is not a line of the full dump.
 void dump_playback(std::ostream & out, Graph const & g, vector<Block> const & blocks, Sample const * smp)
 {
 	vector<long> seq_block(g.num_sequences(), -1);
@@ -457,12 +459,18 @@ void dump_playback(std::ostream & out, Graph const & g, vector<Block> const & bl
 	}
 
 	optional<pair<SeqNum, SeqNum>> chain;
+	size_t chain_positions = 0;
 	foreach (a : seqnums(g))
 	{
 		if (!keep(smp, size_t(seq_block[a.index]))) continue;
 		foreach (c : seqnums(g))
-			if (keep(smp, size_t(seq_block[c.index])) && *g[c].from == *g[a].to) { chain = std::make_pair(a, c); break; }
-		if (chain) break;
+			if (keep(smp, size_t(seq_block[c.index])) && *g[c].from == *g[a].to)
+			{
+				size_t const n = g[a].positions.size() + g[c].positions.size();
+				if (!chain || n < chain_positions) { chain = std::make_pair(a, c); chain_positions = n; }
+				if (!smp) break; // full dump: the first pair
+			}
+		if (chain && !smp) break;
 	}
 	if (!chain) return;
 
@@ -689,6 +697,7 @@ Sample read_sample(string const & path, vector<Block> const & blocks, vector<Blo
 	Sample s;
 	s.in.assign(blocks.size(), false);
 	vector<size_t> rows(NUM_CLASSES, 0);
+	vector<char> named_row(blocks.size(), false);
 	std::set<pair<string, string>> seen;
 	for (size_t i = 1; i != lines.size(); ++i)
 	{
@@ -706,12 +715,13 @@ Sample read_sample(string const & path, vector<Block> const & blocks, vector<Blo
 				if (info.classes & (1u << k)) throw std::runtime_error(where + "class " + f[1] + " is not empty");
 			continue;
 		}
-		if (f[0].find_first_not_of("0123456789") != string::npos || f[0].size() > 9)
+		if (f[0].find_first_not_of("0123456789") != string::npos || f[0].size() > 9 || (f[0].size() > 1 && f[0][0] == '0'))
 			throw std::runtime_error(where + "bad index " + f[0]);
 		size_t const b = std::stoul(f[0]);
 		if (b >= blocks.size()) throw std::runtime_error(where + "no block " + f[0]);
 		if (!(inv[b].classes & (1u << k))) throw std::runtime_error(where + "block " + f[0] + " is not in class " + f[1]);
 		s.in[b] = true;
+		if (k == C_NAMED) named_row[b] = true;
 	}
 	string missing;
 	for (size_t k = 0; k != NUM_CLASSES; ++k)
@@ -725,7 +735,7 @@ Sample read_sample(string const & path, vector<Block> const & blocks, vector<Blo
 	for (size_t b = 0; b != blocks.size(); ++b)
 	{
 		if (!s.in[b]) continue;
-		if (blocks[b].is_node) { if (n_spring != SPRING_POSITIONS) { s.spring[b] = true; ++n_spring; } continue; }
+		if (blocks[b].is_node) continue;
 		if (n_all_s != BETWEEN_ALL_S) { s.all_s[b] = true; ++n_all_s; }
 		(inv[b].classes & (1u << C_BIDIRECTIONAL) ? bidi : plain).push_back(b);
 	}
@@ -734,6 +744,9 @@ Sample read_sample(string const & path, vector<Block> const & blocks, vector<Blo
 	std::stable_sort(bidi.begin(), bidi.end(), shorter);
 	for (size_t i = 0; i != plain.size() && i != PLAYBACK_SHORT; ++i) s.playback[plain[i]] = true;
 	if (!bidi.empty()) s.playback[bidi[0]] = true;
+	for (bool const named_first : {true, false})
+		for (size_t b = 0; b != blocks.size() && n_spring != SPRING_POSITIONS; ++b)
+			if (s.in[b] && blocks[b].is_node && bool(named_row[b]) == named_first) { s.spring[b] = true; ++n_spring; }
 	return s;
 }
 

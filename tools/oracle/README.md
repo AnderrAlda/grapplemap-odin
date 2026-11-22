@@ -38,7 +38,7 @@ On Apple Silicon the image runs emulated (slow `-O3` build, a few minutes); on a
                                         # of each file and, if tests/fixtures/oracle/FULL.sha256 exists, fails unless
                                         # the list (file set and hashes) is identical
 ./build.sh oracle --update-full-hashes  # same dump, then writes tests/fixtures/oracle/FULL.sha256
-./build.sh oracle --sample              # blocks of sample.tsv -> tests/fixtures/oracle/ + MANIFEST.sha256 (see below)
+./build.sh oracle [--sample]            # the default: blocks of sample.tsv -> tests/fixtures/oracle/ + MANIFEST.sha256
 ./build.sh oracle --test                # tools/oracle/dump/testdata/*.txt -> build/oracle/test/<name>/, diff -r with testdata/<name>/
 ```
 
@@ -94,8 +94,9 @@ and `ref:`, a transition from it translated by +0.5 in x to an anonymous node (l
 tab, coordinates `q = 0` and `3843`), a bidirectional transition ending at the mirror of the second named position.
 The two transitions form the `chain` of `playback.ndjson` (the first is `detailed`: 2 segments × 6 frames − 1 = 11).
 `testdata/sample_*.txt` are symlinks to `basic.txt` run with their `<name>.sample.tsv` (`--sample`): `sample_ok`
-(every class listed or `-`; each output line is byte-identical to a line of `basic/`), `sample_missing_class`,
-`sample_wrong_class` and `sample_not_empty` (the dumper fails with the reason in `meta.json`).
+(every class listed or `-`; each output line is byte-identical to a line of `basic/`), and `sample_missing_class`,
+`sample_wrong_class`, `sample_not_empty`, `sample_unknown_class`, `sample_duplicate_row` and `sample_bad_index` (a
+leading zero) where the dumper fails with the reason in `meta.json`.
 `testdata/bad_digit.txt` has a non-base62 digit: the original rejects it, so its expected directory holds only
 `meta.json` with the original's error. A test whose expected directory has no `graph.ndjson` must make the dumper
 fail, and any other test must make it succeed. `testdata/<name>/` is the expected output, reviewed by hand: change it
@@ -128,27 +129,30 @@ transitions have no tag of their own).
 `sequences.ndjson`. Selected from the full dump's `inventory.ndjson` (the `reason` says how): 20 `normal` (one per
 family × length bucket present, `other` only at `2` and `>10`; fewest text classes, then first in file), 10 `named`
 (endpoints of those transitions, round-robin over families), ≤ 3 per anomaly class (shortest first, at most one
-named position per class; `duplicate_description`: a same-name pair plus one `...`). 69 rows, 63 blocks. The
-dumper fails if a row names a block outside its class, an unknown class or a duplicate row, or if a class has no
-row. **Allowed-empty**: a class with no block in the whole DB is listed with index `-`, and the dumper checks that it
+named position per class; `duplicate_description`: a same-name pair plus one `...`). 69 rows: 68 over 62 blocks
+(32 of them for the anomaly classes) and one `-`. The dumper fails on a row that names a block outside its class, an
+unknown class, a duplicate row or a bad index (not decimal, over 9 digits, a leading zero, no such block), and if a
+class has no row. **Allowed-empty**: a class with no block in the whole DB is listed with index `-`, and the dumper checks that it
 is really empty (at the pin: `edge_coordinate`).
 
-**`--sample`** filters every file by block index, in the same functions as the full dump (each sample line is a
-line of the full dump): `sequences`, `inventory`, `ops` (the middle position `n / 2` of each transition, every
-named position), `between` (the middle pair `(n - 2) / 2` at `s = 0.5`; the first 10 transitions also at 0.25 and
-0.75), `playback` (the 2 shortest non-bidirectional transitions and the shortest bidirectional one; the `chain` is
-searched among the listed transitions), `spring` (the first 10 named positions), `graph` (the listed transitions,
-the listed nodes and the endpoints of the listed transitions; the `.index` line complete), `body.json` and
-`meta.json` complete (counts of the whole DB).
+**`--sample`** filters every file by block index, in the same functions as the full dump: `sequences`,
+`inventory`, `ops` (the middle position `n / 2` of each transition, every named position), `between` (the middle
+pair `(n - 2) / 2` at `s = 0.5`; the first 10 transitions also at 0.25 and 0.75), `playback` (the 2 shortest
+non-bidirectional transitions and the shortest bidirectional one, plus a `chain`), `spring` (10 named positions: those
+listed under `named` first, then the other listed ones, in block order), `graph` (the listed transitions, the listed
+nodes and the endpoints of the listed transitions; the `.index` line complete), `body.json` and `meta.json` complete
+(counts of the whole DB). Every sample line is a line of the full dump **except the `chain` line**: the full dump
+chains the first pair in index order, the sample the pair of listed transitions with the fewest positions (ties in
+index order), so as not to spend the size budget on a long chain (at the pin: seqs 58 → 66).
 
 `./build.sh oracle --sample` dumps to `build/oracle/sample/` and then replaces every file of `tests/fixtures/oracle/`
-except `FULL.sha256` (`images/` is never touched) and writes `MANIFEST.sha256` (`sha256sum` of the sample's files).
+except `FULL.sha256` (`images/` is never touched) and writes `MANIFEST.sha256`: the `sha256sum` of every fixture but
+the two manifests, `images/*.png` included, in C-locale path order.
 Two runs give identical bytes. `.gitattributes` marks the fixtures `-diff linguist-generated` (the `.sha256` files
 keep their diff).
 
-Size at the pin: 1,679,542 bytes of working copy in 11 files (`ops` 696 KB, `playback` 456 KB, `between` 192 KB,
-`sequences` 183 KB, `graph` 109 KB, `spring` 28 KB, `inventory` 9 KB, rest 7 KB); ~419 KB as `tar | gzip -9` or as a
-git pack. Hard limit 2 MB (spec; `images/` of the last PR of #35 counts too).
+Size at the pin: 1,540,722 bytes of working copy in 11 files (`ops` 696 KB, `playback` 317 KB, `between` 192 KB,
+`sequences` 183 KB, `graph` 109 KB, `spring` 28 KB, `inventory` 9 KB, rest 7 KB); ~369 KB as `tar | gzip -9`. Hard limit 2 MB (spec; `images/` of the last PR of #35 counts too).
 
 ## Smoke checks
 

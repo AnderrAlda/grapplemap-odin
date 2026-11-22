@@ -5,7 +5,7 @@ Visor/editor moderno de grafos de posiciones de grappling (reimplementación en 
 render moderno; UX simple; base para editar mi propio grafo. Nativo primero, wasm después.
 
 ## Comandos
-`./build.sh setup|check|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <rama>|worktree-remove <rama>|oracle {--full|--sample|--update-full-hashes|--test}`
+`./build.sh setup|check|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <rama>|worktree-remove <rama>|oracle [--sample]|--full|--update-full-hashes|--test`
 Toolchain: Odin fijado en `.odin-version`; `odinfmt`/`ols` en `~/.local/bin`; `jq` requerido por los hooks.
 Tras clonar: `git submodule update --init` (lo hace `./build.sh setup`) para tener `reference/GrappleMap`.
 
