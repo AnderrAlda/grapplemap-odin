@@ -47,8 +47,8 @@ GrappleMap.txt (bytes) ──► parser ──► graph (arena) ──► transf
   indices into slices, never pointers, so the graph can be copied, serialized and checked without fix-ups.
 - **Per frame**: `context.temp_allocator`, emptied with `free_all` at the end of each frame.
 - **Leaks**: debug builds wrap the default allocator in `mem.Tracking_Allocator` and report leaks at exit
-  (`TRACK_LEAKS :: ODIN_DEBUG`, `src/main.odin:13,28-45`); tests run under the tracking allocator of `core:testing` and,
-  on Linux and macOS, AddressSanitizer (`sanitize_flag`, `build.sh:14-20`; skipped on the macOS CI runners).
+  (`TRACK_LEAKS :: ODIN_DEBUG`, `src/main.odin:13,28-45`); tests run under the tracking allocator of `core:testing`
+  (`-define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true`: a leak or bad free fails the test, #151) and, on Linux and macOS, AddressSanitizer (`sanitize_flag`, `build.sh:14-22`; skipped on the macOS CI runners).
   Target: zero leaks.
 - **Global state**: minimal. `App_State` is passed explicitly.
 
@@ -57,8 +57,8 @@ GrappleMap.txt (bytes) ──► parser ──► graph (arena) ──► transf
 | Kind | Where | Runs |
 |---|---|---|
 | Unit, property, round-trip, robustness | `core` (TDD: the failing test first), `ui` logic | `./build.sh test`, part of `./build.sh ci` |
-| Fidelity (sample) | Odin tests over the committed oracle sample `tests/fixtures/oracle/` (#35) | `./build.sh test`, locally, no Docker (phase 2) |
-| Fidelity (full DB) | Odin tests over the full oracle dump, downloaded from the `oracle` workflow's artifact | CI only (phase 2) |
+| Fidelity (sample) | package `fidelity` (`tests/fidelity/`) over the committed oracle sample `tests/fixtures/oracle/` and the real DB of the submodule (a missing submodule fails, never skips) | `./build.sh test`, locally, no Docker |
+| Fidelity (full DB) | the same package with `GM_ORACLE_DIR=<dir>` pointing at the full oracle dump (the `oracle` workflow's `oracle-full-dump` artifact) | by hand today; a CI job later (spec phase 2) |
 | Oracle self-check | the dumper over `tools/oracle/dump/testdata/` | `./build.sh oracle --test` (Docker) |
 | Golden images | our viewer against `tests/golden/` | `./build.sh test-golden` (phase 3) |
 | Hook tests | `tests/hooks/*.test.sh` | `./build.sh test` |
