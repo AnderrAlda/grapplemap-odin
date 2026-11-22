@@ -216,7 +216,9 @@ oracle_image() {
 	command -v docker >/dev/null || { echo "error: docker not found; ./build.sh oracle needs Docker" >&2; return 1; }
 	docker info >/dev/null 2>&1 || { echo "error: cannot reach the Docker daemon (is it running?)" >&2; return 1; }
 	echo "building the oracle image (cached after the first time; the first build takes minutes)..." >&2
-	docker build --quiet --platform linux/amd64 -f tools/oracle/Dockerfile -t "$ORACLE_IMAGE" . >/dev/null
+	# ORACLE_BUILD_FLAGS (empty by default): extra `docker build` flags; the oracle workflow passes the layer cache.
+	# shellcheck disable=SC2086
+	docker build --quiet --platform linux/amd64 ${ORACLE_BUILD_FLAGS:-} -f tools/oracle/Dockerfile -t "$ORACLE_IMAGE" . >/dev/null
 }
 
 oracle_run() { docker run --rm --platform linux/amd64 -u "$(id -u):$(id -g)" "$@"; }
