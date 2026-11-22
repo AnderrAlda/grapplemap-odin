@@ -62,6 +62,11 @@ jobs:
             echo "::error::the regenerated sample differs from tests/fixtures/oracle (fixtures are never regenerated in CI)"
             exit 1
           fi
+          # build.sh only compares when FULL.sha256 exists: a missing file must fail here.
+          if [ ! -f tests/fixtures/oracle/FULL.sha256 ]; then
+            echo "::error::tests/fixtures/oracle/FULL.sha256 is missing"
+            exit 1
+          fi
           ./build.sh oracle --full
       - name: Upload the full dump
         uses: actions/upload-artifact@v7.0.2
