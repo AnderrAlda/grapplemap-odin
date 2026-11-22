@@ -56,3 +56,14 @@ RUN cd /oracle/src \
       graph.o graph_util.o positions.o viables.o persistence.o paths.o playback.o icosphere.o editor.o metadata.o \
       md5.o js_conversions.o -lboost_program_options \
  && install -m 0755 /oracle/dump/run.sh /usr/local/bin/grapplemap-oracle-dump
+
+# Reference images (#35): own code linked like grapplemap-mkpospages (SConstruct:35-50: images, rendering, common
+# and its LIBS), same original flags (-DUSE_FTGL: Style's layout depends on it) plus -ffp-contract=off -Werror.
+COPY tools/oracle/images /oracle/images
+RUN cd /oracle/src \
+ && g++ -std=c++1y -O3 -DNDEBUG -DUSE_FTGL -ffp-contract=off -Wall -Wextra -pedantic -Wno-missing-field-initializers -Werror \
+      $(pkg-config --cflags libgvc freetype2) -I/oracle/src -o /usr/local/bin/grapplemap-images /oracle/images/images.cpp \
+      images.o rendering.o playerdrawer.o \
+      graph.o graph_util.o positions.o viables.o persistence.o paths.o playback.o icosphere.o editor.o metadata.o \
+      md5.o js_conversions.o \
+      -lOSMesa -lGLU -lftgl -lboost_program_options -lpng -lboost_filesystem -lboost_system -lpthread -lgvc -lcgraph

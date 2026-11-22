@@ -2,7 +2,7 @@
 
 Docker image that builds the **original GrappleMap** tools (`reference/GrappleMap`, read-only submodule, pinned
 at `032c8f9`) out of tree, using the original `SConstruct` and its flags unchanged. It is the oracle that later
-phase-1 deliverables (dumper, sample, oracle CI) build on. Issues: #33 (image), #34 (dumper), #35 (inventory, sample).
+phase-1 deliverables (dumper, sample, oracle CI) build on. Issues: #33 (image), #34 (dumper), #35 (inventory, sample, reference images).
 
 ## Build
 
@@ -13,17 +13,19 @@ docker build --platform linux/amd64 -f tools/oracle/Dockerfile -t grapplemap-ora
 ```
 
 `Dockerfile.dockerignore` limits the build context to `reference/GrappleMap/src`, `GrappleMap.txt` and
-`tools/oracle/dump` (without its `testdata/`). Stages: `original` (the original tools) and `dumper` (the final image).
+`tools/oracle/dump` (without its `testdata/`) and `tools/oracle/images`. Stages: `original` (the original tools) and
+`dumper` (the final image: dumper and image renderer).
 On Apple Silicon the image runs emulated (slow `-O3` build, a few minutes); on amd64 CI it is native.
 
 ## What it contains
 
 - `/usr/local/bin/grapplemap-{indexer,dbtojs,mkpospages}`
 - `/oracle/src`: source copy plus all `.o` files (including `images.o`, `rendering.o`, `playerdrawer.o`, which
-  need OSMesa/ftgl/gvc/png and are required by `--images` in #35)
+  need OSMesa/ftgl/gvc/png and are linked by `grapplemap-images`)
 - `/oracle/GrappleMap.txt`: the original database
 - `/oracle/VERSIONS`: compiler and library versions, for recording in `meta.json`
 - `/usr/local/bin/grapplemap-dump` and `grapplemap-oracle-dump` (the dumper, see below)
+- `/usr/local/bin/grapplemap-images` (the reference images, see "Reference images")
 
 ## Dumper (#34)
 
@@ -40,10 +42,11 @@ On Apple Silicon the image runs emulated (slow `-O3` build, a few minutes); on a
 ./build.sh oracle --update-full-hashes  # same dump, then writes tests/fixtures/oracle/FULL.sha256
 ./build.sh oracle [--sample]            # the default: blocks of sample.tsv -> tests/fixtures/oracle/ + MANIFEST.sha256
 ./build.sh oracle --test                # tools/oracle/dump/testdata/*.txt -> build/oracle/test/<name>/, diff -r with testdata/<name>/
+./build.sh oracle --images              # images.tsv -> tests/fixtures/oracle/images/ + MANIFEST.sha256 (see below)
 ```
 
 All build the image first (`docker build`, cached) and fail with a clear message when Docker or its daemon is
-missing. They are not part of `./build.sh ci`. `--images` arrives with the last PR of #35.
+missing. They are not part of `./build.sh ci`.
 
 Output (format of `docs/specs/phase-1-original-research.md`, "Dump format"; one JSON value per line, fixed order, no
 timestamps, doubles as `%.17g`, strings as UTF-8 with JSON escapes):
@@ -154,6 +157,55 @@ keep their diff).
 Size at the pin: 1,540,722 bytes of working copy in 11 files (`ops` 696 KB, `playback` 317 KB, `between` 192 KB,
 `sequences` 183 KB, `graph` 109 KB, `spring` 28 KB, `inventory` 9 KB, rest 7 KB); ~369 KB as `tar | gzip -9`. Hard limit 2 MB (spec; `images/` of the last PR of #35 counts too).
 
+## Reference images (#35)
+
+`tools/oracle/images/images.cpp` (`grapplemap-images --db DB --list TSV --out OUT [--versions FILE] [--commit SHA]`)
+is linked like `grapplemap-mkpospages` (`SConstruct:35-50`: `images.o`, `rendering.o`, `playerdrawer.o`, `common` and
+its `LIBS`), with the original flags (`-DUSE_FTGL` included: `Style`'s layout depends on it) plus `-ffp-contract=off
+-Werror`. For each row of `tools/oracle/images.tsv` (header `index<TAB>reason`; `index` is the block index of
+`sequences.ndjson`; it must be a named position) it does what a position page does (`src/mkpospages.cpp:578-588`):
+`orient_canonically_with_mirror`, `ymax = max(.8, both heads' y)`, `ImageMaker::png(pos, ymax, view n, 480, 360,
+WhiteBg, "p<node>")` (view `n` = heading N, no mirror: the page every list links to, `src/mkpospages.cpp:188`). It
+then copies the file the `p<node>n480x360.png` symlink points to (store names come from `boost::hash_value`) to
+`OUT/p<node>-480x360.png`, and writes `OUT/meta.json`: `submodule_commit`, `versions` (`/oracle/VERSIONS`), `gl`
+(vendor, renderer, version of an OSMesa context like `ImageMaker`'s), `env` (`GALLIUM_DRIVER`) and `images` (`file`,
+`block`, `node`, `view`, `width`, `height`, `background`, `reason`). No font is needed: `ImageMaker` passes no path,
+so `renderText` is never reached.
+
+`./build.sh oracle --images` renders to `build/oracle/images/`, rewrites `tests/fixtures/oracle/images/` from
+scratch, rewrites `MANIFEST.sha256` and checks that `images/` holds exactly one `p<node>-480x360.png` per row plus
+`meta.json`, that `meta.json` lists exactly those PNGs and that the manifest lists every file with its hash.
+`--sample` never touches `images/`. The positions: 6 named positions of `sample.tsv` (`named`), one per family:
+standing, mount, guard, side_control, turtle, back. **Never run in CI**: PNGs depend on Mesa (ADR 0002); they are
+regenerated by hand only. Two runs give identical bytes. Size at the pin: 183,269 bytes (6 PNGs of 25-36 KB +
+`meta.json`); `tests/fixtures/oracle/` totals 1,724,613 bytes.
+
+**Driver: softpipe** (`GALLIUM_DRIVER=softpipe`, set by `build.sh`; recorded in `meta.json`). With the image's
+default llvmpipe (Mesa 20.0.8):
+- the bodies come out striped: a probe with `OSMesaCreateContextExt(OSMESA_RGB, 16, 0, 16)` (the context of
+  `src/images.cpp:525`) on an 8×4 buffer shows `glClear` writing 3-byte RGB pixels but rasterized primitives writing
+  4-byte RGBA pixels (`00 00 ff ff` for a blue quad) into the 3-byte buffer; at full size the silhouettes stay in
+  place but their colors are corrupted (alternating columns);
+- every run gives different bytes (threaded rasterizer; `LP_NUM_THREADS=0` makes it repeatable), and the bytes
+  change with the SIMD width the host offers (`LP_NATIVE_VECTOR_WIDTH` 128 vs 256).
+softpipe writes the same probe correctly (3-byte pixels), is single-threaded C with no JIT (no host-dependent
+codegen), and gives identical bytes run to run. The original is not modified: only the Mesa driver is chosen.
+
+**Channel order** (`docs/original.md` §7.6): OSMesa's `OSMESA_RGB` buffer is **R, G, B** in memory
+(probe: `glClearColor(1, 0, 0)` reads back `ff 00 00`), so `ImageMaker`'s swap of channels 0 and 2
+(`src/images.cpp:89`) writes **BGR**: red and blue are swapped in the PNGs. Player 0 (`(1, 0, 0)`) is **blue** and
+player 1 (`(0.15, 0.15, 1)`) is **red**. Evidence in `p96-480x360.png`: player 0's head pixels are `0000aa…0000bd`
+(R = G = 0) and player 1's torso is `de2121` (G/R = B/R = 0x21/0xde = 0.149, i.e. the 0.15 of player 1's color).
+It is the original's code path (the swap is in `ImageMaker`, not in this program); a comparison with a renderer that
+uses the code colors must swap R and B of the oracle PNGs.
+
+**Camera orientation** (`docs/original.md` §4.2, ADR 0004): with heading N (`yaw = 0`), world **+x is screen
+right** and the **eye is on the +z side**, as the algebra says. Evidence, from the dump's
+`orient_canonically_with_mirror` (`ops.ndjson`): in block 96 player 0's head is at x = 0.22, y = 0.99 and player
+1's at x = 0.00, y = 1.27: the blue (player 0) head is lower and right of centre, the red one higher and centred;
+in block 267 player 1's toe is at z = +0.76 and player 0's head at x = −0.43: the red legs are in the foreground
+(bottom of the image) and the blue head is on the left.
+
 ## Smoke checks
 
 ```sh
@@ -183,8 +235,9 @@ unmodified. A newer base would need a shim header, i.e. a workaround (ask first)
 
 - Bionic is EOL; its archive may move to `old-releases` someday. The digest plus exact versions make that fail loudly.
 - `grapplemap-indexer` has no `--help`: it treats any argument as the database path.
-- Rendering (`mkpospages --images`) is not exercised here. It may need `LIBGL_ALWAYS_SOFTWARE` and fonts for ftgl;
-  to be checked in #35. Mesa's version affects the PNG output.
+- OSMesa's default driver (llvmpipe) corrupts `OSMESA_RGB` renders and is not deterministic: `--images` uses
+  softpipe (see "Reference images"). `grapplemap-mkpospages` run by hand gets llvmpipe unless `GALLIUM_DRIVER=softpipe`
+  is set.
 
 ## Notes for ADR 0002 (oracle)
 
@@ -194,3 +247,5 @@ unmodified. A newer base would need a shim header, i.e. a workaround (ask first)
   (no FMA) so floating-point output is reproducible across machines.
 - No patches to the original: the submodule is never modified; the build works on a copy.
 - Mesa version influences rendered PNGs, so image comparisons must be tolerance-aware or pinned to this image.
+  The reference PNGs are pinned to this image **and** to Mesa's softpipe driver (`GALLIUM_DRIVER=softpipe`), since
+  llvmpipe both corrupts the original's 24-bit buffer and varies per run and per host (#35).

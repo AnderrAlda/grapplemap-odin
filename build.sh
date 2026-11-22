@@ -198,16 +198,19 @@ cmd_space_id() {
 	printf 'sp%s\n' "${hash:0:32}"
 }
 
-# oracle [--sample]|--full|--update-full-hashes|--test: runs the oracle dumper (tools/oracle, #34, #35) in Docker;
-# --sample is the default (spec, "UX / behaviour").
+# oracle [--sample]|--full|--update-full-hashes|--test|--images: runs the oracle dumper (tools/oracle, #34, #35) in
+# Docker; --sample is the default (spec, "UX / behaviour").
 # --full dumps the whole original DB to build/oracle/full/ (wiped first, so reruns give the same bytes) and checks it
 # against tests/fixtures/oracle/FULL.sha256 when that exists; --update-full-hashes rewrites FULL.sha256 instead.
 # --sample dumps the blocks of tools/oracle/sample.tsv and rewrites tests/fixtures/oracle/ (every file but
 # FULL.sha256; images/ is never touched) plus MANIFEST.sha256. --test dumps tools/oracle/dump/testdata/*.txt and
-# diffs each against its committed expected directory. Not part of `ci`: it needs Docker (amd64 image).
+# diffs each against its committed expected directory. --images renders the positions of tools/oracle/images.tsv
+# with the original's ImageMaker into tests/fixtures/oracle/images/ (+ meta.json) and rewrites MANIFEST.sha256.
+# Not part of `ci`: it needs Docker (amd64 image); PNGs also depend on Mesa (ADR 0002), so never in CI.
 ORACLE_IMAGE="grapplemap-oracle"
 ORACLE_TESTDATA="tools/oracle/dump/testdata"
 ORACLE_FIXTURES="tests/fixtures/oracle"
+ORACLE_IMAGES_LIST="tools/oracle/images.tsv"
 
 oracle_image() {
 	command -v docker >/dev/null || { echo "error: docker not found; ./build.sh oracle needs Docker" >&2; return 1; }
@@ -256,9 +259,59 @@ oracle_sample() {
 	mkdir -p "$ORACLE_FIXTURES"
 	find "$ORACLE_FIXTURES" -maxdepth 1 -type f ! -name FULL.sha256 -delete
 	cp "$out"/* "$ORACLE_FIXTURES"/
-	# Every fixture but the manifests, images/*.png included (written by --images only), in C-locale order.
+	oracle_manifest
+}
+
+# Every fixture but the manifests, images/ included (written by --images only), in C-locale path order.
+oracle_manifest() {
 	(cd "$ORACLE_FIXTURES" && find . -type f ! -name '*.sha256' | sed 's|^\./||' | LC_ALL=C sort \
 		| while read -r f; do sha256sum -- "$f"; done >MANIFEST.sha256 && cat MANIFEST.sha256)
+}
+
+# oracle_images_check DIR [manifest]: DIR holds exactly one p<node>-480x360.png per row of images.tsv plus meta.json,
+# meta.json lists exactly those PNGs and the blocks of images.tsv in its order; with "manifest", MANIFEST.sha256 also
+# lists every file of DIR (as images/<file>) with its current hash.
+oracle_images_check() {
+	local dir="$1" rows files pngs listed line f
+	rows=$(tail -n +2 "$ORACLE_IMAGES_LIST" | grep -c .) || true
+	[ -f "$dir/meta.json" ] || { echo "FAIL images: no $dir/meta.json" >&2; return 1; }
+	files=$(cd "$dir" && find . -type f ! -name meta.json | sed 's|^\./||' | LC_ALL=C sort)
+	pngs=$(printf '%s\n' "$files" | grep -x 'p[0-9]*-480x360\.png') || true
+	listed=$(jq -r '.images[].file' "$dir/meta.json" | LC_ALL=C sort)
+	if [ "$files" != "$pngs" ] || [ "$(printf '%s\n' "$pngs" | grep -c .)" -ne "$rows" ]; then
+		echo "FAIL images: expected $rows p<node>-480x360.png + meta.json in $dir, got: $files" >&2
+		return 1
+	fi
+	[ "$pngs" = "$listed" ] || { echo "FAIL images: meta.json lists '$listed', $dir has '$pngs'" >&2; return 1; }
+	[ "$(jq -r '.images[].block' "$dir/meta.json")" = "$(tail -n +2 "$ORACLE_IMAGES_LIST" | cut -f1)" ] \
+		|| { echo "FAIL images: the blocks of meta.json differ from $ORACLE_IMAGES_LIST" >&2; return 1; }
+	[ "${2:-}" = manifest ] || return 0
+	for f in meta.json $pngs; do
+		line="$(cd "$dir" && sha256sum -- "$f" | cut -d' ' -f1)  images/$f"
+		grep -qxF "$line" "$ORACLE_FIXTURES/MANIFEST.sha256" \
+			|| { echo "FAIL images: MANIFEST.sha256 does not list images/$f with its hash" >&2; return 1; }
+	done
+	echo "ok   images: $rows PNGs + meta.json, listed in MANIFEST.sha256"
+}
+
+# Rendered in build/ first, then tests/fixtures/oracle/images/ is rewritten from scratch. GALLIUM_DRIVER=softpipe:
+# OSMesa's default llvmpipe writes 4-byte pixels into the OSMESA_RGB (3-byte) buffer ImageMaker uses, and its output
+# changes from run to run and with the host's SIMD width (tools/oracle/README.md, "Reference images").
+oracle_images() {
+	local out="$OUT/oracle/images" commit
+	oracle_image
+	commit=$(git -C reference/GrappleMap rev-parse HEAD) || { echo "error: reference/GrappleMap not initialised" >&2; return 1; }
+	rm -r -f "$out"
+	mkdir -p "$out"
+	oracle_run -e GALLIUM_DRIVER=softpipe -v "$PWD/$out:/out" -v "$PWD/$ORACLE_IMAGES_LIST:/images.tsv:ro" "$ORACLE_IMAGE" \
+		grapplemap-images --db /oracle/GrappleMap.txt --list /images.tsv --out /out --versions /oracle/VERSIONS \
+		--commit "$commit"
+	oracle_images_check "$out" # before touching the fixtures
+	rm -r -f "$ORACLE_FIXTURES/images"
+	mkdir -p "$ORACLE_FIXTURES/images"
+	cp "$out"/* "$ORACLE_FIXTURES/images/"
+	oracle_manifest
+	oracle_images_check "$ORACLE_FIXTURES/images" manifest
 }
 
 oracle_test() {
@@ -300,8 +353,8 @@ cmd_oracle() {
 	--update-full-hashes) oracle_full update ;;
 	--sample | "") oracle_sample ;;
 	--test) oracle_test ;;
-	--images) echo "error: ./build.sh oracle --images arrives with #35 (PR 3)" >&2; return 2 ;;
-	*) echo "usage: ./build.sh oracle [--sample]|--full|--update-full-hashes|--test (default: --sample)" >&2; return 2 ;;
+	--images) oracle_images ;;
+	*) echo "usage: ./build.sh oracle [--sample]|--full|--update-full-hashes|--test|--images (default: --sample)" >&2; return 2 ;;
 	esac
 }
 
@@ -325,7 +378,7 @@ worktree-remove) cmd_worktree_remove "$@" ;;
 space-id) cmd_space_id "$@" ;;
 oracle) cmd_oracle "$@" ;;
 *)
-	echo "usage: ./build.sh {setup|check|changelog-check [dir]|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <branch>|worktree-remove <branch>|space-id <branch>|oracle [--sample]|--full|--update-full-hashes|--test}"
+	echo "usage: ./build.sh {setup|check|changelog-check [dir]|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <branch>|worktree-remove <branch>|space-id <branch>|oracle [--sample]|--full|--update-full-hashes|--test|--images}"
 	exit 2
 	;;
 esac

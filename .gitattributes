@@ -2,3 +2,5 @@
 # so a review sees which file changed. tools/oracle/dump/testdata/ is reviewed by hand and keeps its diff.
 tests/fixtures/oracle/** -diff linguist-generated
 tests/fixtures/oracle/*.sha256 diff
+# Oracle reference images (--images): binary, never merged or diffed as text.
+tests/fixtures/oracle/images/*.png binary
