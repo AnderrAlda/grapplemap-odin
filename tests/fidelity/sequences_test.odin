@@ -1,6 +1,8 @@
 package fidelity
 
 import "app:core"
+import "core:crypto/legacy/md5"
+import "core:encoding/hex"
 import "core:encoding/json"
 import "core:slice"
 import "core:testing"
@@ -10,6 +12,7 @@ import "core:testing"
 
 @(private = "file")
 Meta :: struct {
+	db_md5: string,
 	counts: struct {
 		blocks:    int,
 		positions: int,
@@ -34,9 +37,10 @@ Sequence_Record :: struct {
 
 @(private = "file")
 Sequences_State :: struct {
-	t:        ^testing.T,
-	seqs:     []core.Sequence,
-	compared: int,
+	t:          ^testing.T,
+	seqs:       []core.Sequence,
+	compared:   int,
+	last_index: int, // records come in block order, each block at most once
 }
 
 @(test)
@@ -56,6 +60,23 @@ test_parse_db_matches_oracle_sequences :: proc(t: ^testing.T) {
 	if !read_json(t, "meta.json", &meta, context.temp_allocator) {
 		return
 	}
+	// The oracle must have dumped this very DB: one clear failure instead of many field mismatches.
+	md5_ctx: md5.Context
+	md5.init(&md5_ctx)
+	md5.update(&md5_ctx, db)
+	digest: [md5.DIGEST_SIZE]byte
+	md5.final(&md5_ctx, digest[:])
+	db_md5 := string(hex.encode(digest[:], context.temp_allocator))
+	if !testing.expectf(
+		t,
+		db_md5 == meta.db_md5,
+		"%s md5 %s != meta.json db_md5 %s: the oracle dump is of another DB",
+		db_path(),
+		db_md5,
+		meta.db_md5,
+	) {
+		return
+	}
 	positions := 0
 	for s in seqs {
 		positions += len(s.positions)
@@ -65,14 +86,19 @@ test_parse_db_matches_oracle_sequences :: proc(t: ^testing.T) {
 	testing.expect_value(t, positions, meta.counts.positions)
 
 	state := Sequences_State {
-		t    = t,
-		seqs = seqs,
+		t          = t,
+		seqs       = seqs,
+		last_index = -1,
 	}
 	path := oracle_path("sequences.ndjson")
 	lines, _, nerr := ndjson_each(path, &state, check_sequence_line)
 	testing.expectf(t, nerr == .None, "%s: %v", path, nerr)
 	testing.expectf(t, lines > 0, "%s: no records", path)
 	testing.expect_value(t, state.compared, lines)
+	// Outside the sample (the full dump), every block must have a record: a truncated file must not pass.
+	if oracle_dir() != DEFAULT_ORACLE_DIR {
+		testing.expectf(t, lines == len(seqs), "%s: %d records, %d blocks", path, lines, len(seqs))
+	}
 }
 
 // check_sequence_line compares one record; it stops at the first record that differs (one report, not thousands).
@@ -82,18 +108,20 @@ check_sequence_line :: proc(line: []byte, ctx: rawptr) -> bool {
 	t := state.t
 	rec: Sequence_Record
 	if jerr := json.unmarshal(line, &rec); jerr != nil {
-		return testing.expectf(t, false, "sequences.ndjson record %d: %v", state.compared, jerr)
+		return testing.expectf(t, false, "sequences.ndjson line %d: %v", state.compared + 1, jerr)
 	}
 	if !testing.expectf(
 		t,
-		rec.index >= 0 && rec.index < len(state.seqs),
-		"sequences.ndjson: index %d out of range (%d sequences)",
+		rec.index > state.last_index && rec.index < len(state.seqs),
+		"sequences.ndjson: index %d out of order or range (previous %d, %d sequences)",
 		rec.index,
+		state.last_index,
 		len(state.seqs),
 	) {
 		return false
 	}
-	s := state.seqs[rec.index]
+	state.last_index = rec.index
+	s := &state.seqs[rec.index]
 	i := rec.index
 	ok := true
 	ok &= testing.expectf(

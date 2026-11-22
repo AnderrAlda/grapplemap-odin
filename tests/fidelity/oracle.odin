@@ -70,7 +70,7 @@ expect_bits :: proc(
 	return testing.expectf(
 		t,
 		g == w,
-		"%s (record %d): got %.17g (0x%16x), want %.17g (0x%16x)",
+		"%s (block %d): got %.17g (0x%016x), want %.17g (0x%016x)",
 		what,
 		index,
 		got,

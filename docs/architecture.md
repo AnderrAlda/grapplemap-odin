@@ -48,7 +48,7 @@ GrappleMap.txt (bytes) ──► parser ──► graph (arena) ──► transf
 - **Per frame**: `context.temp_allocator`, emptied with `free_all` at the end of each frame.
 - **Leaks**: debug builds wrap the default allocator in `mem.Tracking_Allocator` and report leaks at exit
   (`TRACK_LEAKS :: ODIN_DEBUG`, `src/main.odin:13,28-45`); tests run under the tracking allocator of `core:testing`
-  (`-define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true`: a leak or bad free fails the test, #151) and, on Linux and macOS, AddressSanitizer (`sanitize_flag`, `build.sh:14-20`; skipped on the macOS CI runners).
+  (`-define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true`: a leak or bad free fails the test, #151) and, on Linux and macOS, AddressSanitizer (`sanitize_flag`, `build.sh:14-22`; skipped on the macOS CI runners).
   Target: zero leaks.
 - **Global state**: minimal. `App_State` is passed explicitly.
 
