@@ -1,0 +1,97 @@
+# 0006. Body rendering technique
+Status: Proposed (the final choice needs the phase-3 prototype against the oracle PNGs)
+Date: 2026-11-21
+
+## Context
+Paths `src/…` are in `reference/GrappleMap`; paths `vendor/…` are in the pinned Odin distribution (raylib 6.2,
+ADR 0004).
+
+The oracle images are made by the original's **fixed-function** renderer through OSMesa (`ImageMaker`,
+`docs/original.md` §7, §7.6). What they show, and therefore what a pixel comparison depends on (§7.7):
+- **Geometry** (§7.1, `src/playerdrawer.cpp`): per joint an icosphere of level 2 (Head, Core, hips, shoulders) or 1
+  (the rest), built from `float` icosahedron constants (`src/icosphere.cpp:16-29`), vertex `center + v·radius`,
+  normal `v`; per visible limb a 10-face truncated cone whose basis comes from the fixed world point `(1, 1, 1)`, with
+  normals perpendicular to the axis, split at the midpoint when it has a mid radius; five "fat triangles" per player
+  (pelvis, two torso slabs, feet) of 14 triangles each with per-vertex normals. No caps, no other mesh. Vertices and
+  normals go to GL as `double` (`src/playerdrawer.cpp:9-10`).
+- **Lighting** (§7.3, `src/rendering.cpp:229-247,339`): two directional lights toward `(1, 1, 1)/√3` and
+  `(−1, 1, −1)/√3` in world space, diffuse 0.65, ambient 0.03 each, global ambient 0.2, `GL_COLOR_MATERIAL`, no
+  specular, per-vertex (Gouraud): `color · (0.26 + 0.65·(max(0, n·l₀) + max(0, n·l₁)))`, clamped. No culling, depth
+  test `GL_LESS` with a 16-bit depth buffer (`src/images.cpp:525`), near 0.01 / far 15.
+- **Image pipeline** (§7.6): 2× supersampling with a truncating 2×2 box filter, vertical flip, channel swap, grid of
+  2-px aliased lines at 2×.
+
+What raylib 6.2 gives, as checked in the pinned `libraylib.a`: the OpenGL 3.3 backend (default shaders are
+`#version 330`, `rcore.o`), whose default shader is **unlit** (`finalColor = texelColor*colDiffuse*fragColor`); `rlglInit`
+calls `glCullFace(GL_BACK)`, `glFrontFace(GL_CCW)`, `glEnable(GL_CULL_FACE)` (disassembly of `rlglInit`: constants
+`0x405`, `0x901`, `0xb44` = `GL_BACK`, `GL_CCW`, `GL_CULL_FACE`), so **back-face culling is on by default**,
+whereas the original never culls and emits the sphere triangles in reversed order (`src/playerdrawer.cpp:149-166`).
+Culling can be turned off with `rlgl.DisableBackfaceCulling` (`vendor/raylib/rlgl/rlgl.odin:468`). `rlglInit` also
+sets `glDepthFunc(GL_LEQUAL)` (`0x203`), not the original's default `GL_LESS`; the `rlgl` binding has no setter for
+it (only enable/disable of depth test and mask), so changing it needs `vendor:OpenGL`. raylib's shape helpers take
+rings/slices or a side count (`DrawSphereEx`, `DrawCylinderEx`, `DrawCapsule`,
+`vendor/raylib/raylib.odin:1618,1621,1624`): ring/slice spheres, not the original's icospheres.
+
+## Decision
+1. **Two render paths over the same `core` data**, chosen per view:
+   - **Reference path** (phase 3): reproduces the original's image for the golden tests. Fidelity over looks.
+   - **Modern path** (phase 4): free look (per-pixel lighting, shadows, AA, other materials). Never compared with the
+     oracle; it may share the reference path's meshes.
+2. **Reference path geometry: the original's meshes rebuilt on the CPU**, vertex for vertex, in `f64` with the
+   original's formulas (icosphere subdivision with the `float` constants widened to `f64`; the pillar basis from
+   `(1, 1, 1)`; the fat-triangle points and normals; `pi()` = `3.141593` in the pillar angles), converted to `f32` once
+   when uploaded (ADR 0004, decision 2). Positions and normals as in §7.1; no shortcuts of raylib's shape helpers.
+   "Vertex for vertex" means the same surface: the pillar is drawn as its 20 triangles (10 quads), not as the
+   original's 60-vertex strip with degenerate and duplicate triangles (§7.1). Per frame the joint positions change,
+   so the body mesh is regenerated per frame (per player 6·320 + 17·80 sphere triangles, 20 per pillar and 5·14 slab
+   triangles: small) or the spheres are drawn as two unit meshes transformed per joint (same vertices up to the `f32`
+   rounding of the transform); the prototype picks one.
+3. **Reference path lighting: the fixed-function model reproduced in a shader** (raylib's GL 3.3 has no
+   fixed-function lighting), evaluated **per vertex** with the constants above, colors from §7.2, output clamped. The
+   light directions are world-space constants (ADR 0004: no axis change). Back-face culling **off**, depth test on
+   with `GL_LESS` as in the original (set through `vendor:OpenGL`, since raylib leaves `GL_LEQUAL`).
+4. **Camera and image pipeline**: the original's matrices (ADR 0004, decision 3), render at 2× into a render texture,
+   downsample with a truncating 2×2 mean, the grid as the original draws it (§7.4). Depth precision (16-bit vs
+   raylib's render-texture depth) and the channel order are set by what the oracle PNGs show.
+5. **The pixel tolerance is not set here.** It is an **open question for Ander** (`CLAUDE.md`: tolerances only with
+   his OK): the prototype measures, per test image, the differences against the oracle PNGs (count and size of
+   differing pixels, max channel delta) and the PR that adds the golden tests proposes a value with that evidence.
+   Until then the comparison reports differences and does not pass by tolerance. This measurement against the oracle
+   PNGs is local and by hand, like their regeneration (ADR 0002, "Consequences": they depend on the Mesa version and
+   CI does not compare them pixel by pixel). Once accepted, our own reference-path images become the golden images
+   in `tests/golden/` (`./build.sh test-golden`, `docs/architecture.md`), and CI compares against those.
+
+## Alternatives
+For the reference path:
+- **Instanced sphere + cylinder** (one unit icosphere per level and one unit 10-face pillar, transformed per joint
+  and limb). Fewer vertices to upload; but a truncated cone with another ratio of end radii is not an affine image
+  of a unit mesh (and its axis-perpendicular normals would need per-instance fixing), the pillar's basis depends on
+  where the limb is (`(1, 1, 1)` is a point, §7.1), and the fat triangles are not instances: exact only with
+  per-instance geometry, i.e. most of the CPU work anyway. Acceptable for the spheres (decision 2).
+- **raylib shape helpers / capsules** (`DrawSphere`, `DrawCylinderEx`, `DrawCapsule`). Least code, but different
+  meshes (UV spheres, other segment counts, caps), unlit by default, and no fat triangles: visibly different from the
+  oracle images.
+- **SDF raymarching** (spheres, cones and slabs as distance functions). Smooth and resolution-independent, good for
+  the modern path, but it renders the ideal shapes, not the original's faceted meshes and Gouraud shading: it cannot
+  match the PNGs.
+- **Per-pixel lighting in the reference path.** Better looking, but different from the original's per-vertex
+  interpolation on coarse meshes (visible on the level-1 spheres): it belongs to the modern path.
+- **Port the shader renderer of the web editor** (point lights, `src/triangle.vertexshader`). It is not what the
+  oracle images use, and it looks different (§7.3).
+
+## Consequences
+- `render` gets a mesh builder that mirrors `src/playerdrawer.cpp` and `src/icosphere.cpp` and is unit-tested on
+  vertex counts and on values computed by hand from the formulas; ideally `body.json` of the oracle sample also
+  carries the mesh constants (ADR 0002).
+- A small custom shader (per-vertex lighting) is part of the reference path; the default raylib shader is used only
+  for unlit overlays.
+- Culling and depth state are set explicitly by `render`, never left to raylib's defaults.
+- The modern path (phase 4) can change looks freely without touching the golden tests.
+
+### Open points (need the phase-3 prototype or the oracle images, #35)
+- Whether per-vertex lighting in GLSL, `f32` vertices and raylib's depth buffer reproduce OSMesa's pixels, and how
+  closely; OSMesa's own rasterisation and float precision are [unverified] (`docs/original.md` §7.3).
+- OSMesa's channel order (§7.6) and the lighting defaults (§7.3), once the oracle PNGs exist.
+- The pixel tolerance (decision 5): Ander's call, with the prototype's measurements.
+- Whether a pillar basis ever degenerates on the DB (`docs/original.md` §7.1, section 10).
+- Per-frame mesh rebuild vs instanced spheres (decision 2): by measurement, if either matters at all.
