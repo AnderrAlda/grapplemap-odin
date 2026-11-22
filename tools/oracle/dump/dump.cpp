@@ -152,11 +152,13 @@ Index read_index(string const & path)
 	return ix;
 }
 
+int const Q_MAX = 61 * 62 + 61; // largest 2-digit base62 value (src/persistence.cpp:33-61)
+
 // Inverse of decodePosition (src/persistence.cpp:33-61): x = q/1000 - off. Exact or it throws.
 int quantize(double const x, double const off)
 {
 	long const q = std::lround((x + off) * 1000);
-	if (q < 0 || q > 61 * 62 + 61 || double(q) / 1000 - off != x)
+	if (q < 0 || q > Q_MAX || double(q) / 1000 - off != x)
 	{
 		char buf[64];
 		std::snprintf(buf, sizeof buf, "coordinate not on the base62 grid: %.17g", x);
@@ -459,7 +461,7 @@ void dump_spring(std::ostream & out, Graph const & g, vector<Block> const & bloc
 
 // Inventory (#35): the closed list of classes of docs/specs/phase-1-original-research.md ("Representative
 // sample"), in output order. `normal` is a transition in no structural class (STRUCTURAL below); the text classes
-// (duplicate_description, description_*, has_ref, has_note) do not exclude it: ~90% of blocks have one of them.
+// (duplicate_description, description_*, has_ref, has_note) do not exclude it: 96% of blocks have one of them.
 char const * const CLASSES[] = {"normal", "named", "bidirectional", "detailed", "long", "endpoint_mirror",
 	"endpoint_swap", "endpoint_mirror_swap", "duplicate_description", "edge_coordinate", "description_newline",
 	"description_utf8", "description_quote", "has_ref", "has_note", "error_or_unmatched"};
@@ -470,13 +472,12 @@ enum Class_Id : unsigned
 	C_ENDPOINT_MIRROR_SWAP, C_DUPLICATE_DESCRIPTION, C_EDGE_COORDINATE, C_DESCRIPTION_NEWLINE, C_DESCRIPTION_UTF8,
 	C_DESCRIPTION_QUOTE, C_HAS_REF, C_HAS_NOTE, C_ERROR_OR_UNMATCHED
 };
+static_assert(NUM_CLASSES == C_ERROR_OR_UNMATCHED + 1 && NUM_CLASSES <= 32, "CLASSES and Class_Id disagree");
 
 unsigned const STRUCTURAL = 1u << C_BIDIRECTIONAL | 1u << C_DETAILED | 1u << C_LONG | 1u << C_ENDPOINT_MIRROR
 	| 1u << C_ENDPOINT_SWAP | 1u << C_ENDPOINT_MIRROR_SWAP | 1u << C_EDGE_COORDINATE | 1u << C_ERROR_OR_UNMATCHED;
 
 size_t const LONG_LENGTH = 15; // spec: "length >= 15"
-int const Q_MAX = 61 * 62 + 61; // largest 2-digit base62 value (src/persistence.cpp:33-61)
-
 // Tag families, first match in table order wins; a block whose tags match none is "other". A transition's tags
 // are the original's is_tagged() (src/metadata.hpp:32-37): its own, plus every tag that both endpoints have.
 struct Family
@@ -490,11 +491,12 @@ Family const FAMILIES[] = {
 	{"mount", {"mount", "s_mount", "three_quarter_mount", "top_mounted"}},
 	{"side_control", {"side_control", "side_ctrl", "judo_side", "twister_side", "north_south", "knee_on_belly"}},
 	{"turtle", {"turtle"}},
-	{"guard", {"guard", "full_guard", "closed_guard", "half_guard", "butterfly", "rubber_guard", "lockdown",
-		"quarter_guard", "deep_half", "z_guard", "x_guard", "spider_guard", "three_quarter_guard", "reverse_half",
-		"knee_shield", "inverted_guard"}},
-	{"standing", {"standing", "single_leg_takedown", "double_leg_takedown", "collar_tie", "ankle_pick", "throw",
-		"te_waza"}},
+	{"guard", {"guard", "full_guard", "closed_guard", "half_guard", "butterfly", "engaged_butterfly",
+		"reverse_butterfly", "rubber_guard", "lockdown", "quarter_guard", "deep_half", "z_guard", "x_guard",
+		"spider_guard", "three_quarter_guard", "reverse_half", "knee_shield", "inverted_guard", "guard_pull",
+		"guard_jump"}},
+	{"standing", {"standing", "single_leg_takedown", "double_leg_takedown", "takedown", "collar_tie", "ankle_pick",
+		"throw", "te_waza", "koshi_waza", "sutemi_waza", "sacrifice_throw", "inside_trip"}},
 };
 
 char const * family_of(set<string> const & tags)
@@ -542,11 +544,15 @@ unsigned endpoint_class(PositionReorientation const & r)
 
 vector<Block_Info> inventory(Graph const & g, vector<Block> const & blocks)
 {
-	// duplicate_description: same first description line as another block (the name the original looks blocks up
-	// by, src/metadata.cpp:69).
-	std::map<string, size_t> first_lines;
+	// duplicate_description: the name the original looks a block up by equals another block's of the same kind:
+	// the first description line with a literal \n replaced by a space, compared among transitions
+	// (step_by_desc, src/metadata.cpp:66-69) or among named positions (node_by_desc, src/metadata.cpp:81-89).
+	auto const lookup_name = [&](Block const & blk) {
+		return std::make_pair(blk.is_node, replace_all(description(g, blk).front(), "\\n", " "));
+	};
+	std::map<pair<bool, string>, size_t> names;
 	foreach (blk : blocks)
-		if (!description(g, blk).empty()) ++first_lines[description(g, blk).front()];
+		if (!description(g, blk).empty()) ++names[lookup_name(blk)];
 
 	vector<Block_Info> v;
 	foreach (blk : blocks)
@@ -574,10 +580,10 @@ vector<Block_Info> inventory(Graph const & g, vector<Block> const & blocks)
 			c |= endpoint_class(e.from.reorientation) | endpoint_class(e.to.reorientation);
 			foreach (p : e.positions)
 				if (has_edge_coordinate(p)) { c |= 1u << C_EDGE_COORDINATE; break; }
-			// An endpoint that matches no named position becomes an anonymous node (src/graph.cpp:235).
+			// An endpoint that matches no named position becomes an anonymous node (src/graph.cpp:235-240).
 			if (!g[*e.from].line_nr || !g[*e.to].line_nr) c |= 1u << C_ERROR_OR_UNMATCHED;
 		}
-		if (!desc.empty() && first_lines[desc.front()] > 1) c |= 1u << C_DUPLICATE_DESCRIPTION;
+		if (!desc.empty() && names.at(lookup_name(blk)) > 1) c |= 1u << C_DUPLICATE_DESCRIPTION;
 		foreach (line : desc)
 		{
 			if (line.find("\\n") != string::npos) c |= 1u << C_DESCRIPTION_NEWLINE;

@@ -80,7 +80,7 @@ Positions are quantized: `positions_q[k][player][joint] = [qx, qy, qz]`, integer
 `move(desc)` (`src/persistence.cpp:80-85`), which confirms the open point of `docs/original.md` §1.4.
 
 Full dump (pin `032c8f9`, dumper version 3): 2,086 blocks, 8,323 positions, 601 named positions, 1,485 transitions,
-725 nodes (124 anonymous); `.index` consistent. 544,626,235 bytes (`playback` 389 MB, `ops` 93 MB, `between` 52 MB,
+725 nodes (124 anonymous); `.index` consistent. 544,626,736 bytes (`playback` 389 MB, `ops` 93 MB, `between` 52 MB,
 `sequences` 6.8 MB, `spring` 1.7 MB, `graph` 1.1 MB, `inventory` 0.3 MB); ~15 s on amd64. Two runs give identical
 bytes. Version 3 only added `inventory.ndjson`: the other files are byte-identical to version 2 except `meta.json`
 (`dumper_version`).
@@ -101,16 +101,16 @@ several). Counts in the full dump at the pin:
 
 | Class | Rule | Full dump |
 |---|---|---|
-| `normal` | a transition in no **structural** class (`bidirectional`, `detailed`, `long`, `endpoint_*`, `edge_coordinate`, `error_or_unmatched`); the text classes do not exclude it (~90% of blocks have one: only 9 transitions have no class at all) | 635 |
+| `normal` | a transition in no **structural** class (`bidirectional`, `detailed`, `long`, `endpoint_*`, `edge_coordinate`, `error_or_unmatched`); the text classes do not exclude it (2,012 of 2,086 blocks have one; only 9 transitions have no class other than `normal`) | 635 |
 | `named` | a named position (1-position block) | 601 |
 | `bidirectional`, `detailed` | `properties:` of the block | 38, 159 |
 | `long` | a transition of ≥ 15 positions | 16 |
 | `endpoint_mirror`, `endpoint_swap`, `endpoint_mirror_swap` | `reorientation_from` or `_to` has mirror only, swap only, both | 217, 332, 75 |
-| `duplicate_description` | the first description line (the name, `src/metadata.cpp:69`) equals another block's (136 of them are `...`) | 873 |
+| `duplicate_description` | the name the original looks a block up by equals another block's **of the same kind**: the first description line with a literal `\n` replaced by a space, among transitions (`step_by_desc`, `src/metadata.cpp:66-69`) or among named positions (`node_by_desc`, `src/metadata.cpp:81-89`); 136 of them are `...` | 894 |
 | `edge_coordinate` | a coordinate with `q = 0` or `3843` | **0** (q spans 20…3791) |
 | `description_newline`, `description_utf8`, `description_quote` | a description line with a literal `\n`, a byte ≥ 0x80, a `"` | 1281, 9, 997 |
 | `has_ref`, `has_note` | a `ref:` line; a `note:`/`todo:` line | 1058, 304 |
-| `error_or_unmatched` | a transition with an endpoint that matches no named position (an anonymous node, `src/graph.cpp:235`). A DB the original reports as an error does not load at all (`meta.json` `errors`), so no block of a loaded DB is an error | 239 |
+| `error_or_unmatched` | a transition with an endpoint that matches no named position (an anonymous node, `src/graph.cpp:235-240`). A DB the original reports as an error does not load at all (`meta.json` `errors`), so no block of a loaded DB is an error. Named positions are not in it: 5 of them (nodes 111, 250, 292, 306, 546) are the endpoint of no transition, which is not a failed match | 239 |
 
 `family` is the first entry of `FAMILIES` (`leg_locks`, `back`, `mount`, `side_control`, `turtle`, `guard`,
 `standing`; fixed tag lists in `dump.cpp`) whose tags the block has, else `other`. A transition's tags are those of
