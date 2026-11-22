@@ -951,8 +951,9 @@ Must match semantically (the port may choose its own representation as long as t
 - Bit equality of `sin`/`cos`/`atan2`: the original uses glibc's `libm` (via `<cmath>`); whether the Odin port's
   functions give the same bits for every angle in the DB is **[unverified]**; if not, either call the same libm or
   compare with a tolerance (needs a decision, phase 2).
-- `compose`/`inverse` are not dumped directly; adding them to `ops.ndjson` (e.g. `inverse(reorientation_from)` and
-  `compose` of the two endpoint reorientations of each edge) would check §5.4 directly. To be proposed on #34.
+- ~~`compose`/`inverse` are not dumped directly~~: closed by dumper v4 (#141): `compose.ndjson` has, per transition,
+  `inverse` of both endpoint reorientations, `compose(from, to)` and `compose(inverse(from), to)`
+  (`tools/oracle/README.md`).
 
 ## 6. Interpolation and playback
 

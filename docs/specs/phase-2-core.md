@@ -59,10 +59,12 @@ final API; the plan of each issue fixes the names:
   `tools/oracle/README.md`):
   - `save.txt` (full dump only): the bytes of the original's `save(loadGraph(DB))`, ~2.7 MB, closes ADR 0005 "Open
     points", first bullet. It does **not** go into the sample (it alone would break the 2 MB limit, ADR 0002 decision
-    5; the sample is ~1.7 MB): the sample's `meta.json` gets `save_sha256` and `save_equals_db` instead, and the local
-    test compares `export_txt(load_graph(DB))` with that hash (and with the DB itself if `save_equals_db`);
+    5; the sample is ~1.7 MB): the sample's `meta.json` gets `save_md5` (an equality check: the original's `md5.hpp`,
+    #141) and `save_equals_db` instead, and the local test compares `export_txt(load_graph(DB))` with that hash (and
+    with the DB itself if `save_equals_db`);
   - `compose.ndjson`: per transition, `inverse(reorientation_from)`, `inverse(reorientation_to)` and
-    `compose(reorientation_from, reorientation_to)` (closes §5.7, second bullet); filtered by the sample's blocks like
+    `compose(reorientation_from, reorientation_to)`, plus `compose(inverse(reorientation_from), reorientation_to)` (the
+    form `follow` uses, §6.2; #141) (closes §5.7, second bullet); filtered by the sample's blocks like
     the other files.
   The pairwise "ambiguous matching" pass (§2.10, §10.3) is **not** added unless graph fidelity fails (see "Edge cases").
 
@@ -178,14 +180,14 @@ changes, and the root `CLAUDE.md` if commands or the map change (`--load`, `GM_O
 ## End-to-end verification
 1. `./build.sh ci` green locally and in CI; zero leaks (tracking allocator, ASan on Linux).
 2. `./build.sh test` runs the fidelity tests over the sample (linux and macOS): `sequences`, `body`, `ops`, `between`,
-   `graph`, `compose`, `playback` and the `save_sha256` of `meta.json` all bit-exact (or with a tolerance approved by Ander, listed in ADR 0003).
+   `graph`, `compose`, `playback` and the `save_md5` of `meta.json` all bit-exact (or with a tolerance approved by Ander, listed in ADR 0003).
 3. `gh workflow run fidelity` on `main` passes over the full dump on linux and macOS (all 2,086 blocks, 8,323 positions, 1,485
    transitions, 725 nodes).
 4. `./build/grapplemap-debug --load reference/GrappleMap/GrappleMap.txt --headless` (debug: tracking allocator and
    ASan) prints the counts of §10.1 and exits 0; on a copy cut in the middle of a position block (not after trailing
    description lines, which the original drops silently, §1.1) it prints an error with a line number and exits
    `EXIT_LOAD_ERROR`; no leaks in either.
-5. `export_txt(load_graph(DB))` equals `save.txt` of the full dump byte for byte (locally: its `save_sha256`); `txt → JSON → txt` equals it too; `JSON → JSON` is
+5. `export_txt(load_graph(DB))` equals `save.txt` of the full dump byte for byte (locally: its `save_md5`); `txt → JSON → txt` equals it too; `JSON → JSON` is
    byte-identical.
 6. `./build.sh bench` prints the load time; the number is in the PR of deliverable 12.
 7. Epic #4: every acceptance box ticked with links to the PRs.

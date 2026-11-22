@@ -110,8 +110,8 @@ position lines, as in §2.1). The DB is valid UTF-8 (`iconv -f UTF-8 -t UTF-8`) 
   compressed.
 
 ### Open points
-- Whether `save(loadGraph(DB))` is byte-identical to the DB at the pin: expected (Context), to be checked in phase 2
-  with the oracle image (a `save` run is not in the dumper today).
+- ~~Whether `save(loadGraph(DB))` is byte-identical to the DB at the pin~~: closed by dumper v4 (#141): it is
+  (`save_equals_db` true, `save_md5` = `db_md5` in the oracle's `meta.json`; the bytes are `save.txt` of the full dump).
 - Persistent identities for anonymous nodes, if phase 6 needs them (e.g. to attach notes to one without naming it):
   not decided here.
 - Re-importing an updated upstream `GrappleMap.txt` assigns IDs by block number again, so identities are not carried
