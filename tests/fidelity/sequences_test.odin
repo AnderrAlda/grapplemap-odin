@@ -194,7 +194,7 @@ check_sequence_line :: proc(line: []byte, ctx: rawptr) -> bool {
 					if axis != 1 {
 						want -= core.ENCODING_OFFSET_XZ
 					}
-					if !expect_bits(t, s.positions[k][p][j][axis], want, "coordinate", i) {
+					if !expect_bits(t, s.positions[k][p][j][axis], want, "coordinate, block", i) {
 						testing.expectf(
 							t,
 							false,

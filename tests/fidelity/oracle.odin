@@ -57,7 +57,8 @@ read_json :: proc(t: ^testing.T, name: string, v: any, allocator: mem.Allocator)
 	return testing.expectf(t, jerr == nil, "cannot decode %s: %v", path, jerr)
 }
 
-// expect_bits: `got` and `want` have the same IEEE-754 bits (ADR 0003: no tolerance unless Ander agrees).
+// expect_bits: `got` and `want` have the same IEEE-754 bits (ADR 0003: no tolerance unless Ander agrees). The
+// message reads "<what> <index>" (e.g. "coordinate, block 12", "joint radius 3").
 expect_bits :: proc(
 	t: ^testing.T,
 	got, want: f64,
@@ -70,7 +71,7 @@ expect_bits :: proc(
 	return testing.expectf(
 		t,
 		g == w,
-		"%s (block %d): got %.17g (0x%016x), want %.17g (0x%016x)",
+		"%s %d: got %.17g (0x%016x), want %.17g (0x%016x)",
 		what,
 		index,
 		got,
