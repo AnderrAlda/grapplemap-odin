@@ -41,8 +41,8 @@ center :: proc(p: Position) -> V3 {
 }
 
 // between is `between(Position, Position, s)` (src/positions.hpp:42-47): per joint `a + (b − a)·s` (§6.1). Not
-// clamped (s outside [0, 1] extrapolates) and not `a·(1 − s) + b·s`, so s = 1 is not always b and s = 0 turns -0 into
-// +0.
+// clamped (s outside [0, 1] extrapolates) and not `a·(1 − s) + b·s`, so s = 1 is not always b and s = 0 turns a = -0
+// into +0 unless b < 0.
 between :: proc(a, b: Position, s: f64 = 0.5) -> Position {
 	r: Position
 	for pl in 0 ..< PLAYER_COUNT {
