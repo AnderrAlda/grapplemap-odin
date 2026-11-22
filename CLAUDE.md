@@ -5,14 +5,14 @@ Visor/editor moderno de grafos de posiciones de grappling (reimplementación en 
 render moderno; UX simple; base para editar mi propio grafo. Nativo primero, wasm después.
 
 ## Comandos
-`./build.sh setup|check|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <rama>|worktree-remove <rama>|oracle [--sample]|--full|--update-full-hashes|--test`
+`./build.sh setup|check|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <rama>|worktree-remove <rama>|oracle [--sample]|--full|--update-full-hashes|--test|--images`
 Toolchain: Odin fijado en `.odin-version`; `odinfmt`/`ols` en `~/.local/bin`; `jq` requerido por los hooks.
 Tras clonar: `git submodule update --init` (lo hace `./build.sh setup`) para tener `reference/GrappleMap`.
 
 ## Mapa
 - `src/core` datos, parser, grafo, interpolación (sin deps de render/ui) · `src/render` · `src/ui` · `src/editor`
 - `reference/GrappleMap` original, SOLO LECTURA · `tests/golden` imágenes de referencia · `tests/fixtures`
-- `tools/oracle` Dockerfile que compila el original (oráculo, amd64) · `sample.tsv` (muestra) · ver su README
+- `tools/oracle` Dockerfile que compila el original (oráculo, amd64) · `sample.tsv` (muestra) · `images.tsv` (imágenes) · ver su README
 - `docs/` (`original.md`, `architecture.md`, `ai-workflow.md`, `ASSETS.md`, `adr/`, `specs/`, `plans/`)
 - ADR clave: [0002 oráculo](docs/adr/0002-oracle.md) (el original en Docker es la verdad) · [0003 precisión](docs/adr/0003-numeric-precision.md) (`f64` en `core`, `f32` solo en render, tolerancias solo con mi OK)
 - Import con collection: `import "app:core"`.
