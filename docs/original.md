@@ -20,7 +20,7 @@ again**. Source of truth: the submodule `reference/GrappleMap`, pinned at `032c8
 7. [Rendering and camera](#7-rendering-and-camera)
 8. [Web tools](#8-web-tools)
 9. [Editor semantics](#9-editor-semantics)
-10. Observed in the DB and oracle: *pending*
+10. [Data inventory](#10-data-inventory)
 
 ---
 
@@ -220,7 +220,7 @@ grep '^ ' GrappleMap.txt | sed 's/^    //' | fold -w1 | sort -u | wc -l      # 6
 - Position alphabet in the file: the 62 base62 characters all occur and nothing else, so every coordinate is within
   the range of §1.3 by construction.
 - 9 lines contain non-ASCII (UTF-8) bytes (`LC_ALL=C grep -c '[^ -~]'`), all in description lines.
-- Counts of blocks, named positions and transitions are deferred to section 10 (they need the oracle).
+- Counts of blocks, named positions and transitions: §10.1 (2,086 / 601 / 1,485; they need the oracle).
 
 ---
 
@@ -259,7 +259,7 @@ positions are reorientations of each other could load with `from == to` (likely,
 match a lower-index node). Conversely, `from == to` can also arise when both ends are within the threshold of the same
 node without being reorientations of each other (they can be up to ~8 cm apart per joint, §2.3). The `Edge`
 invariant `*from != *to` (`src/graph.hpp:60`) is only a comment and is never checked, so the port must accept
-self-loops. On the DB: **[unverified]** (dumper).
+self-loops. On the DB: exactly one, transition 1225 (§10.3).
 
 Types: `NodeNum` is `uint16_t`, `SeqNum` `uint_fast32_t` (`src/indexed.hpp:57-59`); `num_nodes()` returns `uint16_t`
 (`src/graph.hpp:123`) and `num_sequences()` too (`src/graph.hpp:122`), so more than 65535 nodes or sequences would
@@ -281,7 +281,7 @@ appended at the end of `nodes`, so anonymous nodes are numbered after the 601 na
 need (§2.4). They are never saved (`save` skips nodes with empty description, `src/persistence.cpp:243-248`; their
 edges are written, `src/persistence.cpp:250`). Since they are never saved, their numbering is re-derived on every load
 by the matching of §2.3; the index (§2.5) only caches that result.
-The number of anonymous nodes in the DB is runtime data: pending (§10).
+The DB has 124 anonymous nodes (§10.3).
 
 ### 2.3 Matching an endpoint to a node: `is_reoriented`
 
@@ -527,9 +527,9 @@ Recorded here because they use the matching of §2.3; full editor behaviour is s
 
 ### 2.10 Open points (need the oracle/dumper)
 
-Not verifiable by reading: number of anonymous nodes; self-loops (`from == to`, §2.1); whether any pair of named positions or transition ends are reorientations
+Answered in §10 (§10.3 unless noted): number of anonymous nodes (124), self-loops (one), equality of indexed and non-indexed loads (equal, §10.1). Still open (not verifiable by reading, not in the dump): whether any pair of named positions or transition ends are reorientations
 of each other; whether any DB endpoint is within the threshold of two nodes (so that order matters); the `line_nr`
-offset (§1.4); equality of indexed and non-indexed loads; floating-point boundary cases of `basicallySame`.
+offset (§1.4; the dumper's `line_nr` follows the 0-based first position line, `tools/oracle/README.md`); floating-point boundary cases of `basicallySame`.
 
 ---
 
@@ -987,8 +987,8 @@ coordinate, `a + ((b − a) · s)`: one subtraction, one multiplication, one add
 **`follow(g, n, s, fpp)`** (`src/graph_util.cpp:60-110`) walks sequence `s` starting from the reoriented node `n`:
 - Direction is chosen by **node equality, not by the step's `reverse` flag**: forwards if `*g[s].from == *n`
   (tested first), else backwards if `*g[s].to == *n`, else it throws (`src/graph_util.cpp:65,83,101-102`). A step whose
-  two endpoints are the same node is therefore always walked forwards. **[unverified]** whether such a transition
-  exists in the DB (section 10).
+  two endpoints are the same node is therefore always walked forwards. One such transition
+  exists in the DB (§10.3); it is not `bidirectional`, so it is never reversed.
 - Frame of reference: `r = compose(inverse(E), N)` with `E` the edge's reorientation at the entry end and `N` the
   view of `n` (§5.4).
 - For each segment (consecutive pair `A`, `B` of keyframes, in walking order) it emits `fpp + 1` frames,
@@ -1159,7 +1159,7 @@ Must match semantically (no dump; time-based):
   or makes it time-based (`1 − 0.8^(60·dt)` at 60 Hz equivalence, the original's own `todo`) is a decision for phase 3
   (ADR); it changes nothing that the oracle checks.
 - Bit equality of `at(Reoriented<Location>)` (§6.4) is not dumped; `playback.ndjson` only covers the §6.2 order.
-- Self-loop transitions and the direction rule of `follow` (§6.2): to be checked on the DB (section 10). A reversed
+- Self-loop transitions and the direction rule of `follow` (§6.2): the DB has one, not bidirectional (§10.3). A reversed
   self-loop as the first step would start from the `to` end with `Et` but be walked forwards with
   `compose(inverse(Ef), Et)`, which is not ≈ identity.
 
@@ -1207,7 +1207,7 @@ midpoint with `midpointRadius` and the first-person skip are §3.2. Each pillar 
 - Basis: `a = normalize(cross(to − from, (1,1,1) − from))`, `b = normalize(cross(to − from, a))`
   (`src/playerdrawer.cpp:197-198`). `(1,1,1)` is a fixed world point, not a direction, so the basis (hence where the 10
   edges fall around the axis) depends on where the limb is. Degenerate (NaN) if `(1,1,1)` lies on the limb's line or the two joints coincide
-  (**[unverified]** whether it ever happens in the DB).
+  (never in the DB's stored, canonical or playback positions, §10.3).
 - Face `i`: quad between `from + r_f·(a·sinᵢ + b·cosᵢ)` and `to + r_t·(…)` at angles `i`, `i+1`. Normals are
   `a·sin + b·cos`, **perpendicular to the axis even when `r_f ≠ r_t`** (not the true cone normal), smooth per vertex.
 - Fixed-function: one `GL_TRIANGLE_STRIP` per pillar with 6 vertices per face in the order
@@ -1379,7 +1379,7 @@ Not visible in the oracle images (free, or to be chosen for UX):
 - Mesh layout details with no visual effect (winding, the pillar strip's degenerate triangles, the open seam).
 
 Open points: OSMesa's channel order and the lighting defaults above (oracle images, #35); the on-screen orientation of
-the default camera left open in §4.2 (same images); whether a pillar basis ever degenerates on the DB (section 10);
+the default camera left open in §4.2 (same images); a pillar basis never degenerates on the DB's stored, canonical or playback positions (§10.3);
 the JS viewers' handedness (§3.2), not covered here (ADR 0004 / section 8).
 
 ---
@@ -1896,3 +1896,125 @@ in-place save without backup.
 `normalize` on coincident joints; the undo imbalance and the `lines("")` effect (needs a scripted editor session, which
 the dumper does not have); `reorient_from`/`gp_connect` semantics after an edit; 255-position overflow; the
 runtime result of `unintended` with a non-reorientation under `NDEBUG`; whether the GLFW editor can edit at all.
+
+---
+
+## 10. Data inventory
+
+What the DB contains at the pin, measured on the full dump of the oracle (`./build.sh oracle --full`, dumper version 3,
+`build/oracle/full/`, `.index` consistent). Nothing here is fixed or normalized: anomalies are documented, not corrected.
+Commands run from `build/oracle/full/` with `jq` (`inventory.ndjson` has one line per block with its `classes`;
+`sequences.ndjson`, `graph.ndjson`: `tools/oracle/README.md`). Class rules: `tools/oracle/README.md` "Inventory and
+sample" (not repeated here).
+
+### 10.1 Counts
+
+| What | Count | Command |
+|---|---|---|
+| Blocks | 2,086 | `jq -s length sequences.ndjson` |
+| Named positions (1-position blocks) | 601 (blocks 0-600) | `jq -s '[.[]\|select(.kind=="position")]\|length' inventory.ndjson` |
+| Transitions | 1,485 (blocks 601-2085) | idem, `"transition"` |
+| Positions in total | 8,323 (601 + 7,722 in transitions) | `meta.json` `counts.positions` |
+| Nodes | 725 = 601 named + 124 anonymous | `meta.json` `counts` |
+| Edges | 1,485 (one per transition) | `jq -s '[.[]\|select(.type=="transition")]\|length' graph.ndjson` |
+
+Order in the file: all named positions first (blocks 0-600), then all transitions. Nodes follow the same order (the
+601 named, then the anonymous ones, §2.2). The `.index` cache equals what `loadGraph(istream)` computes
+(`meta.json` `index_matches_db`, `index_consistent`: both `true`; this closes the "indexed and non-indexed loads"
+point of §2.10). Coordinates `q` span 20…3791 of the 0…3843 grid (§1.3).
+
+**Transition length** (positions per transition, `jq -s '[.[]|select(.kind=="transition")]|group_by(.length)|map("\(.[0].length):\(length)")' inventory.ndjson`):
+
+| Positions | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 20 | 21 | 22 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Transitions | 89 | 339 | 349 | 210 | 147 | 116 | 73 | 48 | 44 | 23 | 10 | 14 | 7 | 6 | 1 | 1 | 4 | 2 | 1 | 1 |
+
+Buckets of `inventory.ndjson`: `2` 89, `3-5` 898, `6-10` 428, `>10` 70. No transition has 19 positions, and none has
+1 (a 1-position block is a named position, §1.4). `properties:` (§1.2): `top` 616, `bottom` 558 (a transition has
+at most one of them; 311 have neither), `detailed` 159, `bidirectional` 38 (6 are both), `sweep` 2, `transitive` 1;
+the named positions have no property. Block descriptions have 1-8 lines (first line included): 1 line 63 blocks, 2
+885, 3 686, 4 362, 5 75, 6 14, 8 1.
+
+**Tags** (`tags:` lines, §1.2): 161 distinct tags. Most used: `bottom_supine` 246, `top_kneeling` 203, `standing` 125,
+`bottom_turned_in` 68, `half_guard` 55, `full_guard` 51; 27 tags occur once. These are a block's own tags: of the
+1,485 transitions, 1,159 have none (the original's `is_tagged` adds the endpoints', `src/metadata.hpp:32-37`).
+
+**Family** (the dumper's fixed tag table, first match, `family` of `inventory.ndjson`; it is an inventory aid, not a
+concept of the original):
+
+| Family | `other` | `standing` | `guard` | `side_control` | `back` | `mount` | `turtle` | `leg_locks` |
+|---|---|---|---|---|---|---|---|---|
+| Named positions (601) | 134 | 111 | 196 | 67 | 35 | 24 | 20 | 14 |
+| Transitions (1,485) | 850 | 235 | 231 | 66 | 34 | 23 | 29 | 17 |
+
+### 10.2 Anomaly classes
+
+One row per class of the closed list; counts are blocks (a block can be in several classes). `jq -r 'select(.classes|index("<class>"))|.block' inventory.ndjson`
+lists the blocks of any class. First description lines have the literal `\n` shown as in the file.
+
+| Class | Blocks | Observation |
+|---|---|---|
+| `normal` | 635 | Of 1,485 transitions. Only **9** are in no other class: 605, 612, 799, 800, 1091, 1437, 1710, 1713, 1739 (`normal` ignores the text classes, so most "normal" transitions still have a `\n`, a quote, a `ref:`, …). |
+| `named` | 601 | See "named positions" below. |
+| `edge_coordinate` | **0** | No coordinate is 0 or 3843 (q spans 20…3791). The class exists for the dumper's test DB and for the port to handle (§1.3); the real DB never exercises it. |
+| `long` | 16 | **All cases** (block: positions, first line): 657: 22 `100%`; 769: 16 `escape`; 913: 17 `bottom\nstands up`; 1095: 15 `top steps to\nother side`; 1140: 20 `drop\nseoi-nage`; 1470: 15 and 1471: 20 `leg weave\ntakedown`; 1503: 21 `posture\nand wedge`; 1637: 18 `sweep`; 1664: 15 `whizzer\nsweep`; 1763: 18 `hip pop\nlift`; 1917, 1925, 1934: 15 `tap`; 2075: 18 `backdoor`; 2081: 18 `attack\nleg`. The longest has 22 positions. |
+| `bidirectional` | 38 | **All cases**: 621, 653, 817, 838, 1001, 1158, 1275, 1295, 1483, 1627, 1881, 1951, 1964, 2059 (all `...`; 14); 639, 842 `switch\nbase`; 662 `get to\nelbow`; 670, 671 `turn`; 685 `move head\nto other side`; 783 `drop\nknee`; 815 `(un)pin\nknee`; 834 `switch\ngrips`; 836 `(un)mount`; 845 `bottom trades\nneck frame\nfor overhook`; 857 `switch near\nleg control`; 1021, 1086 `reverse`; 1048 `switch\nstance`; 1058 `flatten`; 1161 `(un)kneel`; 1236 `to 50/50`; 1312 `step in/out`; 1347 `switch\nhead side`; 1414 `to/from\nkimura`; 1421 `top bends`; 1825 `control hip\nand shoulder`; 1894 `switch\nframe`. Lengths 2-7. |
+| `detailed` | 159 | Count and the command only (6 are also `bidirectional`: `jq -c 'select(.classes|index("detailed") and index("bidirectional"))|.block' inventory.ndjson`). |
+| `endpoint_mirror` / `endpoint_swap` / `endpoint_mirror_swap` | 217 / 332 / 75 | Transitions whose `reorientation_from` or `_to` has mirror only / swap only / both (§5.4). The classes overlap when the two ends differ (43 transitions are in two): 581 of 1,485 transitions have a mirror or a swap at some end, 904 are pure rotation + translation at both. |
+| `duplicate_description` | 894 | 892 transitions and **2** named positions (249 `spiderweb w/o\nleg over head`, 477 `spiderweb\nw/o leg\nover head`: the lookup name replaces `\n` by a space and so differs only in the `w/o` line break, hence the same name; `node_by_desc`, `src/metadata.cpp:81-89`). Of the transitions, **136 are named `...`** (the continuation marker, which `step_by_desc` cannot tell apart, `src/metadata.cpp:66-69`) and 756 others share a name with another transition (`escape` 23, `tap` 22, `stand up` 18, `sweep` 18, `pass` 14, …). Duplicates among transitions are accepted by the loader (no uniqueness check, §1.7); two named positions with an identical **full** description would be rejected (§2.1), which is not the case here. |
+| `description_newline` | 1,281 | 549 of 601 named positions and 732 transitions have a literal `\n` in some line. (§1.8 counts 1,282 *lines*: block 389 has it in two lines, `triangle\nbroken by\nknee in butt` and `freshly broken\nstanding\ntriangle`.) The 52 named positions without one have single-line names (74 `toe hold`, 84 `gator roll`, 105 `chill dog`, 109 `swim move`, 112 `new jersey`, …). |
+| `description_utf8` | 9 | **All cases**, the 9 lines of §1.8: `¼` in 20 `smashed ¼\nvs whizzer`, 38 `¼ clinch w/\nknee on ground`, 56 `flat ¼ w/\nhead+arm`, 178 `¼ clinch\nknee battle`, 191 `¼ clinch\nw/ underhook`, 200 `¼ clinch`; `¾` in 201 `¾ mount`, 414 `¾ mount\nw/ head&arm`; and 1568 (a 12-position transition) `escape\nto honey`. In 1568 the non-ASCII is in the `ref:` line (curly quotes `‘ ’`), not in the first line; the other 8 are `¼`/`¾` in the name. |
+| `description_quote` | 997 | A `"` in a line: 1,136 of the 1,142 such lines are `ref:` lines (book/DVD titles), 5 other description lines, 1 `note:`. Named positions: only 3 (164 `coming up\non distant\nsingle`, 203 `mount w/\ndouble unders`, 273 `power\ndogfight`), each in its `ref:` line. |
+| `has_ref` | 1,058 | 1,208 `ref:` lines (§1.8). |
+| `has_note` | 304 | 302 `todo:` and 4 `note:` lines. |
+| `error_or_unmatched` | 239 | 239 transitions with an endpoint on an anonymous node (§10.3). A DB with a load error does not produce a dump, so there is no error case. |
+
+**Named positions that no transition touches** (5; not in `error_or_unmatched`, §2.2): block = node = 111
+`kung fu move\nw/ leg trapped`, 250 `standing\nvs darce`, 292 `completed\no-soto-gari`, 306 `butterflies engaged w/\nover/under body lock`,
+546 `full domination\ntop lock half`. The inventory leaves them as nodes with no in or out edge.
+
+**Named positions** have a first line that is the position's name; no named position has a `properties:` line, and
+the 601 are distinct as a full description (the graph constructor accepts the DB).
+
+### 10.3 Open points deferred to this section
+
+- **Anonymous nodes: 124** (nodes 601-724; `meta.json` `counts.anonymous_nodes`; `jq -s '[.[]|select(.type=="node" and .block==null)]|length' graph.ndjson`).
+  An anonymous node is a transition end that matched no named position and no earlier anonymous node. Degree
+  (transitions per anonymous node, either end): 1: 45, 2: 29, 3: 39, 4: 8, 5: 3. 239 transitions touch an anonymous
+  node, 28 of them at both ends. Nothing is repaired: they are loaded as the original does (§2.2).
+- **Self-loops: exactly one.** Transition index 1225 (block 1826, `switch\nside`, 9 positions, `properties: top`, not
+  `bidirectional`, a `ref:` line; `line_nr` 32712) has `from = to = node 506` (`parallel turtle\nw/ hip and\nshoulder control`).
+  `jq -c 'select(.type=="transition" and .from==.to)|[.index,.block,.from]' graph.ndjson` → `[1225,1826,506]`. Its two
+  ends match node 506 through different reorientations: `from` with `swap` and a translation of (0.4, 0, ~0),
+  `to` with `swap` and `mirror` (translation (0.298, 0, 0.014), angle −0.048), i.e. the end is the mirrored start: it is
+  a genuine "switch side", not a degenerate edge. Node 506 also has 5 other transitions (blocks 1825, 1831, 1929, 1974,
+  1992). It is the §2.4 mechanism (the same node found for both ends).
+  - **Consequence for §6.2 / §6.8.** The direction rule of `follow` (forwards if `from == n`, tested first) walks it
+    forwards. A *reversed* step only exists for `bidirectional` edges (`src/graph.cpp:265-268` adds `{s, true}` to
+    `in`/`out` only then), and this one is not
+    bidirectional, so the problematic case (reversed self-loop as first step) does not occur in the DB. The dump plays
+    it forwards like any other transition (`playback.ndjson` line for block 1826: 95 frames, caption `switch side`).
+    A port must still accept it (§2.1), and a *new* bidirectional self-loop made in the editor would hit the case.
+- **Pillar basis degeneracy (§7.1): none.** `a = normalize(cross(to − from, (1,1,1) − from))` is zero only if the
+  limb's pillar line passes through `(1,1,1)` or `from == to`. Computed with the §7.1 rule over **every pillar** (the 15
+  visible limbs of `body.json`; the 7 with a `mid_radius` split in two, so 22 per player) of: the stored positions of
+  all 8,323 positions (366,212 pillars), their two canonical orientations (`orient_canonically_with_mirror` and
+  `_without_mirror` of `ops.ndjson`, the same count each), and all 135,594 `raw` and `smooth` frames of
+  `playback.ndjson` (5,966,136 pillars). Result: 0 pillars with a zero `cross` (so no NaN). Tightest margin, as
+  `|cross| / (|to − from|·|(1,1,1) − from|)` (the sine of the angle between the limb and the direction to `(1,1,1)`): 0.0042
+  stored (block 1669, position 1, limb 4-6), 0.0057 / 0.0047 canonical, 0.00047 over the playback frames (block 1032,
+  smoothed frame 42, limb 4-6): about 0.03°-0.24°, small but not zero. **Scope:** this covers the orientations the dump
+  has, not the world positions of an interactive session (camera, `Playback` chaser positions, editor drags), where
+  `(1,1,1)` is the same fixed point but the figure is placed freely (§7.1, `[unverified]` there remains for those). The
+  second basis vector is `cross(to − from, a)`, which cannot vanish if `a` exists.
+- **Not answered by this dump** (left open): whether a transition end is within the `basicallySame` threshold of two
+  nodes (so that node order decides, §2.3); whether two named positions are reorientations of each other (the dump
+  records the node each end matched, not the alternatives); the `basicallySame` boundary cases. They need an
+  additional dumper pass over the pairs, not a different reading of this one; follow-up if phase 2 needs them.
+
+### 10.4 How the sample was chosen
+
+The committed fixture (`tests/fixtures/oracle/`) is a stratified selection of the blocks above: `tools/oracle/sample.tsv`
+(`index`, `class`, `reason` per row: the `reason` records the selection) and "Inventory and sample" of
+`tools/oracle/README.md` (class rules, per-file sampling, sizes). Every class of §10.2 has at least one row; the empty
+`edge_coordinate` is the one allowed-empty class (`-`).
