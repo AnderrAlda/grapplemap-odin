@@ -952,7 +952,8 @@ Must match semantically (the port may choose its own representation as long as t
   functions give the same bits for every angle in the DB is **[unverified]**; if not, either call the same libm or
   compare with a tolerance (needs a decision, phase 2).
 - ~~`compose`/`inverse` are not dumped directly~~: closed by dumper v4 (#141): `compose.ndjson` has, per transition,
-  `inverse` of both endpoint reorientations, `compose(from, to)` and `compose(inverse(from), to)` (`tools/oracle/README.md`).
+  `inverse` of both endpoint reorientations, `compose(from, to)` and `compose(inverse(from), to)`
+  (`tools/oracle/README.md`).
 
 ## 6. Interpolation and playback
 

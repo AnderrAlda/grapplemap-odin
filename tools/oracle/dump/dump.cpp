@@ -93,7 +93,7 @@ vector<string> split_lines(string const & s)
 	return v;
 }
 
-// The full dump is ~0.5 GB, so no file is held in memory: each one is streamed record by record to
+// The full dump is ~0.5 GB, so no file is held in memory (save.txt, ~2.7 MB, is the one exception): each one is streamed record by record to
 // "<name>.tmp" and only renamed to its final name once every file is complete (meta.json last). A failure
 // therefore never leaves a partial dump: the temporaries are removed and only meta.json, with the error, is written.
 class Staged_Files
@@ -849,9 +849,9 @@ struct Counts
 	size_t blocks = 0, positions = 0, named_positions = 0, transitions = 0, nodes = 0, anonymous_nodes = 0;
 };
 
-// save: the bytes of the original's save(g, ostream) (src/persistence.cpp:241-252), or nullptr if no graph was dumped.
+// saved: the bytes of the original's save(g, ostream) (src/persistence.cpp:241-252), or nullptr if no graph was dumped.
 string dump_meta(Args const & a, optional<vector<string>> const & versions, string const & db_md5,
-                 Index const * ix, bool index_consistent, string const * save, string const & db, Counts const * c,
+                 Index const * ix, bool index_consistent, string const * saved, string const & db, Counts const * c,
                  vector<string> const & errors)
 {
 	Json j;
@@ -865,8 +865,8 @@ string dump_meta(Args const & a, optional<vector<string>> const & versions, stri
 	j.key("index_matches_db").boolean(ix && ix->md5 == db_md5);
 	j.key("index_consistent").boolean(index_consistent);
 	j.key("save_md5");
-	if (save) j.str(MD5(*save).hexdigest()); else j.null();
-	j.key("save_equals_db").boolean(save && *save == db);
+	if (saved) j.str(MD5(*saved).hexdigest()); else j.null();
+	j.key("save_equals_db").boolean(saved && *saved == db);
 	j.key("versions");
 	if (versions) j.strings(*versions); else j.null();
 	j.key("counts");

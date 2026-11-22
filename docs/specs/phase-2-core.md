@@ -60,9 +60,11 @@ final API; the plan of each issue fixes the names:
   - `save.txt` (full dump only): the bytes of the original's `save(loadGraph(DB))`, ~2.7 MB, closes ADR 0005 "Open
     points", first bullet. It does **not** go into the sample (it alone would break the 2 MB limit, ADR 0002 decision
     5; the sample is ~1.7 MB): the sample's `meta.json` gets `save_md5` (an equality check: the original's `md5.hpp`,
-    #141) and `save_equals_db` instead, and the local test compares `export_txt(load_graph(DB))` with that hash (and with the DB itself if `save_equals_db`);
+    #141) and `save_equals_db` instead, and the local test compares `export_txt(load_graph(DB))` with that hash (and
+    with the DB itself if `save_equals_db`);
   - `compose.ndjson`: per transition, `inverse(reorientation_from)`, `inverse(reorientation_to)` and
-    `compose(reorientation_from, reorientation_to)` (closes §5.7, second bullet); filtered by the sample's blocks like
+    `compose(reorientation_from, reorientation_to)`, plus `compose(inverse(reorientation_from), reorientation_to)` (the
+    form `follow` uses, §6.2; #141) (closes §5.7, second bullet); filtered by the sample's blocks like
     the other files.
   The pairwise "ambiguous matching" pass (§2.10, §10.3) is **not** added unless graph fidelity fails (see "Edge cases").
 
