@@ -53,15 +53,17 @@ timestamps, doubles as `%.17g`, strings as UTF-8 with JSON escapes):
 
 | File | Content |
 |---|---|
-| `meta.json` | `dumper_version`, `submodule_commit`, `db_md5`, `index_md5`, `index_matches_db`, `index_consistent` (the `.index` pairs equal the `from`/`to` of `loadGraph(istream)`), `versions` (lines of `/oracle/VERSIONS`), `counts` (`blocks`, `positions`, `named_positions`, `transitions`, `nodes`, `anonymous_nodes`), `errors`: the original's exception message verbatim when `loadGraph` fails, or a message starting with `dumper: ` (the dumper is strict: invalid UTF-8, a coordinate off the base62 grid, an unreadable `.index`). On an error during loading or dumping only `meta.json` is written; on an `.index` mismatch all files are written. In every case with errors the exit status is 1 |
+| `meta.json` | `dumper_version`, `submodule_commit`, `db_md5`, `index_md5`, `index_matches_db`, `index_consistent` (the `.index` pairs equal the `from`/`to` of `loadGraph(istream)`), `save_md5` (MD5 of the bytes of the original's `save(loadGraph(DB), ostream)`, `src/persistence.cpp:241-252`; `null` when only `meta.json` is written) and `save_equals_db` (those bytes equal the DB), `versions` (lines of `/oracle/VERSIONS`), `counts` (`blocks`, `positions`, `named_positions`, `transitions`, `nodes`, `anonymous_nodes`), `errors`: the original's exception message verbatim when `loadGraph` fails, or a message starting with `dumper: ` (the dumper is strict: invalid UTF-8, a coordinate off the base62 grid, an unreadable `.index`). On an error during loading or dumping only `meta.json` is written; on an `.index` mismatch all files are written. In every case with errors the exit status is 1 |
 | `sequences.ndjson` | one line per block in file order: `index`, `kind` (`position`/`transition`), `line_nr` (the original's value), `description`, `tags`, `properties` (sorted, as the original's `set`s), `refs` (lines starting `ref:`), `notes` (lines starting `note:`/`todo:`), `detailed`, `bidirectional`, `positions_q` |
 | `graph.ndjson` | nodes (`index`, `block` or `null` for anonymous nodes, `description`, `tags`, `position_q`), then transitions (`index`, `block`, `from`, `to`, `reorientation_from`/`_to` = `{translation, angle, swap, mirror}`), then one `{"type":"index", md5, pairs}` line with the `.index` |
 | `ops.ndjson` | one line per position, blocks in file order (`pos` 0 for a named position, the index in the sequence for a transition): `block`, `pos`, `mirror`, `swap_players` (on a copy: the original swaps in place), `orient_canonically_with_mirror`, `orient_canonically_without_mirror` (positions as doubles `[player][joint] = [x, y, z]`), `heading` (`[x, z]`), `center` (`[x, y, z]`) (`src/positions.hpp:37,68,132-184`) |
 | `between.ndjson` | for every consecutive pair of every transition and `s` = `0.25`, `0.5`, `0.75` (in that order): `block`, `seq`, `pos` (index of the pair's first position), `s`, `position` = `between(a, b, s)` (`src/positions.hpp:42`) |
+| `compose.ndjson` | one line per transition in file order: `block`, `seq`, `inverse_from` = `inverse(reorientation_from)`, `inverse_to`, `compose_from_to` = `compose(reorientation_from, reorientation_to)`, `compose_inverse_from_to` = `compose(inverse(reorientation_from), reorientation_to)` (the form `follow` uses, `docs/original.md` §6.2), each `{translation, angle, swap, mirror}` (`src/positions.cpp:97-128`) |
 | `playback.ndjson` | one `{"type":"transition"}` line per transition, then at most one `{"type":"chain"}` line (see "Playback" below) |
 | `body.json` | `joints` (`jointDefs`: name, radius, draggable, mirror joint), `segments` (`limbs()`: ends, length, `mid_radius` or `null`, visible), `players` (code, color), `draw` (constants of `playerdrawer.{hpp,cpp}` with their source lines; `rendering.cpp` has none that affect body geometry) |
 | `spring.ndjson` | one line per named position in block order: `block`, `node`, `position` = `spring(p)` on a copy (`src/positions.cpp:183-194`: `apply_limits`, then `spring` per player with no fixed joint) |
 | `inventory.ndjson` | one line per block in file order: `block`, `kind`, `length` (positions), `family`, `length_bucket` (`2`, `3-5`, `6-10`, `>10`; `null` for a named position), `classes` (see "Inventory and sample") |
+| `save.txt` | full dump only (not with `--sample`: ~2.7 MB): the bytes of the original's `save(loadGraph(DB), ostream)`; the sample keeps its `save_md5`/`save_equals_db` in `meta.json` |
 
 Playback (`src/paths.cpp:8-54`, `src/graph_util.cpp:60`): `frames(g, path, 11)`, the default frames-per-pos of
 `src/makevideo.cpp:34`. A `detailed` transition uses `11 / 2` by **integer** division, i.e. 5 (6 frames per segment,
@@ -86,15 +88,19 @@ Positions are quantized: `positions_q[k][player][joint] = [qx, qy, qz]`, integer
 `line_nr` is the 0-based line of the block's first **position** line: the original evaluates `desc.size()` after
 `move(desc)` (`src/persistence.cpp:80-85`), which confirms the open point of `docs/original.md` §1.4.
 
-Full dump (pin `032c8f9`, dumper version 3): 2,086 blocks, 8,323 positions, 601 named positions, 1,485 transitions,
-725 nodes (124 anonymous); `.index` consistent. 544,626,736 bytes (`playback` 389 MB, `ops` 93 MB, `between` 52 MB,
-`sequences` 6.8 MB, `spring` 1.7 MB, `graph` 1.1 MB, `inventory` 0.3 MB); ~15 s on amd64. Two runs give identical
-bytes. Version 3 only added `inventory.ndjson`: the other files are byte-identical to version 2 except `meta.json`
-(`dumper_version`). `--sample` does not change the full dump.
+Full dump (pin `032c8f9`, dumper version 4): 2,086 blocks, 8,323 positions, 601 named positions, 1,485 transitions,
+725 nodes (124 anonymous); `.index` consistent; `save_equals_db` true (`save(loadGraph(DB))` is the DB byte for byte).
+548,004,529 bytes (`playback` 389 MB, `ops` 93 MB, `between` 52 MB, `sequences` 6.8 MB, `save` 2.7 MB, `spring`
+1.7 MB, `graph` 1.1 MB, `compose` 0.7 MB, `inventory` 0.3 MB); ~15 s on amd64. Two runs give identical bytes.
+Version 4 (#141) added `compose.ndjson`, `save.txt` and the `save_*` fields of `meta.json`; version 3 added
+`inventory.ndjson`. Each time the other files stayed byte-identical except `meta.json`. `--sample` does not change the
+full dump.
 
 Test DB: `testdata/basic.txt` is generated by `testdata/make_basic.py` (deterministic): a named position with quotes
 and `ref:`, a transition from it translated by +0.5 in x to an anonymous node (literal `\n`, UTF-8, `note:`/`todo:`, a
-tab, coordinates `q = 0` and `3843`), a bidirectional transition ending at the mirror of the second named position.
+tab, coordinates `q = 0` and `3843`), a bidirectional transition ending at the mirror of the second named position. Its `compose.ndjson` and `save.txt`
+were written by hand (§5.4 of `docs/original.md`; `save` writes the named positions before the transitions, so
+`save_equals_db` is false here).
 The two transitions form the `chain` of `playback.ndjson` (the first is `detailed`: 2 segments × 6 frames − 1 = 11).
 `testdata/sample_*.txt` are symlinks to `basic.txt` run with their `<name>.sample.tsv` (`--sample`): `sample_ok`
 (every class listed or `-`; each output line is byte-identical to a line of `basic/`), and `sample_missing_class`,
@@ -154,8 +160,9 @@ the two manifests, `images/*.png` included, in C-locale path order.
 Two runs give identical bytes. `.gitattributes` marks the fixtures `-diff linguist-generated` (the `.sha256` files
 keep their diff).
 
-Size at the pin: 1,540,722 bytes of working copy in 11 files (`ops` 696 KB, `playback` 317 KB, `between` 192 KB,
-`sequences` 183 KB, `graph` 109 KB, `spring` 28 KB, `inventory` 9 KB, rest 7 KB); ~369 KB as `tar | gzip -9`. Hard limit 2 MB (spec; `images/` of the last PR of #35 counts too).
+Size at the pin: 1,564,690 bytes of working copy in 12 files (`ops` 696 KB, `playback` 317 KB, `between` 192 KB,
+`sequences` 183 KB, `graph` 109 KB, `spring` 28 KB, `compose` 23 KB, `inventory` 9 KB, rest 8 KB); ~373 KB as
+`tar | gzip -9`. Hard limit 2 MB (spec; `images/` of the last PR of #35 counts too).
 
 ## Reference images (#35)
 
@@ -178,7 +185,7 @@ scratch, rewrites `MANIFEST.sha256` and checks that `images/` holds exactly one 
 `--sample` never touches `images/`. The positions: 6 named positions of `sample.tsv` (`named`), one per family:
 standing, mount, guard, side_control, turtle, back. **Never run in CI**: PNGs depend on Mesa (ADR 0002); they are
 regenerated by hand only. Two runs give identical bytes. Size at the pin: 183,269 bytes (6 PNGs of 25-36 KB +
-`meta.json`); `tests/fixtures/oracle/` totals 1,724,613 bytes.
+`meta.json`); `tests/fixtures/oracle/` totals 1,747,959 bytes (dumper version 4).
 
 **Driver: softpipe** (`GALLIUM_DRIVER=softpipe`, set by `build.sh`; recorded in `meta.json`). With the image's
 default llvmpipe (Mesa 20.0.8):
