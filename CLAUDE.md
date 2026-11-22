@@ -12,6 +12,7 @@ Tras clonar: `git submodule update --init` (lo hace `./build.sh setup`) para ten
 ## Mapa
 - `src/core` datos, parser, grafo, interpolación (sin deps de render/ui) · `src/render` · `src/ui` · `src/editor`
 - `reference/GrappleMap` original, SOLO LECTURA · `tests/golden` imágenes de referencia · `tests/fixtures`
+- `tests/fidelity` paquete `fidelity`: `core` contra el oráculo (muestra; `GM_ORACLE_DIR=<dump completo>` para el completo); necesita el submódulo
 - `tools/oracle` Dockerfile que compila el original (oráculo, amd64) · `sample.tsv` (muestra) · `images.tsv` (imágenes) · ver su README
 - `docs/` (`original.md`, `architecture.md`, `ai-workflow.md`, `ASSETS.md`, `adr/`, `specs/`, `plans/`)
 - ADR clave: [0002 oráculo](docs/adr/0002-oracle.md) (el original en Docker es la verdad) · [0003 precisión](docs/adr/0003-numeric-precision.md) (`f64` en `core`, `f32` solo en render, tolerancias solo con mi OK)
