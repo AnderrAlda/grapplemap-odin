@@ -458,7 +458,8 @@ void dump_spring(std::ostream & out, Graph const & g, vector<Block> const & bloc
 }
 
 // Inventory (#35): the closed list of classes of docs/specs/phase-1-original-research.md ("Representative
-// sample"), in output order. `normal` is a transition in no anomaly class (every class after `named`).
+// sample"), in output order. `normal` is a transition in no structural class (STRUCTURAL below); the text classes
+// (duplicate_description, description_*, has_ref, has_note) do not exclude it: ~90% of blocks have one of them.
 char const * const CLASSES[] = {"normal", "named", "bidirectional", "detailed", "long", "endpoint_mirror",
 	"endpoint_swap", "endpoint_mirror_swap", "duplicate_description", "edge_coordinate", "description_newline",
 	"description_utf8", "description_quote", "has_ref", "has_note", "error_or_unmatched"};
@@ -470,11 +471,14 @@ enum Class_Id : unsigned
 	C_DESCRIPTION_QUOTE, C_HAS_REF, C_HAS_NOTE, C_ERROR_OR_UNMATCHED
 };
 
+unsigned const STRUCTURAL = 1u << C_BIDIRECTIONAL | 1u << C_DETAILED | 1u << C_LONG | 1u << C_ENDPOINT_MIRROR
+	| 1u << C_ENDPOINT_SWAP | 1u << C_ENDPOINT_MIRROR_SWAP | 1u << C_EDGE_COORDINATE | 1u << C_ERROR_OR_UNMATCHED;
+
 size_t const LONG_LENGTH = 15; // spec: "length >= 15"
 int const Q_MAX = 61 * 62 + 61; // largest 2-digit base62 value (src/persistence.cpp:33-61)
 
 // Tag families, first match in table order wins; a block whose tags match none is "other". A transition's tags
-// are the original's is_tagged() (src/metadata.hpp:32-37): its own, plus those of both of its endpoints.
+// are the original's is_tagged() (src/metadata.hpp:32-37): its own, plus every tag that both endpoints have.
 struct Family
 {
 	char const * name;
@@ -583,7 +587,7 @@ vector<Block_Info> inventory(Graph const & g, vector<Block> const & blocks)
 		}
 		if (!lines_with_prefix(desc, {"ref:"}).empty()) c |= 1u << C_HAS_REF;
 		if (!lines_with_prefix(desc, {"note:", "todo:"}).empty()) c |= 1u << C_HAS_NOTE;
-		if (!blk.is_node && (c >> C_BIDIRECTIONAL) == 0) c |= 1u << C_NORMAL;
+		if (!blk.is_node && (c & STRUCTURAL) == 0) c |= 1u << C_NORMAL;
 
 		info.family = family_of(tags);
 		info.classes = c;
