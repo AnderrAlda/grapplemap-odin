@@ -19,7 +19,7 @@ again**. Source of truth: the submodule `reference/GrappleMap`, pinned at `032c8
 6. [Interpolation and playback](#6-interpolation-and-playback)
 7. [Rendering and camera](#7-rendering-and-camera)
 8. [Web tools](#8-web-tools)
-9. Controls and UI: *pending*
+9. [Editor semantics](#9-editor-semantics)
 10. Observed in the DB and oracle: *pending*
 
 ---
@@ -511,9 +511,9 @@ with the previous node as `from`; after a node it searches `prev_node.out` for t
 that node, `error("could not find transition")` otherwise. The playback/video tools take `--start`/`--demo` through the same two
 functions (`src/playback.cpp:71,78`, `src/makevideo.cpp:87,94`).
 
-### 2.9 Mutations that touch matching (editor; for phase 8)
+### 2.9 Mutations that touch matching (editor; for phase 6)
 
-Recorded here because they use the matching of §2.3; full editor behaviour is section 8.
+Recorded here because they use the matching of §2.3; full editor behaviour is section 9.
 - `Graph::set` (insert/replace/erase a transition): rejects a sequence whose ends are reorientations of each other;
   `find_or_add` on both ends; recomputes `in/out` for the two nodes (for an erase, for all nodes)
   (`src/graph.cpp:130-167`). On a replace only the new `from`/`to` are recomputed (`src/graph.cpp:146-158`): the old
@@ -575,7 +575,7 @@ Notes:
   the minimum `y` of each joint in `apply_limits` and `spring` (`src/positions.cpp:177,318`): joints rest *on* the floor,
   not through it.
 - `draggable` is declared but **read nowhere** in the C++ (grep of `src/` finds only `src/players.hpp:69`). Which joints
-  the editor lets you drag is section 8.
+  the editor lets you drag: any (the grabbed joint is the nearest to the cursor, §9.1-9.2).
 - `jointDefs[j].joint` repeats the enum value; it is not used for lookup (the table is indexed by position).
 
 ### 3.2 Segments (`limbs()`)
@@ -872,10 +872,10 @@ only fact needed to derive §5.4; it is exactly the "negate `angle` and `offset.
   `src/glfw_editor.cpp:141`) just flips the `mirror` flag of the current location and of the selection; by the order in
   §5.3 that is `M ∘ u` (mirror of what was shown, about `x = 0`), and it does not change any stored position
   (`src/editor.hpp:52`). By contrast `swap_players(Editor&)` and `mirror_position` change the stored keyframe
-  (`src/editor.cpp:240-265`; keys `X` / `M`, `src/glfw_editor.cpp:134-135`). Editor detail: section 8.
+  (`src/editor.cpp:240-265`; keys `X` / `M`, `src/glfw_editor.cpp:134-135`). Editor detail: section 9.
 - Known imprecision in the original: `do_edit` composes a camera-only reorientation and notes it ignores
   `swap_players` (`src/glfw_editor.cpp:380-382`, `// todo: this is wrong`). Not to be "fixed" silently in a port;
-  section 8.
+  §9.2.
 
 ### 5.5 Canonical orientation
 
@@ -959,7 +959,7 @@ positions, one per rendered frame; used by `makevideo`, `glfw_playback` and the 
 (`Playback`: a cursor advanced by wall-clock seconds plus a per-frame "chaser"; used by the editors). They share only
 `between`. A third, time-based animator, the web cursor canvas (`src/cursor_canvas.cpp:39-74`: its own segment queue at a
 fixed 5 segments/s, `detailed` ignored, sped up when more than 10 segments are queued, its own 0.2 chaser), belongs to
-the web editor: section 8. Notation as in §5 (`u(p)` applies a `PositionReorientation`, §5.3).
+the web editor: §9. Notation as in §5 (`u(p)` applies a `PositionReorientation`, §5.3).
 
 ### 6.1 `between`
 
@@ -972,7 +972,7 @@ coordinate, `a + ((b − a) · s)`: one subtraction, one multiplication, one add
 - `s` is **not clamped**: the `/* [0,1] */` comment is the only constraint. Outside `[0, 1]` the result is a linear
   extrapolation. The callers in this section keep `s ∈ [0, 1]` (§6.2, §6.4), except `Playback` with negative
   elapsed seconds, which the GLFW clock does not produce. The range of the editor's own `howFar` (`at(location)`,
-  `src/editor.hpp:41`) is section 8.
+  `src/editor.hpp:41`) is in `[0,1]` in practice (§9.1).
 - End points: `s = 0` gives `a + (b − a)·0`, equal to `a` except that `−0` becomes `+0` unless `b < 0`; `s = 1` gives `a + (b − a)`,
   which is **not** bit-equal to `b` in general (observed in `tools/oracle/dump/testdata/basic/playback.ndjson`: frames
   5 and 6 of block 1, see §6.2).
@@ -1258,7 +1258,7 @@ Vertices go to GL as `double` (`glVertex3d`, `src/playerdrawer.cpp:10`); the sha
 Image backgrounds: position pages use `WhiteBg` (`src/mkpospages.cpp:584-588`); transition clips use red if the
 transition is marked `top`, else blue if `bottom`, else white (`src/mkpospages.cpp:312-317`; tags in §1.2).
 Editor overlays (selection paths white 0.6 alpha, viables yellow with alpha `max(0, 0.3 − 0.05·depth)`, highlighted
-joint as a 20-px white point without depth test; `src/rendering.cpp:61-101,141-190,396-405`) are section 8.
+joint as a 20-px white point without depth test; `src/rendering.cpp:61-101,141-190,396-405`) are display only; what they select is §9.7.
 
 ### 7.3 Lights and shading
 
@@ -1316,7 +1316,7 @@ viewport size and fov. Model-view and its handedness are §4.2. Projection:
   per frame, so frame-rate dependent, like the chaser in §6.5).
 - First-person views ignore the camera's model-view: `gluLookAt(eye = Head, center = (LeftHand + RightHand)/2,
   up = Head − Neck)` of that player (`src/rendering.cpp:346-352`; shader path `src/editor_canvas.cpp:548-555`).
-- `world2xy`/`world2screen` project world points to NDC/pixels for picking (`src/camera.hpp:77-88`; section 8).
+- `world2xy`/`world2screen` project world points to NDC/pixels for picking (`src/camera.hpp:77-88`; §9.2).
 
 `View{x, y, w, h, first_person, fov}` (`src/rendering.hpp:19-24`) places a sub-viewport (fractions of the window) with
 its own fov; each view is scissored and cleared (`src/rendering.cpp:321-337`).
@@ -1328,7 +1328,7 @@ its own fov; each view is scissored and cleared (`src/rendering.cpp:321-337`).
 | web editor (1024×768) | external third person 60, or one player first person 120 (`src/editor_canvas.cpp:48-54`) | as `glfw_editor`, target also while editing (`src/editor_canvas.cpp:539-544`) | keys as `glfw_editor` (`src/editor_canvas.cpp:189-206`); middle-drag `1·Δ` in NDC units (`src/editor_canvas.cpp:389-395`) |
 | images (`mkpospages`) | heading views: third person 45; player views: first person 80 | below (§7.6) | none |
 
-The remaining editor bindings (scroll, right/left drag, all letter keys) are section 9. `makevideo`'s rendering call
+The remaining editor bindings (scroll, right/left drag, all letter keys) are §9.2-§9.6. `makevideo`'s rendering call
 is commented out at the pin (`src/makevideo.cpp:124-139`).
 
 ### 7.6 Reference images (`ImageMaker`)
@@ -1644,3 +1644,255 @@ constants (use time-based), the unpinned Babylon dependency.
 
 Open points: handedness of the JS view (§8.7); whether the JS `follow`/`compose_reo`/`mirror` match the C++ ones beyond
 `yrot` (oracle); exact timing of the composer's loop pauses; the editor's canvas gestures in detail (`determineNextPos`, `closeCandidates`) are §9.
+
+---
+
+## 9. Editor semantics
+
+What the editors *do to the data*; the UX of the web editor is §8.6, rendering of the overlays §7, the pure functions
+(`mirror`, `swap_players`, `between`, reorientations) §5-§6, matching §2.3. Input for phase 6 (own editor), so the
+emphasis is on numerics and graph effects. Everything below was read in code; runtime effects deduced but not
+observed are marked **[unverified]**. All binaries are built with `-DNDEBUG` (`src/SConstruct:4,16`): **every
+`assert` in this section is absent from the real programs**.
+
+Which editor is real. The shared model is `class Editor` (`src/editor.hpp:11-65`), used by three front ends:
+the **web editor** (`src/editor_canvas.cpp`, `src/editor.js`: the one that works end to end), the **GLFW editor**
+(`src/glfw_editor.cpp`) and a VR editor (`src/vr_*.cpp`, only noted where it differs). The GLFW editor never builds a
+selection (it never calls `set_selected`; `go_to(NodeNum)` even clears it, `src/editor.cpp:505-515`), and
+`Editor::replace` ignores an edit whose sequence is not in the selection (`src/editor.cpp:393-402`), so by this
+reading **GLFW drag/paste/translate/rotate/swap/mirror edits are silently dropped at the pin** (all but paste still push an undo step) (**[unverified]**: chain deduced, not run).
+Its code is still cited where it is the only place a thing exists.
+
+### 9.1 Editor state
+
+`Editor` (`src/editor.hpp:13-18`):
+
+| Field | Meaning |
+|---|---|
+| `graph` | the whole `Graph` (§2), with its own undo journal (below) |
+| `selection` | `OrientedPath` (deque of reoriented, possibly reversed sequences) = the *path* shown and edited; empty at start |
+| `selectionLock` | "Confine to path" (web default on after load, `src/editor_canvas.cpp:712-727`) |
+| `location` | `Reoriented<Location>`: sequence, segment, `howFar ∈ [0,1]`, plus the reorientation under which it is displayed (§5.3); default segment 0 of sequence 0 |
+| `playback` | optional `Playback` (§6.4); while it exists `setLocation` is ignored (`src/editor.cpp:446-453`) |
+| `undoStack` | `std::stack` of `(location, selection)`; unbounded |
+
+The UI state that is *not* in `Editor` (`EditorCanvas`, `src/editor_canvas.hpp:51-71`): `edit_mode` (false), `chosen_joint`
+(the joint grabbed on mouse press), `closest_joint` (nearest to the cursor by squared NDC distance of the
+projected joints, `src/editor_canvas.cpp:427-432`), `joints_to_edit` (`"single_joint"`), `confine_horizontal` (false),
+`confine_interpolation` (false), `confine_local_edits` (**true**), `transform_rotate` (false). The page's checkboxes are
+initialised to the same values (`src/editor.html:61,129-151`).
+
+**The current frame is a location, and edits happen only at keyframes.** `position(Location)` is defined only for
+`howFar == 0` or `== 1` by **exact** double comparison (`src/locations.hpp:133-138`). Browsing with the right
+mouse button sets `howFar` to the clamped projection `whereBetween` (`src/editor_canvas.cpp:9-16`) and on release
+`snapToPos` rounds it to 0/1 if `|howFar − round| < 0.2` (`src/editor.cpp:542-560`), so a keyframe can be edited
+only after being snapped or reached with the wheel (which steps whole positions, `retreat/advance`, `src/editor.cpp:109-119`).
+
+**Selection.** `set_selected(seq, true)`: if the selection is empty and `seq` is the location's sequence, the
+selection becomes `{seq}` forward; otherwise `seq` must start at the end node of the last element or end at the start
+node of the first one (`in_sequences`/`out_sequences`, so a bidirectional one may be added reversed), else it is a
+no-op. `set_selected(seq, false)` removes only the first or last element (`src/editor.cpp:121-161`). `go_to(SeqNum)` /
+`go_to(NodeNum)` extend or reuse the selection when the target is adjacent, else **clear it and unlock**
+(`src/editor.cpp:455-516`); with the lock on, `setLocation` refuses a location whose sequence is not selected
+(`src/editor.cpp:450`) and `closeCandidates` only offers selected segments (`src/viables.cpp:113-117`).
+
+**After `Editor::replace`, `replace_sequence` and `branch`** (not after insert/delete keyframe, new transitions or undo) the rest of the selection is re-glued with `reorient_from(selection, i, graph)`
+(`src/paths.cpp:309-330`), which recomputes the reorientation of each other element outward from the edited one so
+consecutive transitions still meet at their shared node (`gp_connect`; **[unverified]**: its internals are not
+read here). Without it a node edit would leave the following transitions displayed in the old frame.
+
+**Undo.** `push_undo` pushes `(location, selection)` and opens a new group in the graph's `Rewindable` journal
+(`src/editor.cpp:278-282`, `src/rewindable.hpp:151`); each later mutation of `graph` appends its inverse closure to
+the **last open group** (`src/rewindable.hpp:54-58`); `undo` restores location and selection, runs the group's
+closures in reverse and drops it (`src/editor.cpp:317-324`, `src/rewindable.hpp:153-160`). Consequences:
+- The web/GLFW code calls `push_undo` on every **left** mouse press, edit or not (`src/editor_canvas.cpp:79-97`,
+  `src/glfw_editor.cpp:233-249`): one drag = one step, a plain click = one empty step. `swap_players`,
+  `mirror_position`, `insert/delete_keyframe`, `branch` and GLFW translate/rotate push one step each, *before* knowing
+  if the operation will do anything (a refused one leaves an empty step).
+- `append_new`, `prepend_new`, `set_description` and GLFW paste do **not** push: their graph change joins the previous
+  group and is undone together with that step (or never, with an empty stack) (`src/editor.cpp:355-387,430-438`,
+  `src/glfw_editor.cpp:125-127`).
+- `delete_keyframe` pops `undoStack` when the erase is refused but leaves the journal group open
+  (`src/editor.cpp:231-235`): from then on stack and journal are off by one, so a later undo restores the older entry's
+  location/selection but rewinds an *empty* group, and the older graph change stays (**[unverified]** at runtime).
+- Redo does not exist. Undo does not restore playback, lock or `edit_mode`.
+
+### 9.2 Dragging a joint: `spring` and limits
+
+**One drag tick** (web, per rendered frame while the left button is down in edit mode, `chosen_joint` set, not playing
+back, `transform` = translate: `src/editor_canvas.cpp:533-537`; rotate has its own path, §9.3): `pos = current_position()`
+(the *displayed* position: stored one under `location.reorientation`, §5.3) → move the grabbed joint(s) →
+`spring` → `Editor::replace(pos, policy)`. The cursor is absolute, so the joint is moved by the remaining gap
+between its projection and the cursor every frame (it converges over frames, it does not integrate a mouse delta):
+
+- `hdragger = R_y(−camera.yaw)(1,0,0)` and `vdragger = R_y(−camera.yaw)(0,0,1)` (the camera-only
+  `PositionReorientation`; `src/editor_canvas.cpp:255-264`). With `v` the joint and `xy(·)` = `world2xy` (§7.5):
+  `offh = (cursor.x − xy(v).x) / (xy(v + hdragger).x − xy(v).x)`, `offv` the same with `y` and `vdragger`,
+  `offy = (cursor.y − xy(v).y)·0.01 / (xy(v + (0,0.01,0)).y − xy(v).y)` (`src/editor_canvas.cpp:270-277`).
+- Default: `x += hdragger.x·offh`, `z += hdragger.z·offh`, `y += offy` (screen-x moves along the camera's right
+  axis, screen-y moves the joint up/down). With `confine_horizontal`: `x,z += hdragger·offh + vdragger·offv`, `y` unchanged
+  (`src/editor_canvas.cpp:282-292`).
+- `joints_to_edit`: `single_joint` moves only the grabbed joint and calls `spring(pos, grabbed)`; `whole_player` /
+  `both_players` add the **same displacement** to every joint of the grabbed player / of both (`:295-311`), then
+  `spring(pos)` with **no** fixed joint. `confine_interpolation` replaces the displacement by
+  `pos[j] = prev[j] + (next[j] − prev[j])·t` for the same joint set, with `t = whereBetween(xy(prev[g]), xy(next[g]), cursor)`
+  (g = grabbed), where prev/next are the neighbouring keyframes **in the same sequence**; with no neighbour (first/last
+  frame) the position is not changed (`:212-252`).
+
+**`spring(Position&, optional<PlayerJoint> fixed)`** (`src/positions.cpp:183-194`): `apply_limits(pos)`, then for
+each player `pos[player] = spring(pos[player], fixed joint of that player or none)`. It is **one pass**, not an
+iteration to convergence; callers repeat it (once per frame in the drag; the VR "interpolate" button and VR drag start call it 30 times, `src/vr_editor.cpp:104`, `src/vr_joint_editor.cpp:64`, as does
+commented-out GLFW code, `src/glfw_editor.cpp:153,183`).
+
+`spring(Player, fixed)` (`src/positions.cpp:142-181`), exact:
+1. `r = p` (copy). **Every read uses `p`, every write goes to `r`** (Jacobi style: the update order of joints does not
+   matter, only the float summation order below).
+2. For each joint `j` in enum order (§3.1) except the fixed one (`continue`: the fixed joint is not touched at all,
+   not even by step 4): for each limb `s` of `limbs()` **in table order** (§3.2, 28 entries, all used, visible or not
+   `src/players.hpp:126-162`) that has `j` as an end:
+   `d = s.length − distance(p[end0], p[end1])`; `force = f(d)` with
+   `f(d) = max(−0.3, min(0.3, d/3 + d·d·d))` (literal expression `distance / 3 + distance * distance * distance`, `src/positions.cpp:152`; keep the evaluation order for bit-exactness, ADR 0003); `if |force| > 0.001: r[j] -= normalize(p[other] − p[j]) · force`.
+   So a stretched limb (`d < 0`) pulls `j` towards the other end, a compressed one pushes it away; both ends move
+   (each by `f(d)`), the fixed joint absorbs the rest of the error.
+3. (inside the same loop) nothing else: no angle limits, no symmetry, no momentum, no rigid-body logic.
+4. `r[j].y = max(jointDefs[j].radius, r[j].y)` for every non-fixed joint (radii: §3.1).
+`normalize` of a zero vector (two coincident joints with `|f| > 0.001`) is a division by zero (**[unverified]**: NaN
+propagation not run; `normalize` is not read here).
+
+`apply_limits(Position&)` (`src/positions.cpp:314-322`), every joint of both players, **including the grabbed one**:
+`y = max(radius, y)`, `x = clamp(x, −2, 2)`, `z = clamp(z, −2, 2)`. It is also applied inside `Graph::replace` to the
+position being written (`src/graph.cpp:20`). There is **no upper bound on `y`**. The encodable range is smaller than the
+limits (§1.5: indices ≤ 3843, i.e. `x,z ≤ 1.843`, `y ≤ 3.843`): values between are accepted by the editor and
+cannot be written back correctly by `save` (**[unverified]** runtime effect: out-of-alphabet index, §1.5).
+
+`spring` in the oracle: `spring.ndjson` is `spring(p)` **without fixed joint** on every named position
+(`tools/oracle/dump/dump.cpp:437-447`, `tools/oracle/README.md:56`): it pins the numerics of steps 1-4 for the "no fixed
+joint" case only; the fixed-joint variant is not dumped (§9.9).
+
+### 9.3 How an edit reaches the graph: `Editor::replace` and `Graph::replace`
+
+`Editor::replace(p, policy)` (`src/editor.cpp:389-404`): acts only if the location is a keyframe **and** its sequence is
+in the selection (else silently nothing); it writes `inverse(location.reorientation)(p)` (back to the stored frame) with
+`Graph::replace(pis, …, policy)` and then `reorient_from` (§9.1).
+
+`Graph::replace(pis, p, policy)` (`src/graph.cpp:18-108`; summary in §2.9): `apply_limits(p)`; **return if the stored
+position already equals `p`** (`:22`, no dirty flag). If `pis` is **not** an end of its sequence (`node(pis)` empty,
+`:7-13`) the position is just written and the sequence marked modified, whatever the policy. If it is an end:
+
+| Policy | Effect on the end |
+|---|---|
+| `propagate` | node position := `inverse(rn.reorientation)(p)`; **every** sequence starting/ending at that node gets its first/last stored position recomputed from the node (`graph[we.from]`), all marked modified (`:37-66`). All transitions of the node change together. |
+| `unintended` | `p` must be a reorientation (rotation about y, translation, mirror, swap, §5.3) of the node's position: write `p` into the sequence's stored position (`apply()`, marks it modified), then `rn.reorientation := is_reoriented(node.position, p)`; the node position and the other edges are untouched (`:68-76`). If it is not, release builds dereference an empty optional (UB, **[unverified]**). |
+| `local` | write `p`; if it is a reorientation of the old node only the reorientation changes, else `find_or_add(p)` (§2.3) and the end is re-attached to another (possibly new anonymous) node, recomputing `in/out` of both (`:77-104`). The old node is never deleted. |
+
+Which policy each entry point uses (web unless noted):
+
+| Edit | Not an end | End (node) |
+|---|---|---|
+| Drag a joint | `unintended` (= plain write) | `confine_local_edits` off → `propagate`; on → `unintended` only if `both_players && confine_horizontal`, else **ignored with a console message** (`src/editor_canvas.cpp:314-326`) |
+| Rotate drag (`yrot(Δcursor.x)` about the world origin of all joints of the chosen set, `src/editor_canvas.cpp:397-420`) | plain write | lock off → `propagate`; on → `unintended` if `both_players`, else silently ignored |
+| Swap players / mirror frame (`X`, `M`) | `unintended` | `unintended`: the node is kept and only `rn.reorientation` gets `swap_players`/`mirror` set (`is_reoriented` tries the swapped and mirrored forms, `src/positions.cpp:233-259`), i.e. a node-end swap **does not alter any stored node data** and the stored end position is the swapped one (`src/editor.cpp:240-265`) |
+| GLFW translate (`numpad 4/6/8/2`, ±0.02 or ±0.2 with shift in x / z) and rotate (`numpad 7/9`, `yrot(±0.05)`) | `unintended` | `unintended` (`src/glfw_editor.cpp:102-106,188-210`) |
+| GLFW drag | | `propagate` (`src/glfw_editor.cpp:405`); GLFW paste: `local` |
+
+So with the defaults (lock on) a node keyframe can only be rotated/translated/mirrored/swapped as a whole, or edited
+if the user explicitly switches "local edits" off; a free edit at a node then changes **all** transitions that meet there.
+
+### 9.4 Operations
+
+All act on the location (`*location`), most need a keyframe. "Ignored" = a message on `stderr`, nothing changes.
+
+| Operation (web fn / GLFW key) | Preconditions | Effect on the graph | Invariants |
+|---|---|---|---|
+| **Insert keyframe** (`insert_keyframe` / `Ins`) `src/editor.cpp:267-276`, `src/graph.cpp:122-128` | none (works mid-segment; at a keyframe, `howFar` 0 or 1, it **duplicates** the frame, the GLFW help calls it "duplicate current frame") | inserts `at(location)` (the interpolation `between` of the two keyframes at `howFar`, §6.1; **no `spring`**) after segment `i`: `positions.insert(i+1, …)`; location → segment `i+1`, `howFar 0`; sequence marked modified | ends unchanged, nodes untouched. Position index is a `uint_fast8_t` (`src/indexed.hpp:60`): more than 255 positions is **[unverified]** |
+| **Delete keyframe** (`delete_keyframe` / `Del`) `src/editor.cpp:219-238`, `src/graph.cpp:169-211` | keyframe; ignored if the selection is non-empty, the position is a node end and it is not the first position of the selection's first sequence nor the last of its last one (interior joints of the path are protected); ignored (graph level) if the sequence has 2 positions, or deleting the first (last) would make `positions[1]`≈`back` (`front`≈`prev(back)`) a self-transition (`is_reoriented`) | removes the frame; if the new first/last frame is now the end, it is re-matched with `find_or_add` (§2.3): the sequence may attach to another or **new anonymous node**, `in/out` recomputed for old and new (`:193-208`); the old node stays. Location moves to the surviving frame (`go_to(PositionInSequence)`, only effective if the sequence is in the selection, else the location may dangle, **[unverified]**) | no self-transition; ≥ 2 positions |
+| **Swap players / mirror frame** (`swap_players`, `mirror_frame` / `X`, `M`) `src/editor.cpp:240-265` | keyframe | §9.3 (`unintended`), applies `swap_players`/`mirror` (§5.1-5.2) to the **displayed** frame only; neighbours are not touched, so interpolation jumps | |
+| **Split / branch** (`split_seq` / `B`) `src/editor.cpp:284-315`, `src/graph_util.cpp:32-58` | keyframe, **not an end**; not if either half would be a self-transition | `a = positions[0..i]` replaces the sequence in place (same `SeqNum`), `b = positions[i..]` is **appended** as a new sequence with `" (cont'd)"` appended to its first description line (`detailed`/`bidirectional` copied); both ends found with `find_or_add` (the split frame becomes a node, matched to an existing one if it is a reorientation of it), `in/out` of the affected nodes recomputed; flagged modified/added. The selection gets the new sequence inserted after the current one and is re-glued; location steps back to `howFar = 1` of the previous segment if it was at `0` | |
+| **Prepend/append new** (`prepend_new(n)`, `append_new(n)`; no key) `src/editor.cpp:355-387` | selection non-empty (else nothing) | new sequence `"new"`, positions `{last position of the selection's last sequence, node n's position}` (append) or `{node n's position, first position of the selection's first}` (prepend), `detailed`/`bidirectional` false, **appended** to the sequence list (`insert`, `src/graph_util.cpp:5-10`); then selected. Uses the stored frames of the sequence, ignoring the selection's reorientation and reversal (`// todo: not for reverse steps`). `Graph::set` refuses it (`"Transition must not end where it starts"`) when both ends are reorientations of each other, but `insert` still returns the would-be `SeqNum` and the selection step then does nothing. `n` is not range-checked (`NodeNum{n}` from a `prompt()` number, `src/editor_canvas.cpp:811-816`; out of range is UB **[unverified]**). No `push_undo`. | |
+| **Set description** (`set_node_desc`, `set_seq_desc`) `src/editor.cpp:430-438`, `src/graph.cpp:357-373`, `src/editor_canvas.cpp:851-867` | node: location at a node end; sequence: any | text split on `'\n'` into lines. Node: marks `added` if it had none (**it becomes a named, saved position**), else `modified`. Sequence: `detailed`/`bidirectional` are **re-derived from the new lines** (`properties_in_desc`, §1.2); `compute_in_out` is **not** rerun, so the node `in/out` lists keep the old `bidirectional` until some other operation recomputes them (**[unverified]**: deduced from `:243-277` vs `:366-373`). `lines("")` gives one empty line, so clearing a name does not make the node anonymous again: it saves as a named position with a blank first line, and two such nodes would fail the duplicate-name check at the next load (`:279-285`; boost `split` of `""` yielding one token is **[unverified]**) | |
+| **Select / unselect, lock, mirror view, playback, go to** | | no graph change (§9.1). *Mirror view* (`I` / "Mirror view") only flips the mirror flag of location and selection (§5.4) | |
+| **Undo** (`Ctrl+Z` / button) | non-empty stack | §9.1 | |
+| GLFW only: **copy / paste** (`Ctrl+C/V`) | | clipboard = `current_position()` (displayed); paste = `replace(clip, local)`: a free write that may re-attach a node end to another node (§9.3) | |
+| VR only: `replace_sequence` (the only caller), "interpolate" (`between` of prev/next + 30×`spring` + `propagate`, `src/vr_editor.cpp:92-107`) | | not covered | |
+
+**Not in the original** (no code path in any front end): delete a sequence (`erase_sequence`, `src/graph_util.cpp:12-30`, has
+no caller; it refuses the last sequence and returns `max(sn−1, 0)`), delete or rename a *position* other than by
+`set_description`, merge sequences, reverse a sequence, create a position from scratch (a "new" transition copies
+existing positions), reorder sequences, move a sequence between selections. Nodes are never removed from `graph`
+(`Graph::erase`/`set` leave orphans), which is harmless for saving (§9.5).
+
+`Graph::set(num, seq)` (`src/graph.cpp:130-167`; §2.9) is the primitive behind branch/new: reject a self-transition,
+`find_or_add` both ends, replace in place (`modified`) or push (`added`), recompute `in/out` of the new ends only.
+
+### 9.5 Persistence on save
+
+- **GLFW/VR**: key `S` / VR button call `save(graph, dbFile)` (`src/glfw_editor.cpp:224-226`, `src/vr_editor.cpp:83`),
+  which opens the target with `std::ofstream(filename, binary)` — **truncating, in place**, no temp file, no backup,
+  no error check on open or write (`src/persistence.cpp:235-239`; the failure paths are **[unverified]**).
+- **Web**: `getDB` runs the same `save` on an `ostringstream`, converts UTF-8 to a `wstring` for the JS bridge
+  (`src/editor_canvas.cpp:729-739`), and the page offers it as a download named `GrappleMap.txt` / `<loaded>.new`
+  (`src/editor.js:148-155`). The page never writes the repository file.
+- **Content and order**: §1.5. In editor terms: all named nodes in node-index order (nodes keep their index; a node that
+  gains a name through `set_description` is written at its existing index), then **all**
+  sequences in sequence-index order (new ones last). `save` ignores the `modified` flags: they only feed the web
+  "Added/Changed" list (`src/editor_canvas.cpp:99-130`). So a saved file is a normalised rewrite, not a patch:
+  block order changes (nodes first), unused anonymous nodes vanish, descriptions are written verbatim, positions are
+  rounded to 1 mm (§1.5), and `line_nr` is not stored.
+- **`.index`**: `save` does not touch it. `loadGraph(filename)` compares the md5 of the file with the stored hash and,
+  on mismatch, rebuilds the graph and rewrites `.index` (`src/persistence.cpp:186-233`; §2.5). The web editor loads from a stream and
+  uses an index only for its initial `loadGraph("GrappleMap.txt")` (`src/editor_canvas.hpp:56`); *Load database* (`editor_loadDB`) reads a stream without one.
+- **Lost or changed on a round trip through the editor**: everything listed in §1.5, plus node `in/out` staleness
+  (not persisted), node merges (§2.3 may attach an edited end to another node; the file then stores the position
+  inside each transition, so the node identity is recomputed at the next load, **not** preserved), and the exact
+  float values of *propagated* ends (recomputed through the node and its reorientation, `src/graph.cpp:44-62`,
+  then rounded on write).
+
+### 9.6 C++ editors vs the web editor
+
+| Capability | Web | GLFW | Notes |
+|---|---|---|---|
+| Browse path / scrub with right-drag, wheel | yes | yes (opposite wheel sign: web `yoffset > 0` = back, GLFW `yoffset == 1` = forward, `src/editor_canvas.cpp:342-351`, `src/glfw_editor.cpp:251-260`) | candidates from `closeCandidates` (`src/viables.cpp:83-120`), best by `determineNextPos` (`src/editor_canvas.cpp:18-46`) |
+| Build selection / lock | yes (list buttons, "Confine to path") | **no** (only `L`) | the root of §9's remark on GLFW edits |
+| Drag modes (single/whole/both, horizontal, interpolated, local edits), rotate | yes | single joint only, camera-composed dragger (`// todo: this is wrong`, `src/glfw_editor.cpp:379-406`); ends in `Editor::replace`, so dropped without a selection (**[unverified]**) | |
+| Keyframe insert/delete, branch, undo | yes | yes (these act on the graph directly) | |
+| Swap players, mirror frame | yes | bound (`X`, `M`) but go through `Editor::replace`, so dropped without a selection (**[unverified]**) | |
+| Prepend/append new transition, set descriptions | yes | no | |
+| Numpad translate/rotate, copy/paste, `H/J/K/U/N` helpers | no | numpad translate/rotate and paste bound but go through `Editor::replace`, so dropped without a selection (**[unverified]**; copy works); `H/J/K/U/N` are commented out (`src/glfw_editor.cpp:143-222`) | |
+| Save | download | in-place file | §9.5 |
+
+### 9.7 Viables and candidates (editor-only helper data)
+
+`determineViables` (`src/viables.cpp:8-104`) is **display only** (the yellow trails of §7): from the current
+position it walks outwards along the sequence (and through nodes into adjacent sequences) for the chosen joint,
+keeping a frame only if the joint moved ≥ √0.003 m in space and ≥ 0.01 in NDC (`distanceSquared > 0.003` /
+`> 0.0001`), stopping at depth 7. `viable`/`closeCandidates` (`:83-120`) decide which segments can be scrubbed for a
+joint: the joint must move `distanceSquared > 0.001` (and `> 0.0001` in NDC) between the segment's keyframes; candidates
+are the current segment plus its `neighbours`. They only filter which segment the right-drag may jump to.
+
+### 9.8 Input for phase 6
+
+**Reproduce exactly** (data results depend on it):
+- `spring` numerics of §9.2 (constants `/3`, `0.3`, `0.001`, limb table order, one pass, Jacobi reads, `y` floor,
+  fixed joint untouched) and `apply_limits` (`±2`, `y ≥ radius`, no upper `y`).
+  `spring.ndjson` covers no-fixed-joint; ask for a fixed-joint dump before relying on it (open point below).
+- `Graph::replace` policies, `find_or_add`/`is_reoriented` re-matching, the refusal rules of delete/split/`set`
+  (all use the §2.3 tolerances), the `(cont'd)` suffix, append position of new sequences, `modified/added` as UI state only.
+- Save format and order (§1.5, §9.5), including that `save` is a full normalised rewrite.
+
+**Free UX** (not data): gestures and key bindings, panels, `prompt()` dialogs, the path widget, per-frame drag
+smoothing, camera behaviour while editing, confirmation on leaving, the number of `spring` passes per second (the original
+runs one per rendered frame, so the drag feel is **frame-rate dependent**; choose a fixed tick or iterate to a tolerance and say so in the ADR).
+
+**Original quirks to decide on knowingly in phase 6** (do not copy or fix silently): GLFW edits impossible without a
+selection; the undo imbalance after a refused delete and the "joins the previous step" operations; `lines("")`; the
+unencodable range between 1.843 and 2 m (and no `y` cap); `unintended` on a non-reorientation (UB); unchecked node index in
+`prepend/append_new`; a failed `set` still returning a `SeqNum`; in/out lists not refreshed after toggling `bidirectional`;
+`replace` with `local`/`propagate` never rejecting a self-transition (`from == to` after `find_or_add` or a node moved onto another, unlike delete/split/`set`; the next load merges them, **[unverified]**); `propagate` not re-applying `apply_limits` to the other transitions' ends; no delete/merge/reverse operations;
+in-place save without backup.
+
+### 9.9 Open points (need the oracle/dumper)
+
+`spring(p, fixed)` (a dump with a fixed joint, since only the no-fixed variant is in `spring.ndjson`); behaviour of
+`normalize` on coincident joints; the undo imbalance and the `lines("")` effect (needs a scripted editor session, which
+the dumper does not have); `reorient_from`/`gp_connect` semantics after an edit; 255-position overflow; the
+runtime result of `unintended` with a non-reorientation under `NDEBUG`; whether the GLFW editor can edit at all.
