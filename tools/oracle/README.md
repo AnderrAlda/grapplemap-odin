@@ -206,6 +206,23 @@ right** and the **eye is on the +z side**, as the algebra says. Evidence, from t
 in block 267 player 1's toe is at z = +0.76 and player 0's head at x = −0.43: the red legs are in the foreground
 (bottom of the image) and the blue head is on the left.
 
+## CI (#36)
+
+`.github/workflows/oracle.yml` (workflow `oracle`, **not** a required check; `ci.yml` is unchanged). Triggers:
+`pull_request`/`push` to `main` touching `tools/oracle/**`, the `reference/GrappleMap` pointer, `tests/fixtures/oracle/**`
+or the workflow itself; `workflow_dispatch`; nightly `schedule` (03:17 UTC). Docs-only PRs do not trigger it.
+One `ubuntu-latest` (amd64) job, checkout with `submodules: true`:
+
+1. builds the image with a layer cache (`docker buildx` container driver, local cache in `actions/cache`, keyed on the
+   hash of `tools/oracle` and the submodule SHA; passed to `build.sh` through `ORACLE_BUILD_FLAGS`, empty by default);
+2. `./build.sh oracle --sample` and fails if `git status --porcelain tests/fixtures/oracle` is not empty (it prints the
+   diff; fixtures are never regenerated in CI; `--sample` never writes `images/`);
+3. `./build.sh oracle --full`, which fails on a mismatch with (or a missing) `FULL.sha256`;
+4. uploads `build/oracle/full/` as artifact `oracle-full-dump` (compression level 9, 7 days).
+
+`--images` is never run in CI (Mesa-dependent). Phase 2 consumes the artifact by downloading it
+(`gh run download <run> -n oracle-full-dump`) instead of rebuilding the oracle.
+
 ## Smoke checks
 
 ```sh
