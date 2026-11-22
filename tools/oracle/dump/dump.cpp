@@ -6,7 +6,7 @@
 //   --index: the .index written by grapplemap-indexer on a copy of the DB (only read, never used to load).
 //
 // Files (fixed order, no timestamps): meta.json, sequences.ndjson, graph.ndjson, ops.ndjson, between.ndjson,
-// playback.ndjson, body.json, spring.ndjson.
+// playback.ndjson, body.json, spring.ndjson, inventory.ndjson.
 #include "json.hpp"
 
 #include "graph_util.hpp"
@@ -16,9 +16,11 @@
 #include "persistence.hpp"
 
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <map>
 #include <sstream>
 
 namespace {
@@ -26,7 +28,7 @@ namespace {
 using namespace GrappleMap;
 using dump::Json;
 
-char const DUMPER_VERSION[] = "2";
+char const DUMPER_VERSION[] = "3";
 
 // frames-per-pos of frames() (default of src/makevideo.cpp:34); halved for `detailed` by integer division
 // (src/paths.cpp:42: 11 / 2 = 5).
@@ -150,11 +152,13 @@ Index read_index(string const & path)
 	return ix;
 }
 
+int const Q_MAX = 61 * 62 + 61; // largest 2-digit base62 value (src/persistence.cpp:33-61)
+
 // Inverse of decodePosition (src/persistence.cpp:33-61): x = q/1000 - off. Exact or it throws.
 int quantize(double const x, double const off)
 {
 	long const q = std::lround((x + off) * 1000);
-	if (q < 0 || q > 61 * 62 + 61 || double(q) / 1000 - off != x)
+	if (q < 0 || q > Q_MAX || double(q) / 1000 - off != x)
 	{
 		char buf[64];
 		std::snprintf(buf, sizeof buf, "coordinate not on the base62 grid: %.17g", x);
@@ -455,6 +459,170 @@ void dump_spring(std::ostream & out, Graph const & g, vector<Block> const & bloc
 	}
 }
 
+// Inventory (#35): the closed list of classes of docs/specs/phase-1-original-research.md ("Representative
+// sample"), in output order. `normal` is a transition in no structural class (STRUCTURAL below); the text classes
+// (duplicate_description, description_*, has_ref, has_note) do not exclude it: 96% of blocks have one of them.
+char const * const CLASSES[] = {"normal", "named", "bidirectional", "detailed", "long", "endpoint_mirror",
+	"endpoint_swap", "endpoint_mirror_swap", "duplicate_description", "edge_coordinate", "description_newline",
+	"description_utf8", "description_quote", "has_ref", "has_note", "error_or_unmatched"};
+size_t const NUM_CLASSES = sizeof CLASSES / sizeof *CLASSES;
+enum Class_Id : unsigned
+{
+	C_NORMAL, C_NAMED, C_BIDIRECTIONAL, C_DETAILED, C_LONG, C_ENDPOINT_MIRROR, C_ENDPOINT_SWAP,
+	C_ENDPOINT_MIRROR_SWAP, C_DUPLICATE_DESCRIPTION, C_EDGE_COORDINATE, C_DESCRIPTION_NEWLINE, C_DESCRIPTION_UTF8,
+	C_DESCRIPTION_QUOTE, C_HAS_REF, C_HAS_NOTE, C_ERROR_OR_UNMATCHED
+};
+static_assert(NUM_CLASSES == C_ERROR_OR_UNMATCHED + 1 && NUM_CLASSES <= 32, "CLASSES and Class_Id disagree");
+
+unsigned const STRUCTURAL = 1u << C_BIDIRECTIONAL | 1u << C_DETAILED | 1u << C_LONG | 1u << C_ENDPOINT_MIRROR
+	| 1u << C_ENDPOINT_SWAP | 1u << C_ENDPOINT_MIRROR_SWAP | 1u << C_EDGE_COORDINATE | 1u << C_ERROR_OR_UNMATCHED;
+
+size_t const LONG_LENGTH = 15; // spec: "length >= 15"
+// Tag families, first match in table order wins; a block whose tags match none is "other". A transition's tags
+// are the original's is_tagged() (src/metadata.hpp:32-37): its own, plus every tag that both endpoints have.
+struct Family
+{
+	char const * name;
+	std::initializer_list<char const *> tags;
+};
+Family const FAMILIES[] = {
+	{"leg_locks", {"heel_hook", "knee_bar", "toehold", "ashi_waza", "ashi", "50_50", "slx"}},
+	{"back", {"back", "seatbelt", "rear_naked_choke", "crab_ride"}},
+	{"mount", {"mount", "s_mount", "three_quarter_mount", "top_mounted"}},
+	{"side_control", {"side_control", "side_ctrl", "judo_side", "twister_side", "north_south", "knee_on_belly"}},
+	{"turtle", {"turtle"}},
+	{"guard", {"guard", "full_guard", "closed_guard", "half_guard", "butterfly", "engaged_butterfly",
+		"reverse_butterfly", "rubber_guard", "lockdown", "quarter_guard", "deep_half", "z_guard", "x_guard",
+		"spider_guard", "three_quarter_guard", "reverse_half", "knee_shield", "inverted_guard", "guard_pull",
+		"guard_jump"}},
+	{"standing", {"standing", "single_leg_takedown", "double_leg_takedown", "takedown", "collar_tie", "ankle_pick",
+		"throw", "te_waza", "koshi_waza", "sutemi_waza", "sacrifice_throw", "inside_trip"}},
+};
+
+char const * family_of(set<string> const & tags)
+{
+	foreach (f : FAMILIES)
+		foreach (t : f.tags)
+			if (tags.count(t)) return f.name;
+	return "other";
+}
+
+// spec: 2 / 3-5 / 6-10 / >10 positions.
+char const * length_bucket(size_t const n) { return n <= 2 ? "2" : n <= 5 ? "3-5" : n <= 10 ? "6-10" : ">10"; }
+
+struct Block_Info
+{
+	size_t length;
+	char const * family;
+	unsigned classes; // bit set of Class_Id
+};
+
+vector<string> const & description(Graph const & g, Block const & blk)
+{
+	return blk.is_node ? g[NodeNum{uint16_t(blk.index)}].description : g[SeqNum{blk.index}].description;
+}
+
+bool has_edge_coordinate(Position const & p)
+{
+	foreach (pl : playerNums())
+		foreach (jt : joints)
+		{
+			V3 const v = p[pl][jt];
+			for (int const q : {quantize(v.x, 2), quantize(v.y, 0), quantize(v.z, 2)})
+				if (q == 0 || q == Q_MAX) return true;
+		}
+	return false;
+}
+
+unsigned endpoint_class(PositionReorientation const & r)
+{
+	if (r.mirror && r.swap_players) return 1u << C_ENDPOINT_MIRROR_SWAP;
+	if (r.mirror) return 1u << C_ENDPOINT_MIRROR;
+	if (r.swap_players) return 1u << C_ENDPOINT_SWAP;
+	return 0;
+}
+
+vector<Block_Info> inventory(Graph const & g, vector<Block> const & blocks)
+{
+	// duplicate_description: the name the original looks a block up by equals another block's of the same kind:
+	// the first description line with a literal \n replaced by a space, compared among transitions
+	// (step_by_desc, src/metadata.cpp:66-69) or among named positions (node_by_desc, src/metadata.cpp:81-89).
+	auto const lookup_name = [&](Block const & blk) {
+		return std::make_pair(blk.is_node, replace_all(description(g, blk).front(), "\\n", " "));
+	};
+	std::map<pair<bool, string>, size_t> names;
+	foreach (blk : blocks)
+		if (!description(g, blk).empty()) ++names[lookup_name(blk)];
+
+	vector<Block_Info> v;
+	foreach (blk : blocks)
+	{
+		auto const & desc = description(g, blk);
+		auto const props = properties_in_desc(desc);
+		set<string> tags = tags_in_desc(desc);
+		unsigned c = 0;
+		Block_Info info{1, nullptr, 0};
+
+		if (blk.is_node)
+		{
+			c |= 1u << C_NAMED;
+			if (has_edge_coordinate(g[NodeNum{uint16_t(blk.index)}].position)) c |= 1u << C_EDGE_COORDINATE;
+		}
+		else
+		{
+			auto const & e = g[SeqNum{blk.index}];
+			info.length = e.positions.size();
+			foreach (t : tags_in_desc(g[*e.from].description))
+				if (tags_in_desc(g[*e.to].description).count(t)) tags.insert(t);
+			if (props.count("bidirectional")) c |= 1u << C_BIDIRECTIONAL;
+			if (props.count("detailed")) c |= 1u << C_DETAILED;
+			if (info.length >= LONG_LENGTH) c |= 1u << C_LONG;
+			c |= endpoint_class(e.from.reorientation) | endpoint_class(e.to.reorientation);
+			foreach (p : e.positions)
+				if (has_edge_coordinate(p)) { c |= 1u << C_EDGE_COORDINATE; break; }
+			// An endpoint that matches no named position becomes an anonymous node (src/graph.cpp:235-240).
+			if (!g[*e.from].line_nr || !g[*e.to].line_nr) c |= 1u << C_ERROR_OR_UNMATCHED;
+		}
+		if (!desc.empty() && names.at(lookup_name(blk)) > 1) c |= 1u << C_DUPLICATE_DESCRIPTION;
+		foreach (line : desc)
+		{
+			if (line.find("\\n") != string::npos) c |= 1u << C_DESCRIPTION_NEWLINE;
+			if (line.find('"') != string::npos) c |= 1u << C_DESCRIPTION_QUOTE;
+			foreach (ch : line)
+				if (static_cast<unsigned char>(ch) >= 0x80) c |= 1u << C_DESCRIPTION_UTF8;
+		}
+		if (!lines_with_prefix(desc, {"ref:"}).empty()) c |= 1u << C_HAS_REF;
+		if (!lines_with_prefix(desc, {"note:", "todo:"}).empty()) c |= 1u << C_HAS_NOTE;
+		if (!blk.is_node && (c & STRUCTURAL) == 0) c |= 1u << C_NORMAL;
+
+		info.family = family_of(tags);
+		info.classes = c;
+		v.push_back(info);
+	}
+	return v;
+}
+
+void dump_inventory(std::ostream & out, vector<Block> const & blocks, vector<Block_Info> const & inv)
+{
+	Json j;
+	for (size_t b = 0; b != blocks.size(); ++b)
+	{
+		j.begin_object();
+		j.key("block").integer(long(b));
+		j.key("kind").str(blocks[b].is_node ? "position" : "transition");
+		j.key("length").integer(long(inv[b].length));
+		j.key("family").str(inv[b].family);
+		j.key("length_bucket");
+		if (blocks[b].is_node) j.null(); else j.str(length_bucket(inv[b].length));
+		j.key("classes").begin_array();
+		for (size_t k = 0; k != NUM_CLASSES; ++k)
+			if (inv[b].classes & (1u << k)) j.str(CLASSES[k]);
+		j.end_array();
+		j.end_object();
+		out << j.take();
+	}
+}
+
 void joint_name(Json & j, Joint const jt) { j.str(to_string(jt)); }
 
 string dump_body()
@@ -599,6 +767,7 @@ int run(Args const & a)
 				&& ix.pairs[s.index] == std::make_pair(unsigned(g[s].from->index), unsigned(g[s].to->index));
 
 		auto const blocks = blocks_in_file_order(g);
+		auto const inv = inventory(g, blocks);
 		Counts c;
 		c.blocks = blocks.size();
 		c.transitions = g.num_sequences();
@@ -620,6 +789,7 @@ int run(Args const & a)
 		out.write("playback.ndjson", [&](std::ostream & o) { dump_playback(o, g, blocks); });
 		out.write("body.json", [&](std::ostream & o) { o << dump_body(); });
 		out.write("spring.ndjson", [&](std::ostream & o) { dump_spring(o, g, blocks); });
+		out.write("inventory.ndjson", [&](std::ostream & o) { dump_inventory(o, blocks, inv); });
 		out.write("meta.json", [&](std::ostream & o) { o << dump_meta(a, versions, db_md5, &ix, consistent, &c, errors); });
 		out.commit();
 
