@@ -5,7 +5,8 @@ import "core:encoding/json"
 import "core:testing"
 
 // Body tables of `core` (types.odin) against `body.json` (`jointDefs`, `limbs()`, `playerDefs` of the original).
-// Joint names are not compared: `core` has no name table.
+// Not compared: joint names (`core` has no name table), `players[].code` and the `draw` block (rendering
+// constants of the original's player drawer, not part of `core`).
 
 @(private = "file")
 Body :: struct {
@@ -35,8 +36,8 @@ test_json_decodes_17g_doubles_exactly :: proc(t: ^testing.T) {
 	}
 	err := json.unmarshal_string(`{"a":0.025000000000000001,"b":0.14999999999999999}`, &v)
 	testing.expect_value(t, err, nil)
-	expect_bits(t, v.a, 0.025, "a", 0)
-	expect_bits(t, v.b, 0.15, "b", 0)
+	expect_bits(t, v.a, 0.025, "%.17g value", 1)
+	expect_bits(t, v.b, 0.15, "%.17g value", 2)
 }
 
 @(test)
@@ -52,7 +53,14 @@ test_body_tables_match_oracle :: proc(t: ^testing.T) {
 			j := core.Joint(k)
 			def := core.JOINT_DEFS[j]
 			expect_bits(t, def.radius, jr.radius, "joint radius", k)
-			testing.expectf(t, def.draggable == jr.draggable, "joint %v draggable", j)
+			testing.expectf(
+				t,
+				def.draggable == jr.draggable,
+				"joint %v draggable: got %v, want %v",
+				j,
+				def.draggable,
+				jr.draggable,
+			)
 			testing.expectf(
 				t,
 				int(def.mirror) == jr.mirror,
@@ -89,7 +97,14 @@ test_body_tables_match_oracle :: proc(t: ^testing.T) {
 			   got_has {
 				expect_bits(t, got_mid, want_mid, "segment mid_radius", k)
 			}
-			testing.expectf(t, seg.visible == sr.visible, "segment %d visible", k)
+			testing.expectf(
+				t,
+				seg.visible == sr.visible,
+				"segment %d visible: got %v, want %v",
+				k,
+				seg.visible,
+				sr.visible,
+			)
 		}
 	}
 

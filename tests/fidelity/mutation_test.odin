@@ -27,7 +27,8 @@ test_parse_db_survives_mutations :: proc(t: ^testing.T) {
 	}
 	defer delete(db)
 
-	// Start offset of every line, plus len(db) as the end of the last one.
+	// Start offset of every line, plus the end of the last one (load_db's DB ends in '\n', so every
+	// `starts[k + 1]` below is a line end).
 	starts := make([dynamic]int)
 	defer delete(starts)
 	append(&starts, 0)
@@ -46,15 +47,23 @@ test_parse_db_survives_mutations :: proc(t: ^testing.T) {
 	buf := make([]byte, len(db))
 	defer delete(buf)
 
-	runs, parsed, rejected: int
+	parsed, rejected, deep_rejected: int
 	for _ in 0 ..< MUTATION_CASES {
 		copy(buf, db)
 		input := buf[:]
 		switch Mutation(rand.int_max(len(Mutation))) {
 		case .Truncate:
-			input = buf[:rand.int_max(len(buf))]
+			// Cut anywhere but keep a final '\n': otherwise parse_db stops at Missing_Final_Newline before parsing.
+			k := rand.int_max(len(buf))
+			buf[k] = '\n'
+			input = buf[:k + 1]
 		case .Flip_Byte:
-			buf[rand.int_max(len(buf))] = byte(rand.int_max(256))
+			k := rand.int_max(len(buf))
+			v := byte(rand.int_max(255)) // any byte but the current one
+			if v >= buf[k] {
+				v += 1
+			}
+			buf[k] = v
 		case .Swap_Lines:
 			a := rand.int_max(line_count)
 			b := rand.int_max(line_count)
@@ -79,11 +88,20 @@ test_parse_db_survives_mutations :: proc(t: ^testing.T) {
 		} else {
 			testing.expect(t, seqs == nil, "parse_db returned sequences with an error")
 			rejected += 1
+			if pe, is_parse := err.(core.Parse_Error);
+			   is_parse && pe.kind != .Missing_Final_Newline {
+				deep_rejected += 1
+			}
 		}
 		free_all(context.temp_allocator)
-		runs += 1
 	}
-	testing.expect_value(t, runs, MUTATION_CASES)
-	// Both outcomes occur with this seed: the cases reach the parser's success and error paths.
-	testing.expectf(t, parsed > 0 && rejected > 0, "parsed %d, rejected %d", parsed, rejected)
+	// Both outcomes occur with this seed, and rejections come from inside the parse, not only the final-newline check.
+	testing.expectf(
+		t,
+		parsed > 0 && deep_rejected > 0,
+		"parsed %d, rejected %d (%d past the final-newline check)",
+		parsed,
+		rejected,
+		deep_rejected,
+	)
 }
