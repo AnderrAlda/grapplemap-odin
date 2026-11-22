@@ -2,7 +2,7 @@ package core
 
 import "core:testing"
 
-// Expected values are written from docs/original.md §4.3, §5.1, §5.2, §5.6 and checked by hand against
+// Expected values are written from docs/original.md §4.3, §5.1, §5.2, §5.6, §6.1 and checked by hand against
 // reference/GrappleMap/src/positions.hpp:36-145 and src/math.hpp:193. Comparisons are bit for bit (ADR 0003).
 // Expected floats are literals computed as f64 outside Odin: Odin folds constant expressions with more precision
 // than f64, so `0.4 - 0.1` written in a test is not the runtime result.
@@ -109,4 +109,41 @@ test_center_is_core_midpoint :: proc(t: ^testing.T) {
 	testing.expect(t, same_v3(c, {0.25, 0.55, 0.1}), "y is kept")
 	p[0][.Head] = {5, 5, 5}
 	testing.expect(t, same_v3(center(p), c))
+}
+
+@(private = "file")
+one_joint :: proc(v: V3) -> Position {
+	p: Position
+	p[1][.RightFingers] = v
+	return p
+}
+
+@(test)
+test_between_endpoints :: proc(t: ^testing.T) {
+	// s = 0: -0 + (0 − -0)·0 = -0 + +0 = +0 (§6.1).
+	r := between(one_joint({-0.0, 1, 2}), one_joint({0, 1, 2}), 0)
+	testing.expect_value(t, bits(r[1][.RightFingers].x), bits(0.0))
+	// s = 1 is not always b: −1.463 + (1.39 + 1.463)·1 = 1.3899999999999997.
+	r = between(one_joint({-1.463, 0, 0}), one_joint({1.39, 0, 0}), 1)
+	testing.expect_value(t, bits(r[1][.RightFingers].x), bits(1.3899999999999997))
+	testing.expect(t, bits(r[1][.RightFingers].x) != bits(1.39))
+}
+
+@(test)
+test_between_formula_and_no_clamp :: proc(t: ^testing.T) {
+	a, b := one_joint({0.1, 0.5, -1}), one_joint({0.3, 1, 1})
+	// a + (b − a)·s = 0.15, while a·(1 − s) + b·s = 0.15000000000000002.
+	r := between(a, b, 0.25)
+	testing.expect_value(t, bits(r[1][.RightFingers].x), bits(0.15))
+	testing.expect(t, same_v3(between(a, b)[1][.RightFingers], {0.2, 0.75, 0}), "s = 0.5")
+	testing.expect(t, same_v3(between(a, b, 2)[1][.RightFingers], {0.5, 1.5, 3}))
+	testing.expect(t, same_v3(between(a, b, -1)[1][.RightFingers], {-0.09999999999999998, 0, -3}))
+	// Every joint of both players, not just one.
+	p, q := sample_position(), swap_players(sample_position())
+	m := between(p, q, 0.75)
+	for pl in 0 ..< PLAYER_COUNT {
+		for j in Joint {
+			testing.expect(t, same_v3(m[pl][j], p[pl][j] + (q[pl][j] - p[pl][j]) * 0.75))
+		}
+	}
 }

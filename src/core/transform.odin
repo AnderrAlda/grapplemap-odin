@@ -1,6 +1,6 @@
 package core
 
-// Trig-free position transforms of the original (docs/original.md §4.3, §5.1, §5.2, §5.6). Pure: values in,
+// Trig-free position transforms of the original (docs/original.md §4.3, §5.1, §5.2, §5.6, §6.1). Pure: values in,
 // values out, nothing allocated. The operation order is the original's, never rewritten (ADR 0003 decision 4: no FMA,
 // no reassociation), so the results are bit-identical. Odin's array operators act per component, like `BasicV3`'s
 // (src/math.hpp:135-183). Rotations and anything with trigonometry are #140.
@@ -38,4 +38,17 @@ heading :: proc(p: Position) -> V2 {
 // (`between(V3, V3)`, src/math.hpp:193).
 center :: proc(p: Position) -> V3 {
 	return (p[0][.Core] + p[1][.Core]) / 2
+}
+
+// between is `between(Position, Position, s)` (src/positions.hpp:42-47): per joint `a + (b − a)·s` (§6.1). Not
+// clamped (s outside [0, 1] extrapolates) and not `a·(1 − s) + b·s`, so s = 1 is not always b and s = 0 turns a = -0
+// into +0 unless b < 0.
+between :: proc(a, b: Position, s: f64 = 0.5) -> Position {
+	r: Position
+	for pl in 0 ..< PLAYER_COUNT {
+		for j in Joint {
+			r[pl][j] = a[pl][j] + (b[pl][j] - a[pl][j]) * s
+		}
+	}
+	return r
 }
