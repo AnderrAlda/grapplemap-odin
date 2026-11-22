@@ -1,6 +1,7 @@
 package core
 
 import "core:math/rand"
+import "core:mem"
 import "core:strings"
 import "core:testing"
 
@@ -465,5 +466,67 @@ test_encoder_layout :: proc(t: ^testing.T) {
 	for l in 0 ..< 4 {
 		testing.expect_value(t, p[l * LINE_BYTES:l * LINE_BYTES + 4], "    ")
 		testing.expect_value(t, p[(l + 1) * LINE_BYTES - 1], '\n')
+	}
+}
+
+// Fails the `fail_at`-th shrinking resize (1-based); everything else goes to `backing`.
+@(private = "file")
+Shrink_Failer :: struct {
+	backing: mem.Allocator,
+	fail_at: int,
+	seen:    int,
+}
+
+@(private = "file")
+shrink_failer_proc :: proc(
+	data: rawptr,
+	mode: mem.Allocator_Mode,
+	size, alignment: int,
+	old_memory: rawptr,
+	old_size: int,
+	loc := #caller_location,
+) -> (
+	[]byte,
+	mem.Allocator_Error,
+) {
+	f := (^Shrink_Failer)(data)
+	if (mode == .Resize || mode == .Resize_Non_Zeroed) && size < old_size {
+		f.seen += 1
+		if f.seen == f.fail_at {
+			return nil, .Out_Of_Memory
+		}
+	}
+	return f.backing.procedure(f.backing.data, mode, size, alignment, old_memory, old_size, loc)
+}
+
+@(test)
+test_parse_shrink_failure_frees_everything :: proc(t: ^testing.T) {
+	file := cat("A\n", pos_text(1), pos_text(2), "B\n", pos_text(3))
+	for fail_at in 1 ..= 4 {
+		track: mem.Tracking_Allocator
+		mem.tracking_allocator_init(&track, context.allocator)
+		defer mem.tracking_allocator_destroy(&track)
+		failer := Shrink_Failer {
+			backing = mem.tracking_allocator(&track),
+			fail_at = fail_at,
+		}
+		allocator := mem.Allocator{shrink_failer_proc, &failer}
+		seqs, err := parse_db(transmute([]byte)file, allocator)
+		if err == nil {
+			testing.expect_value(t, len(seqs), 2)
+			sequences_destroy(seqs, allocator)
+		} else {
+			testing.expect(t, seqs == nil)
+			ae, ok := err.(mem.Allocator_Error)
+			testing.expectf(t, ok && ae == .Out_Of_Memory, "fail_at %d: %v", fail_at, err)
+		}
+		testing.expectf(
+			t,
+			len(track.allocation_map) == 0,
+			"fail_at %d: %d leaks",
+			fail_at,
+			len(track.allocation_map),
+		)
+		testing.expectf(t, len(track.bad_free_array) == 0, "fail_at %d: bad frees", fail_at)
 	}
 }

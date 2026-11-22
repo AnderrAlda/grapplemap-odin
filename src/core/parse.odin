@@ -32,8 +32,8 @@ TAGS_PREFIX :: "tags:" // src/graph_util.cpp:147-164
 PROPERTIES_PREFIX :: "properties:" // src/metadata.cpp:37-54
 
 // parse_db parses a whole file. On error nothing is returned and everything allocated is freed; the first error
-// stops. Scratch goes to `context.temp_allocator` (the caller frees it).
 // stops. Description strings are copied: the result does not point into `data`. Free with `sequences_destroy`.
+// Scratch goes to `context.temp_allocator` (the caller frees it).
 parse_db :: proc(data: []byte, allocator := context.allocator) -> (seqs: []Sequence, err: Error) {
 	if len(data) == 0 {
 		return nil, nil
@@ -47,11 +47,16 @@ parse_db :: proc(data: []byte, allocator := context.allocator) -> (seqs: []Seque
 	}
 	out := make([dynamic]Sequence, allocator) or_return
 	err = parse_into(&out, data, allocator)
+	if err == nil {
+		// A failed shrink leaves `out` intact, so the error path below still frees it once.
+		if _, shrink_err := shrink(&out); shrink_err != .None {
+			err = shrink_err
+		}
+	}
 	if err != nil {
 		sequences_destroy(out[:], allocator)
 		return nil, err
 	}
-	_ = shrink(&out) or_return
 	return out[:], nil
 }
 
