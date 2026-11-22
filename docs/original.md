@@ -1696,7 +1696,7 @@ no-op. `set_selected(seq, false)` removes only the first or last element (`src/e
 (`src/editor.cpp:455-516`); with the lock on, `setLocation` refuses a location whose sequence is not selected
 (`src/editor.cpp:450`) and `closeCandidates` only offers selected segments (`src/viables.cpp:113-117`).
 
-**After every edit** the rest of the selection is re-glued with `reorient_from(selection, i, graph)`
+**After `Editor::replace`, `replace_sequence` and `branch`** (not after insert/delete keyframe, new transitions or undo) the rest of the selection is re-glued with `reorient_from(selection, i, graph)`
 (`src/paths.cpp:309-330`), which recomputes the reorientation of each other element outward from the edited one so
 consecutive transitions still meet at their shared node (`gp_connect`; **[unverified]**: its internals are not
 read here). Without it a node edit would leave the following transitions displayed in the old frame.
@@ -1741,8 +1741,8 @@ between its projection and the cursor every frame (it converges over frames, it 
 
 **`spring(Position&, optional<PlayerJoint> fixed)`** (`src/positions.cpp:183-194`): `apply_limits(pos)`, then for
 each player `pos[player] = spring(pos[player], fixed joint of that player or none)`. It is **one pass**, not an
-iteration to convergence; callers repeat it (once per frame in the drag; the VR "interpolate" button and the dead GLFW
-code call it 30 times, `src/vr_editor.cpp:104`, `src/vr_joint_editor.cpp:64`).
+iteration to convergence; callers repeat it (once per frame in the drag; the VR "interpolate" button and VR drag start call it 30 times, `src/vr_editor.cpp:104`, `src/vr_joint_editor.cpp:64`, as does
+commented-out GLFW code, `src/glfw_editor.cpp:153,183`).
 
 `spring(Player, fixed)` (`src/positions.cpp:142-181`), exact:
 1. `r = p` (copy). **Every read uses `p`, every write goes to `r`** (Jacobi style: the update order of joints does not
@@ -1751,7 +1751,7 @@ code call it 30 times, `src/vr_editor.cpp:104`, `src/vr_joint_editor.cpp:64`).
    not even by step 4): for each limb `s` of `limbs()` **in table order** (§3.2, 28 entries, all used, visible or not
    `src/players.hpp:126-162`) that has `j` as an end:
    `d = s.length − distance(p[end0], p[end1])`; `force = f(d)` with
-   `f(d) = max(−0.3, min(0.3, d/3 + d³))`; `if |force| > 0.001: r[j] -= normalize(p[other] − p[j]) · force`.
+   `f(d) = max(−0.3, min(0.3, d/3 + d·d·d))` (literal expression `distance / 3 + distance * distance * distance`, `src/positions.cpp:152`; keep the evaluation order for bit-exactness, ADR 0003); `if |force| > 0.001: r[j] -= normalize(p[other] − p[j]) · force`.
    So a stretched limb (`d < 0`) pulls `j` towards the other end, a compressed one pushes it away; both ends move
    (each by `f(d)`), the fixed joint absorbs the rest of the error.
 3. (inside the same loop) nothing else: no angle limits, no symmetry, no momentum, no rigid-body logic.
@@ -1765,7 +1765,7 @@ position being written (`src/graph.cpp:20`). There is **no upper bound on `y`**.
 limits (§1.5: indices ≤ 3843, i.e. `x,z ≤ 1.843`, `y ≤ 3.843`): values between are accepted by the editor and
 cannot be written back correctly by `save` (**[unverified]** runtime effect: out-of-alphabet index, §1.5).
 
-`ops`/`spring` in the oracle: `spring.ndjson` is `spring(p)` **without fixed joint** on every named position
+`spring` in the oracle: `spring.ndjson` is `spring(p)` **without fixed joint** on every named position
 (`tools/oracle/dump/dump.cpp:437-447`, `tools/oracle/README.md:56`): it pins the numerics of steps 1-4 for the "no fixed
 joint" case only; the fixed-joint variant is not dumped (§9.9).
 
@@ -1804,7 +1804,7 @@ All act on the location (`*location`), most need a keyframe. "Ignored" = a messa
 
 | Operation (web fn / GLFW key) | Preconditions | Effect on the graph | Invariants |
 |---|---|---|---|
-| **Insert keyframe** (`insert_keyframe` / `Ins`) `src/editor.cpp:267-276`, `src/graph.cpp:122-128` | none (works mid-segment) | inserts `at(location)` (the interpolation `between` of the two keyframes at `howFar`, §6.1; **no `spring`**) after segment `i`: `positions.insert(i+1, …)`; location → segment `i+1`, `howFar 0`; sequence marked modified | ends unchanged, nodes untouched. Position index is a `uint_fast8_t` (`src/indexed.hpp:60`): more than 255 positions is **[unverified]** |
+| **Insert keyframe** (`insert_keyframe` / `Ins`) `src/editor.cpp:267-276`, `src/graph.cpp:122-128` | none (works mid-segment; at a keyframe, `howFar` 0 or 1, it **duplicates** the frame, the GLFW help calls it "duplicate current frame") | inserts `at(location)` (the interpolation `between` of the two keyframes at `howFar`, §6.1; **no `spring`**) after segment `i`: `positions.insert(i+1, …)`; location → segment `i+1`, `howFar 0`; sequence marked modified | ends unchanged, nodes untouched. Position index is a `uint_fast8_t` (`src/indexed.hpp:60`): more than 255 positions is **[unverified]** |
 | **Delete keyframe** (`delete_keyframe` / `Del`) `src/editor.cpp:219-238`, `src/graph.cpp:169-211` | keyframe; ignored if the selection is non-empty, the position is a node end and it is not the first position of the selection's first sequence nor the last of its last one (interior joints of the path are protected); ignored (graph level) if the sequence has 2 positions, or deleting the first (last) would make `positions[1]`≈`back` (`front`≈`prev(back)`) a self-transition (`is_reoriented`) | removes the frame; if the new first/last frame is now the end, it is re-matched with `find_or_add` (§2.3): the sequence may attach to another or **new anonymous node**, `in/out` recomputed for old and new (`:193-208`); the old node stays. Location moves to the surviving frame (`go_to(PositionInSequence)`, only effective if the sequence is in the selection, else the location may dangle, **[unverified]**) | no self-transition; ≥ 2 positions |
 | **Swap players / mirror frame** (`swap_players`, `mirror_frame` / `X`, `M`) `src/editor.cpp:240-265` | keyframe | §9.3 (`unintended`), applies `swap_players`/`mirror` (§5.1-5.2) to the **displayed** frame only; neighbours are not touched, so interpolation jumps | |
 | **Split / branch** (`split_seq` / `B`) `src/editor.cpp:284-315`, `src/graph_util.cpp:32-58` | keyframe, **not an end**; not if either half would be a self-transition | `a = positions[0..i]` replaces the sequence in place (same `SeqNum`), `b = positions[i..]` is **appended** as a new sequence with `" (cont'd)"` appended to its first description line (`detailed`/`bidirectional` copied); both ends found with `find_or_add` (the split frame becomes a node, matched to an existing one if it is a reorientation of it), `in/out` of the affected nodes recomputed; flagged modified/added. The selection gets the new sequence inserted after the current one and is re-glued; location steps back to `howFar = 1` of the previous segment if it was at `0` | |
@@ -1840,7 +1840,7 @@ existing positions), reorder sequences, move a sequence between selections. Node
   rounded to 1 mm (§1.5), and `line_nr` is not stored.
 - **`.index`**: `save` does not touch it. `loadGraph(filename)` compares the md5 of the file with the stored hash and,
   on mismatch, rebuilds the graph and rewrites `.index` (`src/persistence.cpp:186-233`; §2.5). The web editor loads from a stream and
-  never uses an index.
+  uses an index only for its initial `loadGraph("GrappleMap.txt")` (`src/editor_canvas.hpp:56`); *Load database* (`editor_loadDB`) reads a stream without one.
 - **Lost or changed on a round trip through the editor**: everything listed in §1.5, plus node `in/out` staleness
   (not persisted), node merges (§2.3 may attach an edited end to another node; the file then stores the position
   inside each transition, so the node identity is recomputed at the next load, **not** preserved), and the exact
@@ -1872,7 +1872,7 @@ are the current segment plus its `neighbours`. They only filter which segment th
 ### 9.8 Input for phase 6
 
 **Reproduce exactly** (data results depend on it):
-- `spring` numerics of §9.2 (constants `1/3`, `0.3`, `0.001`, limb table order, one pass, Jacobi reads, `y` floor,
+- `spring` numerics of §9.2 (constants `/3`, `0.3`, `0.001`, limb table order, one pass, Jacobi reads, `y` floor,
   fixed joint untouched) and `apply_limits` (`±2`, `y ≥ radius`, no upper `y`).
   `spring.ndjson` covers no-fixed-joint; ask for a fixed-joint dump before relying on it (open point below).
 - `Graph::replace` policies, `find_or_add`/`is_reoriented` re-matching, the refusal rules of delete/split/`set`
@@ -1887,7 +1887,7 @@ runs one per rendered frame, so the drag feel is **frame-rate dependent**; choos
 selection; the undo imbalance after a refused delete and the "joins the previous step" operations; `lines("")`; the
 unencodable range between 1.843 and 2 m (and no `y` cap); `unintended` on a non-reorientation (UB); unchecked node index in
 `prepend/append_new`; a failed `set` still returning a `SeqNum`; in/out lists not refreshed after toggling `bidirectional`;
-`propagate` not re-applying `apply_limits` to the other transitions' ends; no delete/merge/reverse operations;
+`replace` with `local`/`propagate` never rejecting a self-transition (`from == to` after `find_or_add` or a node moved onto another, unlike delete/split/`set`; the next load merges them, **[unverified]**); `propagate` not re-applying `apply_limits` to the other transitions' ends; no delete/merge/reverse operations;
 in-place save without backup.
 
 ### 9.9 Open points (need the oracle/dumper)
