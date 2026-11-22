@@ -3,6 +3,7 @@ package core
 // Player model of the original (docs/original.md §3). All geometry is f64 (ADR 0003 decision 1).
 
 V3 :: [3]f64
+V2 :: [2]f64 // the `xz` of a V3 (src/math.hpp:110)
 
 // Joint lists the 23 joints in the original's enum order (`JOINTS`, src/players.hpp:8-21).
 Joint :: enum u8 {
