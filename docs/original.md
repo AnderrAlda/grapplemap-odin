@@ -1660,7 +1660,7 @@ the **web editor** (`src/editor_canvas.cpp`, `src/editor.js`: the one that works
 (`src/glfw_editor.cpp`) and a VR editor (`src/vr_*.cpp`, only noted where it differs). The GLFW editor never builds a
 selection (it never calls `set_selected`; `go_to(NodeNum)` even clears it, `src/editor.cpp:505-515`), and
 `Editor::replace` ignores an edit whose sequence is not in the selection (`src/editor.cpp:393-402`), so by this
-reading **GLFW drag/paste/translate edits are silently dropped at the pin** (**[unverified]**: chain deduced, not run).
+reading **GLFW drag/paste/translate/rotate/swap/mirror edits are silently dropped at the pin** (each still leaves an undo step) (**[unverified]**: chain deduced, not run).
 Its code is still cited where it is the only place a thing exists.
 
 ### 9.1 Editor state
@@ -1782,7 +1782,7 @@ position already equals `p`** (`:22`, no dirty flag). If `pis` is **not** an end
 | Policy | Effect on the end |
 |---|---|
 | `propagate` | node position := `inverse(rn.reorientation)(p)`; **every** sequence starting/ending at that node gets its first/last stored position recomputed from the node (`graph[we.from]`), all marked modified (`:37-66`). All transitions of the node change together. |
-| `unintended` | `p` must be a reorientation (rotation about y, translation, mirror, swap, §5.3) of the node's position: only `rn.reorientation := is_reoriented(node.position, p)` changes, the node and other edges are untouched (`:68-76`). If it is not, release builds dereference an empty optional (UB, **[unverified]**). |
+| `unintended` | `p` must be a reorientation (rotation about y, translation, mirror, swap, §5.3) of the node's position: write `p` into the sequence's stored position (`apply()`, marks it modified), then `rn.reorientation := is_reoriented(node.position, p)`; the node position and the other edges are untouched (`:68-76`). If it is not, release builds dereference an empty optional (UB, **[unverified]**). |
 | `local` | write `p`; if it is a reorientation of the old node only the reorientation changes, else `find_or_add(p)` (§2.3) and the end is re-attached to another (possibly new anonymous) node, recomputing `in/out` of both (`:77-104`). The old node is never deleted. |
 
 Which policy each entry point uses (web unless noted):
@@ -1854,7 +1854,8 @@ existing positions), reorder sequences, move a sequence between selections. Node
 | Browse path / scrub with right-drag, wheel | yes | yes (opposite wheel sign: web `yoffset > 0` = back, GLFW `yoffset == 1` = forward, `src/editor_canvas.cpp:342-351`, `src/glfw_editor.cpp:251-260`) | candidates from `closeCandidates` (`src/viables.cpp:83-120`), best by `determineNextPos` (`src/editor_canvas.cpp:18-46`) |
 | Build selection / lock | yes (list buttons, "Confine to path") | **no** (only `L`) | the root of §9's remark on GLFW edits |
 | Drag modes (single/whole/both, horizontal, interpolated, local edits), rotate | yes | single joint only, camera-composed dragger (`// todo: this is wrong`, `src/glfw_editor.cpp:379-406`) | |
-| Keyframe insert/delete, swap, mirror frame, branch, undo | yes | yes | |
+| Keyframe insert/delete, branch, undo | yes | yes (these act on the graph directly) | |
+| Swap players, mirror frame | yes | bound (`X`, `M`) but go through `Editor::replace`, so dropped without a selection (**[unverified]**) | |
 | Prepend/append new transition, set descriptions | yes | no | |
 | Numpad translate/rotate, copy/paste, `H/J/K/U/N` helpers | no | numpad/copy-paste yes; `H/J/K/U/N` are commented out (`src/glfw_editor.cpp:143-222`) | |
 | Save | download | in-place file | §9.5 |
