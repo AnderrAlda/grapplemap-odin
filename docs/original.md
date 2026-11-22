@@ -1660,7 +1660,7 @@ the **web editor** (`src/editor_canvas.cpp`, `src/editor.js`: the one that works
 (`src/glfw_editor.cpp`) and a VR editor (`src/vr_*.cpp`, only noted where it differs). The GLFW editor never builds a
 selection (it never calls `set_selected`; `go_to(NodeNum)` even clears it, `src/editor.cpp:505-515`), and
 `Editor::replace` ignores an edit whose sequence is not in the selection (`src/editor.cpp:393-402`), so by this
-reading **GLFW drag/paste/translate/rotate/swap/mirror edits are silently dropped at the pin** (each still leaves an undo step) (**[unverified]**: chain deduced, not run).
+reading **GLFW drag/paste/translate/rotate/swap/mirror edits are silently dropped at the pin** (all but paste still push an undo step) (**[unverified]**: chain deduced, not run).
 Its code is still cited where it is the only place a thing exists.
 
 ### 9.1 Editor state
@@ -1853,11 +1853,11 @@ existing positions), reorder sequences, move a sequence between selections. Node
 |---|---|---|---|
 | Browse path / scrub with right-drag, wheel | yes | yes (opposite wheel sign: web `yoffset > 0` = back, GLFW `yoffset == 1` = forward, `src/editor_canvas.cpp:342-351`, `src/glfw_editor.cpp:251-260`) | candidates from `closeCandidates` (`src/viables.cpp:83-120`), best by `determineNextPos` (`src/editor_canvas.cpp:18-46`) |
 | Build selection / lock | yes (list buttons, "Confine to path") | **no** (only `L`) | the root of §9's remark on GLFW edits |
-| Drag modes (single/whole/both, horizontal, interpolated, local edits), rotate | yes | single joint only, camera-composed dragger (`// todo: this is wrong`, `src/glfw_editor.cpp:379-406`) | |
+| Drag modes (single/whole/both, horizontal, interpolated, local edits), rotate | yes | single joint only, camera-composed dragger (`// todo: this is wrong`, `src/glfw_editor.cpp:379-406`); ends in `Editor::replace`, so dropped without a selection (**[unverified]**) | |
 | Keyframe insert/delete, branch, undo | yes | yes (these act on the graph directly) | |
 | Swap players, mirror frame | yes | bound (`X`, `M`) but go through `Editor::replace`, so dropped without a selection (**[unverified]**) | |
 | Prepend/append new transition, set descriptions | yes | no | |
-| Numpad translate/rotate, copy/paste, `H/J/K/U/N` helpers | no | numpad/copy-paste yes; `H/J/K/U/N` are commented out (`src/glfw_editor.cpp:143-222`) | |
+| Numpad translate/rotate, copy/paste, `H/J/K/U/N` helpers | no | numpad translate/rotate and paste bound but go through `Editor::replace`, so dropped without a selection (**[unverified]**; copy works); `H/J/K/U/N` are commented out (`src/glfw_editor.cpp:143-222`) | |
 | Save | download | in-place file | §9.5 |
 
 ### 9.7 Viables and candidates (editor-only helper data)
