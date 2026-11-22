@@ -530,3 +530,137 @@ test_parse_shrink_failure_frees_everything :: proc(t: ^testing.T) {
 		testing.expectf(t, len(track.bad_free_array) == 0, "fail_at %d: bad frees", fail_at)
 	}
 }
+
+// Fails only the allocation with 0-based index `fail_at` (later ones succeed, so a swallowed error shows up as a
+// leak or a wrong result) and counts them in `count`; `fail_at < 0` never fails. Allocations are `.Alloc`, `.Alloc_Non_Zeroed`, `.Resize` and
+// `.Resize_Non_Zeroed`; every other mode goes to `backing`.
+@(private = "file")
+Failing_Allocator :: struct {
+	backing: mem.Allocator,
+	fail_at: int,
+	count:   int,
+}
+
+@(private = "file")
+failing_allocator_proc :: proc(
+	data: rawptr,
+	mode: mem.Allocator_Mode,
+	size, alignment: int,
+	old_memory: rawptr,
+	old_size: int,
+	loc := #caller_location,
+) -> (
+	[]byte,
+	mem.Allocator_Error,
+) {
+	f := (^Failing_Allocator)(data)
+	#partial switch mode {
+	case .Alloc, .Alloc_Non_Zeroed, .Resize, .Resize_Non_Zeroed:
+		n := f.count
+		f.count += 1
+		if n == f.fail_at {
+			return nil, .Out_Of_Memory
+		}
+	}
+	return f.backing.procedure(f.backing.data, mode, size, alignment, old_memory, old_size, loc)
+}
+
+// parse_with_failure parses `file` failing allocation `fail_at` (< 0: none) on a fresh tracking allocator and
+// checks that nothing leaks and nothing is freed twice. Returns the error and how many allocations were made.
+@(private = "file")
+parse_with_failure :: proc(
+	t: ^testing.T,
+	file: string,
+	fail_at: int,
+	loc := #caller_location,
+) -> (
+	err: Error,
+	allocs: int,
+) {
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, context.allocator)
+	defer mem.tracking_allocator_destroy(&track)
+	failer := Failing_Allocator {
+		backing = mem.tracking_allocator(&track),
+		fail_at = fail_at,
+	}
+	allocator := mem.Allocator{failing_allocator_proc, &failer}
+	seqs: []Sequence
+	seqs, err = parse_db(transmute([]byte)file, allocator)
+	if err == nil {
+		sequences_destroy(seqs, allocator)
+	} else {
+		testing.expectf(
+			t,
+			seqs == nil,
+			"fail_at %d: result must be nil on error",
+			fail_at,
+			loc = loc,
+		)
+	}
+	allocs = failer.count
+	testing.expectf(
+		t,
+		len(track.allocation_map) == 0,
+		"fail_at %d: %d leaks",
+		fail_at,
+		len(track.allocation_map),
+		loc = loc,
+	)
+	testing.expectf(
+		t,
+		len(track.bad_free_array) == 0,
+		"fail_at %d: %d bad frees",
+		fail_at,
+		len(track.bad_free_array),
+		loc = loc,
+	)
+	return
+}
+
+// Covers every allocation through `parse_db`'s `allocator`; scratch on `context.temp_allocator` is not failed.
+@(test)
+test_parse_alloc_failure_frees_everything :: proc(t: ^testing.T) {
+	valid := cat(
+		"A\ntags: x y\n",
+		pos_text(1),
+		pos_text(2),
+		"B\nproperties: detailed bidirectional\ntags: z\n",
+		pos_text(3),
+	)
+	// Lines: A 1-10 (2 + 8), B 11-17 (3 + 4), C 18, its position 19-22: the bad byte is on line 22, block 2.
+	bad := cat(valid, "C\n", with_byte(pos_text(4), LINE_BYTES * 3 + 10, '!'))
+
+	// Valid file: allocation N < K fails with Out_Of_Memory; from K on, success.
+	err, k := parse_with_failure(t, valid, -1)
+	testing.expectf(t, err == nil, "valid file: %v", err)
+	testing.expect(t, k > 0, "valid file must allocate")
+	for n in 0 ..= k {
+		got, _ := parse_with_failure(t, valid, n)
+		if n < k {
+			ae, ok := got.(mem.Allocator_Error)
+			testing.expectf(t, ok && ae == .Out_Of_Memory, "valid fail_at %d: %v", n, got)
+		} else {
+			testing.expectf(t, got == nil, "valid fail_at %d: %v", n, got)
+		}
+	}
+
+	// Bad digit at the end: Out_Of_Memory before the error point, then the parse error.
+	want := Parse_Error {
+		kind  = .Bad_Base62_Digit,
+		line  = 22,
+		block = 2,
+	}
+	err, k = parse_with_failure(t, bad, -1)
+	testing.expectf(t, err == Error(want), "bad file: %v", err)
+	testing.expect(t, k > 0, "bad file must allocate before the error")
+	for n in 0 ..= k {
+		got, _ := parse_with_failure(t, bad, n)
+		if n < k {
+			ae, ok := got.(mem.Allocator_Error)
+			testing.expectf(t, ok && ae == .Out_Of_Memory, "bad fail_at %d: %v", n, got)
+		} else {
+			testing.expectf(t, got == Error(want), "bad fail_at %d: %v", n, got)
+		}
+	}
+}
