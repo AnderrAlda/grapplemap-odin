@@ -1,0 +1,3 @@
+{"block":0,"kind":"position","length":1,"family":"guard","length_bucket":null,"classes":["named","description_quote","has_ref"]}
+{"block":1,"kind":"transition","length":3,"family":"other","length_bucket":"3-5","classes":["detailed","edge_coordinate","description_newline","description_utf8","description_quote","has_note","error_or_unmatched"]}
+{"block":2,"kind":"transition","length":3,"family":"mount","length_bucket":"3-5","classes":["bidirectional","endpoint_mirror","edge_coordinate","error_or_unmatched"]}

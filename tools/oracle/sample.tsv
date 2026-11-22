@@ -1,0 +1,70 @@
+index	class	reason
+730	normal	family guard, length 2: 1 of 15 candidates (fewest text classes, then first in file)
+608	normal	family guard, length 3-5: 1 of 109 candidates (fewest text classes, then first in file)
+1358	normal	family guard, length 6-10: 1 of 21 candidates (fewest text classes, then first in file)
+1620	normal	family guard, length >10: 1 of 2 candidates (fewest text classes, then first in file)
+614	normal	family side_control, length 2: 1 of 7 candidates (fewest text classes, then first in file)
+605	normal	family side_control, length 3-5: 1 of 27 candidates (fewest text classes, then first in file)
+873	normal	family side_control, length 6-10: 1 of 2 candidates (fewest text classes, then first in file)
+794	normal	family mount, length 3-5: 1 of 8 candidates (fewest text classes, then first in file)
+734	normal	family mount, length 6-10: 1 of 3 candidates (fewest text classes, then first in file)
+1128	normal	family back, length 2: 1 of 2 candidates (fewest text classes, then first in file)
+807	normal	family back, length 3-5: 1 of 10 candidates (fewest text classes, then first in file)
+928	normal	family turtle, length 3-5: 1 of 13 candidates (fewest text classes, then first in file)
+1339	normal	family turtle, length 6-10: 1 of 2 candidates (fewest text classes, then first in file)
+1739	normal	family standing, length 2: 1 of 11 candidates (fewest text classes, then first in file)
+799	normal	family standing, length 3-5: 1 of 76 candidates (fewest text classes, then first in file)
+814	normal	family standing, length 6-10: 1 of 12 candidates (fewest text classes, then first in file)
+1657	normal	family leg_locks, length 3-5: 1 of 8 candidates (fewest text classes, then first in file)
+1144	normal	family leg_locks, length 6-10: 1 of 1 candidates (fewest text classes, then first in file)
+1306	normal	family other, length 2: 1 of 10 candidates (fewest text classes, then first in file)
+1803	normal	family other, length >10: 1 of 11 candidates (fewest text classes, then first in file)
+223	named	endpoint of sampled normal transition 730; family guard
+267	named	endpoint of sampled normal transition 614; family side_control
+165	named	endpoint of sampled normal transition 794; family mount
+304	named	endpoint of sampled normal transition 1128; family back
+288	named	endpoint of sampled normal transition 928; family turtle
+96	named	endpoint of sampled normal transition 1739; family standing
+365	named	endpoint of sampled normal transition 1657; family leg_locks
+101	named	endpoint of sampled normal transition 1306; family other
+161	named	endpoint of sampled normal transition 608; family guard
+254	named	endpoint of sampled normal transition 605; family side_control
+1161	bidirectional	shortest transitions first (2 pos; 38 in the class; at most 1 position)
+2059	bidirectional	shortest transitions first (2 pos; 38 in the class; at most 1 position)
+662	bidirectional	shortest transitions first (3 pos; 38 in the class; at most 1 position)
+1603	detailed	shortest transitions first (2 pos; 159 in the class; at most 1 position)
+1612	detailed	shortest transitions first (2 pos; 159 in the class; at most 1 position)
+2074	detailed	shortest transitions first (2 pos; 159 in the class; at most 1 position)
+1095	long	shortest transitions first (15 pos; 16 in the class; at most 1 position)
+1470	long	shortest transitions first (15 pos; 16 in the class; at most 1 position)
+1664	long	shortest transitions first (15 pos; 16 in the class; at most 1 position)
+1088	endpoint_mirror	shortest transitions first (2 pos; 217 in the class; at most 1 position)
+1252	endpoint_mirror	shortest transitions first (2 pos; 217 in the class; at most 1 position)
+1452	endpoint_mirror	shortest transitions first (2 pos; 217 in the class; at most 1 position)
+721	endpoint_swap	shortest transitions first (2 pos; 332 in the class; at most 1 position)
+743	endpoint_swap	shortest transitions first (2 pos; 332 in the class; at most 1 position)
+744	endpoint_swap	shortest transitions first (2 pos; 332 in the class; at most 1 position)
+2026	endpoint_mirror_swap	shortest transitions first (2 pos; 75 in the class; at most 1 position)
+1039	endpoint_mirror_swap	shortest transitions first (3 pos; 75 in the class; at most 1 position)
+1102	endpoint_mirror_swap	shortest transitions first (3 pos; 75 in the class; at most 1 position)
+-	edge_coordinate	empty at the pin: no block in the full dump
+0	description_newline	shortest positions first (1 pos; 1281 in the class; at most 1 position)
+654	description_newline	shortest transitions first (2 pos; 1281 in the class; at most 1 position)
+659	description_newline	shortest transitions first (2 pos; 1281 in the class; at most 1 position)
+20	description_utf8	shortest positions first (1 pos; 9 in the class; at most 1 position)
+1568	description_utf8	shortest transitions first (12 pos; 9 in the class; at most 1 position)
+164	description_quote	shortest positions first (1 pos; 997 in the class; at most 1 position)
+680	description_quote	shortest transitions first (2 pos; 997 in the class; at most 1 position)
+688	description_quote	shortest transitions first (2 pos; 997 in the class; at most 1 position)
+164	has_ref	shortest positions first (1 pos; 1058 in the class; at most 1 position)
+654	has_ref	shortest transitions first (2 pos; 1058 in the class; at most 1 position)
+680	has_ref	shortest transitions first (2 pos; 1058 in the class; at most 1 position)
+773	has_note	shortest transitions first (2 pos; 304 in the class; at most 1 position)
+1285	has_note	shortest transitions first (2 pos; 304 in the class; at most 1 position)
+1335	has_note	shortest transitions first (2 pos; 304 in the class; at most 1 position)
+659	error_or_unmatched	shortest transitions first (2 pos; 239 in the class; at most 1 position)
+667	error_or_unmatched	shortest transitions first (2 pos; 239 in the class; at most 1 position)
+710	error_or_unmatched	shortest transitions first (2 pos; 239 in the class; at most 1 position)
+84	duplicate_description	same name as block 835: 'gator roll'
+835	duplicate_description	same name as block 84: 'gator roll'
+614	duplicate_description	name '...' (136 blocks)

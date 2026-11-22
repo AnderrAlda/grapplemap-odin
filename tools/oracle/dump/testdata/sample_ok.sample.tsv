@@ -1,0 +1,17 @@
+index	class	reason
+-	normal	no structurally normal transition in basic.txt
+0	named	named position with quotes and ref:
+2	bidirectional	escape, ends at the mirror of block 3
+1	detailed	hip bump, 2 segments
+-	long	no transition of 15+ positions
+2	endpoint_mirror	to-endpoint mirrored
+-	endpoint_swap	none in basic.txt
+-	endpoint_mirror_swap	none in basic.txt
+-	duplicate_description	none in basic.txt
+1	edge_coordinate	q = 0 and 3843 in its middle frame
+1	description_newline	literal \n
+1	description_utf8	ñ ü 柔術
+0	description_quote	quotes in the name
+0	has_ref	ref: book
+1	has_note	note: and todo:
+1	error_or_unmatched	ends at an anonymous node
