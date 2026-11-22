@@ -23,7 +23,7 @@ Spec: docs/specs/phase-2-core.md (deliverable 1b)
    - **Strict position layout** (ADR 0005 decision 8): a position is exactly 4 consecutive lines of 4 spaces + 69
      bytes + `'\n'`. A line starting with `' '` that is not 73 bytes + `'\n'`, or fewer than 4 such lines in a row
      (a run not a multiple of 4) → `Bad_Position_Layout`. A byte in the 69 that is not `[a-zA-Z0-9]` →
-     `Bad_Base62_Digit` (the original rejects it too). Fewer than 296 bytes left for a block → `Truncated_Block`.
+     `Bad_Base62_Digit` (the original rejects it too). The file ending inside the 4 lines of a position → `Truncated_Block` (a wrong-length line before that is `Bad_Position_Layout`, even in the last block).
    - Decoding (§1.3, ADR 0003 d1): alphabet `a-z A-Z 0-9` = 0…61; per coordinate `f64(62*d0 + d1) / QUANT_SCALE`,
      then `- ENCODING_OFFSET_XZ` on `x` and `z` (same operations, same order); order player 0 then 1, joints in enum
      order, `x, y, z`.

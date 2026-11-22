@@ -17,15 +17,22 @@ Sequence :: struct {
 	bidirectional: bool, // `bidirectional` in properties_in_desc (src/persistence.cpp:85)
 }
 
+@(private = "file")
 POSITION_LINES :: 4 // a position is 4 text lines (src/persistence.cpp:140-141)
+@(private = "file")
 POSITION_INDENT :: 4 // "    " before the digits of each line (src/persistence.cpp:141)
-DIGITS_PER_LINE :: PLAYER_COUNT * JOINT_COUNT * 3 * 2 / POSITION_LINES // 69 (§1.3)
+@(private = "file")
+DIGITS_PER_LINE :: PLAYER_COUNT * JOINT_COUNT * len(V3) * 2 / POSITION_LINES // 69 (§1.3)
+@(private = "file")
 BASE62 :: 62 // digit radix (src/persistence.cpp:13-23)
 
+@(private = "file")
 TAGS_PREFIX :: "tags:" // src/graph_util.cpp:147-164
+@(private = "file")
 PROPERTIES_PREFIX :: "properties:" // src/metadata.cpp:37-54
 
 // parse_db parses a whole file. On error nothing is returned and everything allocated is freed; the first error
+// stops. Scratch goes to `context.temp_allocator` (the caller frees it).
 // stops. Description strings are copied: the result does not point into `data`. Free with `sequences_destroy`.
 parse_db :: proc(data: []byte, allocator := context.allocator) -> (seqs: []Sequence, err: Error) {
 	if len(data) == 0 {
@@ -44,6 +51,7 @@ parse_db :: proc(data: []byte, allocator := context.allocator) -> (seqs: []Seque
 		sequences_destroy(out[:], allocator)
 		return nil, err
 	}
+	_ = shrink(&out) or_return
 	return out[:], nil
 }
 
@@ -60,7 +68,7 @@ sequences_destroy :: proc(seqs: []Sequence, allocator := context.allocator) {
 }
 
 // tags_in_desc: tokens of every `tags:` line, sorted bytewise and unique (`set<string>`). The strings are
-// sub-slices of `desc`; free only the returned slice.
+// sub-slices of `desc`; free only the returned slice. Scratch goes to `context.temp_allocator`.
 tags_in_desc :: proc(
 	desc: []string,
 	allocator := context.allocator,
@@ -175,6 +183,11 @@ parse_into :: proc(out: ^[dynamic]Sequence, data: []byte, allocator: mem.Allocat
 		pos := decode_position(data, &i, &line, block) or_return
 		append(&positions, pos) or_return
 		out[len(out) - 1].positions = positions[:]
+		// Trim the last sequence's spare capacity once it is closed: a description line or the end of the file.
+		if i >= len(data) || data[i] != ' ' {
+			_ = shrink(&positions) or_return
+			out[len(out) - 1].positions = positions[:]
+		}
 		last_was_position = true
 	}
 	return nil
@@ -254,7 +267,7 @@ decode_position :: proc(
 	n := 0
 	for p in 0 ..< PLAYER_COUNT {
 		for j in Joint {
-			for axis in 0 ..< 3 {
+			for axis in 0 ..< len(V3) {
 				q := BASE62 * digits[n] + digits[n + 1]
 				n += 2
 				v := f64(q) / QUANT_SCALE

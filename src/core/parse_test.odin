@@ -11,11 +11,11 @@ import "core:testing"
 //  - Error `line` is 1-based, `block` is 0-based:
 //      Missing_Final_Newline:     line = last line, block = NO_BLOCK.
 //      Block_Without_Description: line = first position line, block = NO_BLOCK (none started yet).
-//      Truncated_Block:           fewer than 296 bytes left when a position starts; line = its first line;
+//      Truncated_Block:           the file ends inside the 4 lines of a position; line = its first line;
 //                                 block = index of the sequence it would belong to.
-//      Bad_Position_Layout:       a ' ' line that is not 4 spaces + 69 bytes + '\n' (line = that line), or a
-//                                 group of 4 position lines broken by a non-position line (line = first line
-//                                 of the incomplete group, plenty of bytes left).
+//      Bad_Position_Layout:       a ' ' line that is not 4 spaces + 69 bytes + '\n' (line = that line, even
+//                                 near the end of the file), or a group of 4 position lines broken by a
+//                                 non-position line (line = first line of the incomplete group).
 //      Bad_Base62_Digit:          line = the line holding the bad byte.
 //      Invalid_Utf8:              line = the description line; block = number of sequences started so far.
 //    block of position errors = index of the sequence the position starts (sequences started so far) or extends.
