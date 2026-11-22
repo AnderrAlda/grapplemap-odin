@@ -145,16 +145,20 @@ changes, and the root `CLAUDE.md` if commands or the map change (`--load`, `GM_O
 
 ## Decisions and trade-offs
 - **Trig: measure first.** Deliverable 4 implements reorientations with Odin's `math.sin_f64`/`cos_f64` (platform
-  libm) and `math.atan2_f64` (Cephes) and compares against the oracle bit for bit, on the sample on **every CI
-  target** (linux amd64 and macOS arm64, `ci.yml` runs `./build.sh test` on both) and on the full dump (linux). Result
-  written in ADR 0003 (open points closed). If it fails **on any target**: port glibc 2.27's `sin`/`cos`/`atan2` to
+  libm) and `math.atan2_f64` (Cephes) and compares against the oracle bit for bit, on the sample and on the **full
+  dump** on **every CI target** (linux amd64 and macOS arm64: `ci.yml` runs `./build.sh test` on both, `fidelity.yml`
+  runs the full dump on both). Until 11 is merged, 4 measures the full dump by hand on both platforms
+  (`gh run download <run> -n oracle-full-dump` + `GM_ORACLE_DIR`, `tools/oracle/README.md` "CI") and records the
+  result in its PR. Result written in ADR 0003 (open points closed). If it fails **on any target**: port glibc 2.27's `sin`/`cos`/`atan2` to
   pure Odin (same bits on every target, wasm included), ADR amendment first. A tolerance is the last resort and needs
   Ander's explicit OK with evidence (ADR 0003 decision 5); discrete decisions are never toleranced.
 - **Fidelity in CI: a separate workflow** `.github/workflows/fidelity.yml`: on pull requests touching `src/core/**`,
   `tests/fidelity/**`, `tests/fixtures/oracle/**`, `build.sh` or the workflow itself, nightly and by
-  `workflow_dispatch`; with `permissions: actions: read`, downloads the latest successful `oracle-full-dump` artifact
+  `workflow_dispatch`; a matrix `[ubuntu-latest, macos-latest]` (each platform's libm is checked over the whole DB,
+  ADR 0003 "Open points"); checkout with `submodules: true` (the graph is built from the DB); with
+  `permissions: actions: read`, downloads the latest successful `oracle-full-dump` artifact
   from `main`, checks it against the commit's `tests/fixtures/oracle/FULL.sha256` (a dump of another dumper version
-  fails) and runs `GM_ORACLE_DIR=… odin test tests/fidelity`. Apart from `submodules: true` (deliverable 2), `ci.yml`
+  fails) and runs `GM_ORACLE_DIR=… ./build.sh test` (same flags and collection as locally). Apart from `submodules: true` (deliverable 2), `ci.yml`
   is not changed; `./build.sh ci` never needs the full dump. Approved in this spec as a design; the PR that adds it still asks Ander (CI workflow edit).
   The artifact has a 7-day retention: the nightly `oracle` run keeps one fresh; if none exists the job fails with a
   clear message rather than passing.
@@ -175,7 +179,7 @@ changes, and the root `CLAUDE.md` if commands or the map change (`--load`, `GM_O
 1. `./build.sh ci` green locally and in CI; zero leaks (tracking allocator, ASan on Linux).
 2. `./build.sh test` runs the fidelity tests over the sample (linux and macOS): `sequences`, `body`, `ops`, `between`,
    `graph`, `compose`, `playback` and the `save_sha256` of `meta.json` all bit-exact (or with a tolerance approved by Ander, listed in ADR 0003).
-3. `gh workflow run fidelity` on `main` passes over the full dump (all 2,086 blocks, 8,323 positions, 1,485
+3. `gh workflow run fidelity` on `main` passes over the full dump on linux and macOS (all 2,086 blocks, 8,323 positions, 1,485
    transitions, 725 nodes).
 4. `./build/grapplemap-debug --load reference/GrappleMap/GrappleMap.txt --headless` (debug: tracking allocator and
    ASan) prints the counts of §10.1 and exits 0; on a copy cut in the middle of a position block (not after trailing
