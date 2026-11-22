@@ -692,8 +692,12 @@ for section 7 / ADR 0004).
 - `xrot(a)` (`src/math.hpp:82-89`) gives `y' = cos a·y + sin a·z`, `z' = −sin a·y + cos a·z`, i.e. the standard
   rotation by **`−a`** about `+x`. With the default `orientation = {0, −0.6, 1.7}` (yaw, pitch, zoom;
   `src/camera.hpp:12-13`) the eye sits at `offset + (0, 1.7·sin 0.6, 1.7·cos 0.6) ≈ offset + (0, 0.96, 1.40)`: above and
-  on the `+z` side, looking down at `offset` (algebra on `src/camera.hpp:18`; **[unverified]** on screen: the on-screen look is to be confirmed with
-  the oracle images, section 7). The rest of the camera (fov, near/far, controls, smoothing) is section 7.
+  on the `+z` side, looking down at `offset` (algebra on `src/camera.hpp:18`). Confirmed on screen by the oracle images
+  (`tools/oracle/README.md` "Reference images", "Camera orientation"): the heading-N views (`yaw = 0`) show world `+x` to
+  the right and the eye on the `+z` side. In `p96-480x360.png` player 0's head (world `x = 0.22`, `y = 0.98`) has its top
+  pixel at column ≈286, right of the centre (240) and at row 105, while player 1's head (`x = 0.00`, `y = 1.27`) is at
+  column ≈239 and row 44; in `p267-480x360.png` player 1, the nearer to `+z` (mean `z = +0.21` against `−0.34`), is in the
+  foreground, at the bottom of the image. The rest of the camera (fov, near/far, controls, smoothing) is section 7.
 
 ### 4.3 `heading`, `normalRotation`, `center`, `cameraOffsetFor`
 
@@ -749,8 +753,7 @@ the render boundary remains. That must be verified in raylib's code or docs in t
 
 ### 4.5 Open points (need the oracle/dumper)
 
-Not verifiable by reading: the on-screen orientation of the default camera (§4.2, compare with oracle images);
-`normalRotation` with both cores at the same `xz` and `−0` inputs (§4.3); whether the JS viewer is mirrored (§3.2).
+Not verifiable by reading: `normalRotation` with both cores at the same `xz` and `−0` inputs (§4.3); whether the JS viewer is mirrored (§3.2).
 
 ## 5. Transforms
 
@@ -1332,15 +1335,20 @@ is commented out at the pin (`src/makevideo.cpp:124-139`).
 
 ### 7.6 Reference images (`ImageMaker`)
 
-What the oracle's `--images` (`tools/oracle/README.md`, #35) will run:
+What the oracle's `--images` (`tools/oracle/README.md`, #35) runs:
 - Context: OSMesa, `OSMESA_RGB`, 16-bit depth, no stencil, 16-bit accumulation (`src/images.cpp:525`). The accumulation
   buffer is only used by the `png(pos_beg, pos_end, …)` overload that averages frames (`src/images.cpp:236-300`),
   which nothing calls at the pin (grep of `png(`): no motion blur in the images.
 - **2× supersampling**: renders at `2w × 2h`, then each output pixel is the integer (truncating) mean of a 2×2 block
   (`src/images.cpp:63-106`). The image is flipped vertically before writing (`src/images.cpp:111-112`).
-- Channels 0 and 2 of every pixel are swapped before writing (`src/images.cpp:89,176,278`). Whether that turns
-  OSMesa's RGB into BGR (i.e. red and blue would swap in the PNG) depends on OSMesa's byte order for `OSMESA_RGB`:
-  **[unverified]**, to be settled by looking at an oracle image.
+- Channels 0 and 2 of every pixel are swapped before writing (`src/images.cpp:89,176,278`). OSMesa's `OSMESA_RGB`
+  buffer is R, G, B in memory (probe: `glClearColor(1, 0, 0)` reads back `ff 00 00`), so the swap writes **BGR**: red and
+  blue are swapped in the PNGs. Player 0 `(1, 0, 0)` shows **blue** (pixels with R = G = 0 in `p96-480x360.png`, e.g.
+  `0000aa`) and player 1 `(0.15, 0.15, 1)` shows **red** (`de2121`, G/R = B/R = 0.149). Evidence:
+  `tools/oracle/README.md` "Reference images", "Channel order", and `tests/fixtures/oracle/images/`.
+- Driver: with Mesa 20.0.8 the default llvmpipe driver corrupts `OSMESA_RGB` renders (rasterized primitives write 4-byte
+  pixels into the 3-byte buffer) and is not deterministic, so the oracle renders with softpipe (`GALLIUM_DRIVER`,
+  recorded in `images/meta.json`).
 - Style: grid size 2 (±2 m), line width 2 px at the 2× size (`src/images.hpp:149,156`), colors from §7.2.
 - **Heading view** (position pages, `src/images.cpp:302-316`, called with `ymax = max(0.8, both heads' y)` of the
   canonically oriented position, `src/mkpospages.cpp:578-588`): offset `(0, ymax − 0.57, 0)`, distance `1.7 + 0.55`,
@@ -1362,7 +1370,8 @@ Visible in the oracle PNGs, so a pixel comparison depends on it:
 - Colors: players, `Style` grid/background, image backgrounds and `0.8·bg` grid.
 - Fixed-function lighting: two directional lights, 0.65 diffuse, 0.03 + 0.2 ambient, no specular, per-vertex Gouraud.
 - Camera math: `pi()`, `gluPerspective` with near 0.01 / far 15, the heading-view formula, fov 45, image sizes,
-  2× supersampling with truncating box filter, vertical flip, the channel swap (once verified).
+  2× supersampling with truncating box filter, vertical flip, the channel swap (the PNGs are BGR: a pixel comparison must
+  swap red and blue back, §7.6).
 - Grid: 0.5 m lines over ±2 m, 2 px at 2× (≈ 1 px), aliased (no `GL_LINE_SMOOTH`, grep) before the box filter.
 - The 16-bit depth buffer with near 0.01 / far 15: joints rest at `y = radius` just above the grid plane, so depth
   resolution there can change pixels.
@@ -1377,8 +1386,7 @@ Not visible in the oracle images (free, or to be chosen for UX):
   (`src/images.cpp:80-81,167-168,266-267`), so it never shows in the images (editor only; still part of fidelity).
 - Mesh layout details with no visual effect (winding, the pillar strip's degenerate triangles, the open seam).
 
-Open points: OSMesa's channel order and the lighting defaults above (oracle images, #35); the on-screen orientation of
-the default camera left open in §4.2 (same images); the JS viewers' handedness (§3.2), not covered here (ADR 0004 / section 8). Closed in §10.3: a
+Open points: the lighting defaults above (oracle images, #35); the JS viewers' handedness (§3.2), not covered here (ADR 0004 / section 8). Closed in §10.3: a
 pillar basis never degenerates on the DB's stored, canonical or playback positions.
 
 ---
