@@ -230,6 +230,8 @@ One `ubuntu-latest` (amd64) job, checkout with `submodules: true`:
 `--images` is never run in CI (Mesa-dependent). Phase 2 consumes the artifact by downloading it
 (`gh run download <run> -n oracle-full-dump`) instead of rebuilding the oracle.
 
+The `oracle-full-dump` artifact is consumed by `.github/workflows/fidelity.yml` (#147).
+
 ## Smoke checks
 
 ```sh
