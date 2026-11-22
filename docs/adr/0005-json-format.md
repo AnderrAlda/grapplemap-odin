@@ -52,7 +52,10 @@ position lines, as in §2.1). The DB is valid UTF-8 (`iconv -f UTF-8 -t UTF-8`) 
    backslash-`n` is the JSON string `"\\n"`). `tags`, `properties`, `ref`, `note`, `todo`, `detailed` and
    `bidirectional` are **not** separate fields: they are derived from the lines with the original's rules (§1.2, §2.7),
    so there is one source of truth and the lines' order and spelling round-trip. An empty `description` array is
-   invalid (the first line is the name).
+   invalid (the first line is the name; a first line `""` is valid). **Two named positions with the same whole
+   `description`** (all lines equal) are invalid, as the original rejects them on load with `multiple positions
+   named` (`src/graph.cpp:283-285`, §2.1): an error on read, on import and on export, so a valid JSON never exports a
+   `GrappleMap.txt` the original cannot load. Equal names with different other lines stay valid, as in the original.
 6. **Positions in the original's quantization**: each coordinate is the integer `0…3843` exactly as in the file, i.e.
    with the `+2` offset on `x`/`z` (§1.3), nested `[player 0, 1][23 joints in enum order][x, y, z]` (§1.3 order).
    `core` decodes them to `f64` with the original's formula (ADR 0003, decision 1). When phase 6 writes an edited
@@ -61,15 +64,20 @@ position lines, as in §2.1). The DB is valid UTF-8 (`iconv -f UTF-8 -t UTF-8`) 
 7. **No `line_nr`.** It is a property of one particular text file (and its exact meaning is [unverified], §1.4), not
    of the graph. When a `GrappleMap.txt` is exported, `l<N>` refers to that export, recomputed by the loader. Inside
    our app references use `id`s.
-8. **Round trip.** "Byte-exact" means: for every `GrappleMap.txt` the original loads without error and that has none
-   of the inputs listed below, `export(import(txt))` equals, byte for byte, what the original's `save(loadGraph(txt))`
+8. **Round trip.** "Byte-exact" means: for every `GrappleMap.txt` the original loads without error and that is not
+   rejected below, `export(import(txt))` equals, byte for byte, what the original's `save(loadGraph(txt))`
    writes (§1.5). For the DB at the pin that is expected to be the file itself, since it is already in writer order
-   (Context); this is checked in phase 2. Inputs that cannot round-trip, and what happens to them:
-   - lost by the original's writer too: interleaved named positions after transitions (moved first), description
-     lines at the end with no position (dropped, §1.1). Import follows the writer;
-   - undefined or fatal in the original (§1.7): a position block with no description (empty name), a block shorter
-     than 296 bytes or not on the 4 × 69 layout, a non-base62 digit, a file without its final `'\n'`: **import
-     error** (an error value, never `panic`), not a guess;
+   (Context); this is checked in phase 2. What `export(import(txt))` does not give back as the input bytes:
+   - changed by the original's writer too, so still equal to `save(loadGraph(txt))`: interleaved named positions after
+     transitions (moved first), description lines at the end with no position (dropped, §1.1). Import follows the
+     writer;
+   - undefined or fatal in the original (§1.7): a position block with no description lines before it, a block shorter
+     than 296 bytes, a non-base62 digit, a file without its final `'\n'`; and rejected by the original's `Graph`: two
+     named positions with the same whole description (decision 5): **import error** (an error value, never `panic`),
+     not a guess;
+   - accepted by the original but rejected here, stricter on purpose: a position block not on the 4 × 69 layout
+     (other indentation, tabs, digits split differently). The original decodes it silently or misreads it (§1.7) and
+     `save` would normalise it; import reports an error instead of guessing which case applies;
    - not representable in JSON strings: bytes that are not valid UTF-8 in a description line: import error;
    - not writable back to `GrappleMap.txt`: a description line that starts with a space (it would be read as a
      position, §1.7) or contains `'\n'`, and a coordinate outside `0…3843`: **export error**. `'\r'` is kept verbatim
@@ -106,5 +114,8 @@ position lines, as in §2.1). The DB is valid UTF-8 (`iconv -f UTF-8 -t UTF-8`) 
   with the oracle image (a `save` run is not in the dumper today).
 - Persistent identities for anonymous nodes, if phase 6 needs them (e.g. to attach notes to one without naming it):
   not decided here.
+- Re-importing an updated upstream `GrappleMap.txt` assigns IDs by block number again, so identities are not carried
+  over to a JSON that was already edited; matching entries across versions (by name, content or both) is a phase-6
+  question.
 - Pretty-printing and key order of the written JSON (for small git diffs): a detail of the phase-2 writer, not of
   the schema.

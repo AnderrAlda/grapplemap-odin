@@ -53,14 +53,17 @@ eye looking down `−z`, OpenGL clip space. raylib has no unit; meters are a cho
    near/far (0.05/4000 instead of 0.01/15) and `f32` throughout, which changes the projection, the depth range
    and hence pixels (ADR 0006). Converting the original's column-major `M` (`m[4·c + r]`, `src/math.hpp:91-98,197-204`)
    to raylib's `Matrix` is element `(r, c) = f32(M[4·c + r])`, one conversion per element. Whether the interactive
-   UX camera (phase 3) may use `Camera3D` instead is left to phase 3: it is not compared with the oracle.
+   UX camera (phase 3) may use `Camera3D` instead is left to phase 3: it is not compared with the oracle. First-person
+   views use `gluLookAt(Head, (LeftHand + RightHand)/2, Head − Neck)` (`src/rendering.cpp:346-352`); if a phase needs
+   them, that matrix is rebuilt with the `gluLookAt` formula in `f64` too.
 4. **Axis-dependent constants are kept verbatim in `core`** (`docs/original.md` §4.4): the `−2` offset on `x` and
    `z` only in the encoding (§1.3, `src/persistence.cpp:53`); the `apply_limits` box `x, z ∈ [−2, 2]`,
    `y ≥ radius` (`src/positions.cpp:318-320`); `cameraOffsetFor`'s `y = max(0, y − 0.5)` (`src/positions.hpp:182-187`);
    the editor's `y · 0.7` target (`src/editor_canvas.cpp:539-544`); the image camera's `ymax − 0.57`, `+0.55` distance
    and `(ymax − 0.6)/2` pitch (`src/images.cpp:302-316`); the default orientation `{0, −0.6, 1.7}`
    (`src/camera.hpp:12`); `pi()` = `3.141593` wherever the original uses `pi()` (ADR 0003, decision 7). They are
-   copied with their signs, since the axes are not changed.
+   copied with their signs, since the axes are not changed. `core` owns them as named constants; the camera code of
+   `render`/`ui` (decision 3) reads them from `core`, it does not redefine them.
 5. **Angles in radians** in `core`; degrees only where the original takes degrees (`perspective`'s `fovy`), converted
    with the original's `fovy·pi()/360`, not raylib's `DEG2RAD`.
 
@@ -77,8 +80,9 @@ eye looking down `−z`, OpenGL clip space. raylib has no unit; meters are a cho
 ## Consequences
 - `core` tests compare against the oracle's numbers with no axis mapping. `render` needs only an element-wise
   `f64 → f32` and a layout change for matrices.
-- `render` owns a small `f64` camera module that mirrors `src/camera.hpp` and `src/math.hpp:73-125`; it is tested
-  against the original's formulas (phase 3).
+- `render` owns a small `f64` camera module that mirrors `src/camera.hpp` and `src/math.hpp:73-125`, using the
+  constants of decision 4 from `core`; it is tested against the original's formulas (phase 3). Which package exposes
+  camera presets to the user is `ui`'s concern (`docs/architecture.md`).
 - Anything that uses raylib's own camera helpers (`Camera3D`, `UpdateCamera`, `GetWorldToScreen`, picking) must be
   checked against the same matrices, or not used for views compared with the oracle.
 
