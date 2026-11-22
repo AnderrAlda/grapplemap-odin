@@ -32,7 +32,7 @@ Joint :: enum u8 {
 }
 
 JOINT_COUNT :: len(Joint) // joint_count, src/players.hpp:29
-PLAYER_COUNT :: 2 // PerPlayer, src/players.hpp:103-110
+PLAYER_COUNT :: 2 // PerPlayer = array<T, 2>, src/players.hpp:52-59
 
 // Player is one player's joints (src/players.hpp:169); Position is player 0 then player 1
 // (src/positions.hpp:9), so its memory order is `playerJoints` (§3.3).
@@ -47,6 +47,7 @@ Player_Joint :: struct {
 
 // opponent(p) = 1 − p (src/players.hpp:38).
 opponent :: proc(player: int) -> int {
+	assert(player == 0 || player == 1)
 	return 1 - player
 }
 
@@ -136,7 +137,8 @@ SEGMENTS := [28]Segment {
 
 // PLAYER_COLORS is `playerDefs` (src/positions.cpp:140): player 0 `red` = {1, 0, 0} (src/math.hpp:62), player 1
 // {0.15, 0.15, 1}.
-PLAYER_COLORS :: [PLAYER_COUNT]V3{{1, 0, 0}, {0.15, 0.15, 1}}
+@(rodata)
+PLAYER_COLORS := [PLAYER_COUNT]V3{{1, 0, 0}, {0.15, 0.15, 1}}
 
 // Constants copied verbatim from the original (ADR 0003 decision 7, ADR 0004 decision 4). Not improved.
 
@@ -144,7 +146,7 @@ PI :: 3.141593 // pi(), src/math.hpp:12
 
 ENCODING_OFFSET_XZ :: 2 // `g() - 2` on x and z, src/persistence.cpp:53
 QUANT_SCALE :: 1000 // coordinate = (62·d0 + d1) / 1000, src/persistence.cpp:43-48 (§1.3)
-Q_MAX :: 62 * 62 - 1 // 3843, largest two-digit base62 value (§1.3)
+Q_MAX :: 62 * 62 - 1 // 3843, largest two-digit base62 value (§1.3); range 0…3843, ADR 0005 decision 6
 
 BASICALLY_SAME_SQ :: 0.0016 // m², basicallySame, src/positions.hpp:52
 HEAD_PREFILTER_SQ :: 0.05 // m², is_reoriented pre-filter, src/positions.cpp:238

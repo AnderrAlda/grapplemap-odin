@@ -9,3 +9,4 @@
 - `types.odin`: `V3`, `Joint` (23, orden del original), `Player`, `Position`, tablas de articulaciones y segmentos, constantes verbatim.
 - `errors.odin`: unión `Error` (`nil` = éxito) con los errores propios y `mem.Allocator_Error`.
 - `*_test.odin`: tests del paquete, uno por fichero.
+- Tablas indexadas en tiempo de ejecución: `@(rodata) NAME := ...`, no `::` (Odin no indexa una constante con un índice variable).
