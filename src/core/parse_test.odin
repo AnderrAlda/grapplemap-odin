@@ -531,8 +531,8 @@ test_parse_shrink_failure_frees_everything :: proc(t: ^testing.T) {
 	}
 }
 
-// Fails the allocation with 0-based index `fail_at` (every allocation from then on, as well) and counts them in
-// `count`; `fail_at < 0` never fails. Allocations are `.Alloc`, `.Alloc_Non_Zeroed`, `.Resize` and
+// Fails only the allocation with 0-based index `fail_at` (later ones succeed, so a swallowed error shows up as a
+// leak or a wrong result) and counts them in `count`; `fail_at < 0` never fails. Allocations are `.Alloc`, `.Alloc_Non_Zeroed`, `.Resize` and
 // `.Resize_Non_Zeroed`; every other mode goes to `backing`.
 @(private = "file")
 Failing_Allocator :: struct {
@@ -558,7 +558,7 @@ failing_allocator_proc :: proc(
 	case .Alloc, .Alloc_Non_Zeroed, .Resize, .Resize_Non_Zeroed:
 		n := f.count
 		f.count += 1
-		if f.fail_at >= 0 && n >= f.fail_at {
+		if n == f.fail_at {
 			return nil, .Out_Of_Memory
 		}
 	}
@@ -618,6 +618,7 @@ parse_with_failure :: proc(
 	return
 }
 
+// Covers every allocation through `parse_db`'s `allocator`; scratch on `context.temp_allocator` is not failed.
 @(test)
 test_parse_alloc_failure_frees_everything :: proc(t: ^testing.T) {
 	valid := cat(
@@ -627,6 +628,7 @@ test_parse_alloc_failure_frees_everything :: proc(t: ^testing.T) {
 		"B\nproperties: detailed bidirectional\ntags: z\n",
 		pos_text(3),
 	)
+	// Lines: A 1-10 (2 + 8), B 11-17 (3 + 4), C 18, its position 19-22: the bad byte is on line 22, block 2.
 	bad := cat(valid, "C\n", with_byte(pos_text(4), LINE_BYTES * 3 + 10, '!'))
 
 	// Valid file: allocation N < K fails with Out_Of_Memory; from K on, success.
