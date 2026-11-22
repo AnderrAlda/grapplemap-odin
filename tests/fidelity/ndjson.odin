@@ -76,4 +76,3 @@ ndjson_each :: proc(
 		}
 	}
 }
-
