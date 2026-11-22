@@ -1,6 +1,5 @@
 {"block":0,"kind":"position","length":1,"family":"side_control","length_bucket":null,"classes":["named","description_newline"]}
 {"block":20,"kind":"position","length":1,"family":"guard","length_bucket":null,"classes":["named","description_newline","description_utf8"]}
-{"block":84,"kind":"position","length":1,"family":"other","length_bucket":null,"classes":["named","duplicate_description"]}
 {"block":96,"kind":"position","length":1,"family":"standing","length_bucket":null,"classes":["named","description_newline"]}
 {"block":101,"kind":"position","length":1,"family":"other","length_bucket":null,"classes":["named","description_newline"]}
 {"block":161,"kind":"position","length":1,"family":"guard","length_bucket":null,"classes":["named","description_newline"]}
@@ -31,8 +30,7 @@
 {"block":794,"kind":"transition","length":4,"family":"mount","length_bucket":"3-5","classes":["normal","has_note"]}
 {"block":799,"kind":"transition","length":4,"family":"standing","length_bucket":"3-5","classes":["normal"]}
 {"block":807,"kind":"transition","length":3,"family":"back","length_bucket":"3-5","classes":["normal","description_newline"]}
-{"block":814,"kind":"transition","length":6,"family":"standing","length_bucket":"6-10","classes":["normal","description_quote","has_ref"]}
-{"block":835,"kind":"transition","length":5,"family":"other","length_bucket":"3-5","classes":["normal","duplicate_description","description_quote","has_ref"]}
+{"block":812,"kind":"transition","length":2,"family":"guard","length_bucket":"2","classes":["normal","duplicate_description","description_newline","description_quote","has_ref"]}
 {"block":873,"kind":"transition","length":7,"family":"side_control","length_bucket":"6-10","classes":["normal","duplicate_description","description_quote","has_ref"]}
 {"block":928,"kind":"transition","length":4,"family":"turtle","length_bucket":"3-5","classes":["normal","duplicate_description","has_note"]}
 {"block":1039,"kind":"transition","length":3,"family":"standing","length_bucket":"3-5","classes":["endpoint_mirror_swap","duplicate_description","description_newline"]}
@@ -40,8 +38,9 @@
 {"block":1095,"kind":"transition","length":15,"family":"other","length_bucket":">10","classes":["long","description_newline","description_quote","has_ref","has_note"]}
 {"block":1102,"kind":"transition","length":3,"family":"turtle","length_bucket":"3-5","classes":["endpoint_mirror_swap","duplicate_description","description_newline"]}
 {"block":1128,"kind":"transition","length":2,"family":"back","length_bucket":"2","classes":["normal","description_newline","description_quote","has_ref"]}
-{"block":1144,"kind":"transition","length":6,"family":"leg_locks","length_bucket":"6-10","classes":["normal","duplicate_description","description_quote","has_ref"]}
+{"block":1144,"kind":"transition","length":6,"family":"leg_locks","length_bucket":"6-10","classes":["normal","description_quote","has_ref"]}
 {"block":1161,"kind":"transition","length":2,"family":"guard","length_bucket":"2","classes":["bidirectional","description_quote","has_ref"]}
+{"block":1171,"kind":"transition","length":7,"family":"standing","length_bucket":"6-10","classes":["normal","description_newline","has_note"]}
 {"block":1252,"kind":"transition","length":2,"family":"guard","length_bucket":"2","classes":["endpoint_mirror","description_newline","description_quote","has_ref"]}
 {"block":1285,"kind":"transition","length":2,"family":"other","length_bucket":"2","classes":["endpoint_swap","description_quote","has_ref","has_note"]}
 {"block":1306,"kind":"transition","length":2,"family":"other","length_bucket":"2","classes":["normal","description_newline"]}

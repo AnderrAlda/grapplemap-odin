@@ -146,8 +146,8 @@ except `FULL.sha256` (`images/` is never touched) and writes `MANIFEST.sha256` (
 Two runs give identical bytes. `.gitattributes` marks the fixtures `-diff linguist-generated` (the `.sha256` files
 keep their diff).
 
-Size at the pin: 1,691,965 bytes of working copy in 11 files (`ops` 707 KB, `playback` 456 KB, `between` 192 KB,
-`sequences` 185 KB, `graph` 107 KB, `spring` 28 KB, `inventory` 9 KB, rest 7 KB); ~422 KB as `tar | gzip -9` or as a
+Size at the pin: 1,679,542 bytes of working copy in 11 files (`ops` 696 KB, `playback` 456 KB, `between` 192 KB,
+`sequences` 183 KB, `graph` 109 KB, `spring` 28 KB, `inventory` 9 KB, rest 7 KB); ~419 KB as `tar | gzip -9` or as a
 git pack. Hard limit 2 MB (spec; `images/` of the last PR of #35 counts too).
 
 ## Smoke checks

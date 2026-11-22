@@ -1,5 +1,5 @@
 index	class	reason
-730	normal	family guard, length 2: 1 of 15 candidates (fewest text classes, then first in file)
+730	normal	family guard, length 2: 1 of 16 candidates (fewest text classes, then first in file)
 608	normal	family guard, length 3-5: 1 of 109 candidates (fewest text classes, then first in file)
 1358	normal	family guard, length 6-10: 1 of 21 candidates (fewest text classes, then first in file)
 1620	normal	family guard, length >10: 1 of 2 candidates (fewest text classes, then first in file)
@@ -12,9 +12,9 @@ index	class	reason
 807	normal	family back, length 3-5: 1 of 10 candidates (fewest text classes, then first in file)
 928	normal	family turtle, length 3-5: 1 of 13 candidates (fewest text classes, then first in file)
 1339	normal	family turtle, length 6-10: 1 of 2 candidates (fewest text classes, then first in file)
-1739	normal	family standing, length 2: 1 of 11 candidates (fewest text classes, then first in file)
+1739	normal	family standing, length 2: 1 of 10 candidates (fewest text classes, then first in file)
 799	normal	family standing, length 3-5: 1 of 76 candidates (fewest text classes, then first in file)
-814	normal	family standing, length 6-10: 1 of 12 candidates (fewest text classes, then first in file)
+1171	normal	family standing, length 6-10: 1 of 13 candidates (fewest text classes, then first in file)
 1657	normal	family leg_locks, length 3-5: 1 of 8 candidates (fewest text classes, then first in file)
 1144	normal	family leg_locks, length 6-10: 1 of 1 candidates (fewest text classes, then first in file)
 1306	normal	family other, length 2: 1 of 10 candidates (fewest text classes, then first in file)
@@ -65,6 +65,6 @@ index	class	reason
 659	error_or_unmatched	shortest transitions first (2 pos; 239 in the class; at most 1 position)
 667	error_or_unmatched	shortest transitions first (2 pos; 239 in the class; at most 1 position)
 710	error_or_unmatched	shortest transitions first (2 pos; 239 in the class; at most 1 position)
-84	duplicate_description	same name as block 835: 'gator roll'
-835	duplicate_description	same name as block 84: 'gator roll'
+654	duplicate_description	same name as block 812: 'bottom gets\\n2-on-1'
+812	duplicate_description	same name as block 654: 'bottom gets\\n2-on-1'
 614	duplicate_description	name '...' (136 blocks)
