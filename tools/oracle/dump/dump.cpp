@@ -7,7 +7,7 @@
 //   --sample: tools/oracle/sample.tsv (#35); the same files, filtered to the listed blocks (see Sample).
 //
 // Files (fixed order, no timestamps): meta.json, sequences.ndjson, graph.ndjson, ops.ndjson, between.ndjson,
-// playback.ndjson, body.json, spring.ndjson, inventory.ndjson.
+// compose.ndjson, playback.ndjson, body.json, spring.ndjson, inventory.ndjson, and save.txt (full dump only).
 #include "json.hpp"
 
 #include "graph_util.hpp"
@@ -29,7 +29,7 @@ namespace {
 using namespace GrappleMap;
 using dump::Json;
 
-char const DUMPER_VERSION[] = "3";
+char const DUMPER_VERSION[] = "4";
 
 // frames-per-pos of frames() (default of src/makevideo.cpp:34); halved for `detailed` by integer division
 // (src/paths.cpp:42: 11 / 2 = 5).
@@ -420,6 +420,28 @@ void dump_between(std::ostream & out, Graph const & g, vector<Block> const & blo
 				j.end_object();
 				out << j.take();
 			}
+	}
+}
+
+// inverse and compose (src/positions.cpp:97-128) on the endpoint reorientations of every transition, in file order;
+// compose_inverse_from_to is the form follow() uses (docs/original.md §6.2). In the sample: the listed transitions.
+void dump_compose(std::ostream & out, Graph const & g, vector<Block> const & blocks, Sample const * smp)
+{
+	Json j;
+	for (size_t b = 0; b != blocks.size(); ++b)
+	{
+		if (blocks[b].is_node || !keep(smp, b)) continue;
+		auto const & e = g[SeqNum{blocks[b].index}];
+		PositionReorientation const & from = e.from.reorientation, & to = e.to.reorientation;
+		j.begin_object();
+		j.key("block").integer(long(b));
+		j.key("seq").integer(long(blocks[b].index));
+		j.key("inverse_from"); reorientation(j, inverse(from));
+		j.key("inverse_to"); reorientation(j, inverse(to));
+		j.key("compose_from_to"); reorientation(j, compose(from, to));
+		j.key("compose_inverse_from_to"); reorientation(j, compose(inverse(from), to));
+		j.end_object();
+		out << j.take();
 	}
 }
 
@@ -827,8 +849,10 @@ struct Counts
 	size_t blocks = 0, positions = 0, named_positions = 0, transitions = 0, nodes = 0, anonymous_nodes = 0;
 };
 
+// save: the bytes of the original's save(g, ostream) (src/persistence.cpp:241-252), or nullptr if no graph was dumped.
 string dump_meta(Args const & a, optional<vector<string>> const & versions, string const & db_md5,
-                 Index const * ix, bool index_consistent, Counts const * c, vector<string> const & errors)
+                 Index const * ix, bool index_consistent, string const * save, string const & db, Counts const * c,
+                 vector<string> const & errors)
 {
 	Json j;
 	j.begin_object();
@@ -840,6 +864,9 @@ string dump_meta(Args const & a, optional<vector<string>> const & versions, stri
 	if (ix) j.str(ix->md5); else j.null();
 	j.key("index_matches_db").boolean(ix && ix->md5 == db_md5);
 	j.key("index_consistent").boolean(index_consistent);
+	j.key("save_md5");
+	if (save) j.str(MD5(*save).hexdigest()); else j.null();
+	j.key("save_equals_db").boolean(save && *save == db);
 	j.key("versions");
 	if (versions) j.strings(*versions); else j.null();
 	j.key("counts");
@@ -871,7 +898,7 @@ int run(Args const & a)
 	// Errors of the original loader are recorded verbatim; the dumper's own ones start with "dumper: ".
 	auto fail = [&](string const & error)
 		{
-			write_file(a.out + "/meta.json", dump_meta(a, versions, db_md5, nullptr, false, nullptr, {error}));
+			write_file(a.out + "/meta.json", dump_meta(a, versions, db_md5, nullptr, false, nullptr, db, nullptr, {error}));
 			std::cerr << "grapplemap-dump: " << error << '\n';
 			return 1;
 		};
@@ -911,16 +938,22 @@ int run(Args const & a)
 		if (!consistent) errors.push_back("dumper: .index disagrees with loadGraph(istream)");
 		if (ix.md5 != db_md5) errors.push_back("dumper: .index md5 differs from the DB md5");
 
+		std::ostringstream save_out;
+		save(g, save_out);
+		string const saved = save_out.str();
+
 		Staged_Files out(a.out);
 		out.write("sequences.ndjson", [&](std::ostream & o) { dump_sequences(o, g, blocks, smp); });
 		out.write("graph.ndjson", [&](std::ostream & o) { dump_graph(o, g, blocks, ix, smp); });
 		out.write("ops.ndjson", [&](std::ostream & o) { dump_ops(o, g, blocks, smp); });
 		out.write("between.ndjson", [&](std::ostream & o) { dump_between(o, g, blocks, smp); });
+		out.write("compose.ndjson", [&](std::ostream & o) { dump_compose(o, g, blocks, smp); });
 		out.write("playback.ndjson", [&](std::ostream & o) { dump_playback(o, g, blocks, smp); });
 		out.write("body.json", [&](std::ostream & o) { o << dump_body(); });
 		out.write("spring.ndjson", [&](std::ostream & o) { dump_spring(o, g, blocks, smp); });
 		out.write("inventory.ndjson", [&](std::ostream & o) { dump_inventory(o, blocks, inv, smp); });
-		out.write("meta.json", [&](std::ostream & o) { o << dump_meta(a, versions, db_md5, &ix, consistent, &c, errors); });
+		if (!smp) out.write("save.txt", [&](std::ostream & o) { o << saved; }); // ~2.7 MB: not in the sample
+		out.write("meta.json", [&](std::ostream & o) { o << dump_meta(a, versions, db_md5, &ix, consistent, &saved, db, &c, errors); });
 		out.commit();
 
 		foreach (e : errors) std::cerr << "grapplemap-dump: " << e << '\n';
