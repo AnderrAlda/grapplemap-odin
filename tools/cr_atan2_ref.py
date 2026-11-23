@@ -87,6 +87,8 @@ def from_bits(u):
 
 def atan_unit(t):
     """atan(t) for 0 <= t <= 1 at the current context precision."""
+    if t == 0:
+        return Decimal(0)
     # Halve the argument k times: atan(t) = 2 atan(t / (1 + sqrt(1 + t^2))).
     k = 0
     while t > Decimal("1e-3"):
@@ -97,14 +99,19 @@ def atan_unit(t):
     term = t
     s = Decimal(0)
     n = 1
-    eps = Decimal(10) ** (-(decimal.getcontext().prec + 5))
-    while True:
+    prec = decimal.getcontext().prec
+    eps = Decimal(10) ** (-(prec + 5))
+    # 0 < t <= 1e-3, so each term is at least 10^6 times smaller than the previous one: prec/6 + 2 terms
+    # suffice. The bound makes a mistake fail loudly instead of looping.
+    for _ in range(prec // 6 + 10):
         d = term / n
         if abs(d) < eps * abs(s if s else t):
             break
         s += d
         term = -term * t2
         n += 2
+    else:
+        raise RuntimeError("atan series did not converge")
     return s * (1 << k)
 
 
@@ -119,6 +126,8 @@ def atan2_dec(y, x):
 
 
 def cr_atan2(yf, xf):
+    if not finite_nonzero(yf, xf):
+        sys.exit(f"only finite non-zero inputs (special values are written by hand): y={yf!r} x={xf!r}")
     prev = None
     prec = PREC
     while prec <= MAX_PREC:
@@ -193,7 +202,7 @@ def worst_pairs(path):
 
 def emit(pairs):
     for y, x in pairs:
-        print(f"{bits(y):016x} {bits(x):016x} {bits(cr_atan2(y, x)):016x}")
+        print(f"{bits(y):016x} {bits(x):016x} {bits(cr_atan2(y, x)):016x}", flush=True)
 
 
 def fixture(wc_path):
@@ -215,7 +224,13 @@ def main():
     if len(sys.argv) == 4 and sys.argv[1] == "--random":
         pairs = random_pairs(int(sys.argv[2]), int(sys.argv[3]))
     else:
-        pairs = parse_pairs(sys.stdin)
+        # Zeros, infinities and NaN are skipped (with a note on stderr): the test writes them by hand.
+        pairs = []
+        for y, x in parse_pairs(sys.stdin):
+            if finite_nonzero(y, x):
+                pairs.append((y, x))
+            else:
+                print(f"skipped non-finite or zero input: {y!r}, {x!r}", file=sys.stderr)
     emit(pairs)
 
 
