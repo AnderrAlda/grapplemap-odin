@@ -10,6 +10,7 @@
 - `errors.odin`: unión `Error` (`nil` = éxito) con los errores propios y `mem.Allocator_Error`.
 - `parse.odin`: parser de `GrappleMap.txt` (`parse_db` → `[]Sequence`, `sequences_destroy`, `tags_in_desc`, `properties_in_desc`); layout estricto 4 × 69 (ADR 0005 d8), primer error con línea 1-based y bloque.
 - `transform.odin`: transformaciones sin trigonometría (`mirror_v3`, `mirror`, `swap_players`, `heading`, `center`, `between`); puras, sin asignar, orden de operaciones del original (ADR 0003 d4).
+- `cr_sin_cos.odin`: `cr_sin`/`cr_cos` correctamente redondeados (port de CORE-MATH, MIT, #162); son el `sin`/`cos` de `core` en todos los targets, nunca `math.sin`/`math.cos`. Valores esperados: `tests/fixtures/cr_sin_cos.txt` (`tools/cr_trig_ref.py`).
 - `*_test.odin`: tests del paquete, uno por fichero.
 - Tablas indexadas en tiempo de ejecución: `@(rodata) NAME := ...`, no `::` (Odin no indexa una constante con un índice variable).
 - En los tests, los floats esperados van como literales `f64` calculados fuera de Odin: Odin pliega las expresiones constantes con más precisión que `f64` (`0.4 - 0.1` en un test no es el resultado en tiempo de ejecución).
