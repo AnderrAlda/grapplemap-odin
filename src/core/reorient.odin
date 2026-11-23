@@ -1,13 +1,10 @@
 package core
 
-import "core:math"
-
 // Reorientations and canonical orientation of the original (docs/original.md §4.3, §5.3, §5.5, §5.7). Pure: values
 // in, values out, nothing allocated. The operation order is the original's, never rewritten (ADR 0003 decision 4: no
-// FMA, no reassociation), so the results are bit-identical. The only trigonometry of `core` lives here: `math.sin` and
-// `math.cos` (the `llvm.sin/cos.f64` intrinsics, i.e. the platform libm) and `math.atan2` (Odin's own); a port of
-// another libm changes this file only. Bit equality with the original's glibc is measured by the fidelity tests
-// (ADR 0003, "Open points").
+// FMA, no reassociation), so the results are bit-identical. The trigonometry is `core`'s own correctly rounded `cr_atan2`,
+// `cr_sin` and `cr_cos`, never the libm or `core:math` (ADR 0003, amendment #161): the original's glibc 2.27 behaves
+// as correctly rounded on every angle of the DB, measured by the fidelity tests (#140).
 
 // rotate_v3 is `yrot(a) * v` (src/math.hpp:73-80, 197-209): the 4×4 matrix `yrot(a)` times `V4(v, 1)`, keeping xyz.
 // Each component is the original's sum, left to right, with the matrix entries written literally. The `0 *` and `+ 0`
@@ -16,8 +13,8 @@ import "core:math"
 rotate_v3 :: proc(a: f64, v: V3) -> V3 {
 	ZERO :: f64(0)
 	ONE :: f64(1)
-	c := math.cos(a)
-	s := math.sin(a)
+	c := cr_cos(a)
+	s := cr_sin(a)
 	ns := -s // m[2] = -sin(a)
 	return {
 		((c * v.x + ZERO * v.y) + s * v.z) + ZERO,
@@ -80,7 +77,7 @@ reorient_v3 :: proc(u: Position_Reorientation, v: V3) -> V3 {
 // `angle(V2 v) = atan2(v.x, v.y)` (src/math.hpp:267). Equal cores give -0; a heading of (-0, -0) gives π (§5.5).
 normal_rotation :: proc(p: Position) -> f64 {
 	h := heading(p)
-	return -math.atan2(h.x, h.y)
+	return -cr_atan2(h.x, h.y)
 }
 
 // normal_translation is `normalTranslation` (src/positions.hpp:169): `y0(-xz(center(p)))`

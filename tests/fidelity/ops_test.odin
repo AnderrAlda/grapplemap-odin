@@ -2,6 +2,7 @@ package fidelity
 
 import "app:core"
 import "core:encoding/json"
+import "core:log"
 import "core:testing"
 
 // Position transforms of `core` (transform.odin, reorient.odin) against `ops.ndjson` (tools/oracle/README.md):
@@ -143,6 +144,7 @@ test_transforms_match_oracle_ops :: proc(t: ^testing.T) {
 	testing.expectf(t, nerr == .None, "%s: %v", path, nerr)
 	testing.expectf(t, lines > 0, "%s: no records", path)
 	testing.expect_value(t, state.compared, lines)
+	log.infof("%s: %d records compared", path, state.compared)
 	// Outside the sample (the full dump), every position must have a record: a truncated file must not pass.
 	if oracle_dir() != DEFAULT_ORACLE_DIR {
 		positions := 0
