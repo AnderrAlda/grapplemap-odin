@@ -1,6 +1,8 @@
 package core
 
 import "core:math"
+import "core:strconv"
+import "core:strings"
 import "core:testing"
 
 // Expected values are written from docs/original.md §4.3, §5.3, §5.5, §5.7 and checked by hand against
@@ -236,4 +238,86 @@ test_canonical_with_mirror_flag :: proc(t: ^testing.T) {
 	)
 	testing.expect(t, canonical_reorientation_with_mirror(q).mirror)
 	testing.expect_value(t, bits(orient_canonically_with_mirror(q)[1][.Head].x), bits(-0.0))
+}
+
+// Literal bits (#168): tests/fixtures/canonical.txt holds one random asymmetric position and the f64 bit patterns of
+// both canonical orientations of it, generated outside Odin by tools/canonical_ref.py (Python floats, correctly
+// rounded sin/cos/atan2, the operation order of reorient.odin). The position is read from data, so nothing folds.
+CANONICAL_FIXTURE :: #load("../../tests/fixtures/canonical.txt", string)
+
+@(private = "file")
+Canonical_Case :: struct {
+	input, without_mirror, with_mirror: Position,
+}
+
+// parse_canonical_fixture reads the 46 lines `pl joint` + 9 hex bit patterns (in, without, with; x y z each).
+@(private = "file")
+parse_canonical_fixture :: proc(t: ^testing.T) -> (c: Canonical_Case, ok: bool) {
+	text := CANONICAL_FIXTURE
+	lines := 0
+	for line in strings.split_lines_iterator(&text) {
+		if len(line) == 0 || line[0] == '#' {
+			continue
+		}
+		f := line
+		pl, _ := strconv.parse_int(strings.split_by_byte_iterator(&f, ' ') or_else "", 10)
+		j, _ := strconv.parse_int(strings.split_by_byte_iterator(&f, ' ') or_else "", 10)
+		if !testing.expectf(
+			t,
+			pl >= 0 && pl < PLAYER_COUNT && j >= 0 && j < JOINT_COUNT,
+			"bad fixture line %q",
+			line,
+		) {
+			return
+		}
+		vals: [9]f64
+		for i in 0 ..< 9 {
+			u, ok_u := strconv.parse_u64_of_base(
+				strings.split_by_byte_iterator(&f, ' ') or_else "",
+				16,
+			)
+			if !testing.expectf(t, ok_u, "bad fixture line %q", line) {
+				return
+			}
+			vals[i] = transmute(f64)u
+		}
+		c.input[pl][Joint(j)] = {vals[0], vals[1], vals[2]}
+		c.without_mirror[pl][Joint(j)] = {vals[3], vals[4], vals[5]}
+		c.with_mirror[pl][Joint(j)] = {vals[6], vals[7], vals[8]}
+		lines += 1
+	}
+	ok = testing.expectf(t, lines == PLAYER_COUNT * JOINT_COUNT, "fixture has %d joints", lines)
+	return
+}
+
+@(test)
+test_orient_canonically_literal_bits :: proc(t: ^testing.T) {
+	c, ok := parse_canonical_fixture(t)
+	if !ok {
+		return
+	}
+	// The fixture's mirror case really mirrors (else the two expected positions would be equal).
+	testing.expect(t, !same_position(c.without_mirror, c.with_mirror), "fixture cases must differ")
+	for pl in 0 ..< PLAYER_COUNT {
+		for j in Joint {
+			a := orient_canonically_without_mirror(c.input)[pl][j]
+			b := orient_canonically_with_mirror(c.input)[pl][j]
+			testing.expectf(
+				t,
+				same_v3(a, c.without_mirror[pl][j]),
+				"without_mirror[%d][%v]: %v",
+				pl,
+				j,
+				a,
+			)
+			testing.expectf(
+				t,
+				same_v3(b, c.with_mirror[pl][j]),
+				"with_mirror[%d][%v]: %v",
+				pl,
+				j,
+				b,
+			)
+		}
+	}
 }
