@@ -3,8 +3,9 @@
 
 Python standard library only. The inputs are exact (Decimal(float) is exact). atan2 is evaluated with
 `decimal` at PREC significant digits, then rounded to binary64 once by float(str(d)), which CPython rounds
-correctly. The precision doubles (PREC, 2 PREC, ...) until two consecutive precisions round to the same binary64
-(tiny |y/x| near the subnormal range needs ~600 digits); the script stops if MAX_PREC is reached first.
+correctly. The precision doubles (PREC, 2 PREC, ...) until the value is farther from both rounding midpoints than
+its own error (PREC - GUARD digits), so a value within the working precision of a midpoint is never rounded by
+ties-to-even: tiny |y/x| near the subnormal range needs ~600 digits. The script stops if MAX_PREC is reached first.
 
 Usage:
   tools/cr_atan2_ref.py --fixture ATAN2_WC > tests/fixtures/cr_atan2.txt
@@ -28,7 +29,8 @@ WORST_STEP = 128  # every WORST_STEP-th finite pair of atan2.wc, plus every pair
 RANDOM_N, RANDOM_SEED = 1000, 161
 
 # Subnormal inputs, y/x overflow and underflow, the tiny-y/x shortcuts of atan2_accurate, the 2^-920 and 2^1022
-# rescaling of the fast path, |x/y| >= 2^53 and the octant boundaries.
+# rescaling of the fast path, |x/y| >= 2^53, the octant boundaries, and y/x exactly at the midpoint between the
+# largest subnormal and 2^-1022 (atan's -t^3/3 decides the rounding: needs ~620 digits).
 EDGE = """
 0x1p-1074,0x1p-1074
 0x1p-1074,0x1p+0
@@ -73,8 +75,12 @@ EDGE = """
 0x1p+60,0x1p+0
 -0x1p+60,-0x1.fp+0
 0x1.fffffffffffffp-1,0x1p+0
+0x1.fffffffffffffp-542,0x1p+481
+-0x1.fffffffffffffp-542,0x1p+481
 """
 MAX_PREC = 6400
+GUARD = 20  # digits lost to the argument halvings and the series, with a wide margin
+EXACT_DIGITS = 1100  # a binary64 number has at most 767 significant decimal digits
 
 
 def bits(f):
@@ -125,22 +131,34 @@ def atan2_dec(y, x):
     return a if y > 0 else -a
 
 
+def rounding_decided(r, prec):
+    """True when r (accurate to about prec - GUARD digits) rounds to binary64 the same way as the exact value:
+    r is farther than its own error from both rounding boundaries (the midpoints next to float(r))."""
+    f = float(str(r))
+    with decimal.localcontext() as ctx:
+        ctx.prec = 2 * EXACT_DIGITS  # midpoints of binary64 numbers are exact with this many digits
+        ctx.Emin, ctx.Emax = -999999, 999999
+        df = Decimal(f)
+        mids = [(df + Decimal(math.nextafter(f, d))) / 2 for d in (math.inf, -math.inf)]
+        dist = min(abs(r - m) for m in mids)
+        err = abs(r) * Decimal(10) ** -(prec - GUARD)
+        return dist > err
+
+
 def cr_atan2(yf, xf):
     if not finite_nonzero(yf, xf):
         sys.exit(f"only finite non-zero inputs (special values are written by hand): y={yf!r} x={xf!r}")
-    prev = None
     prec = PREC
     while prec <= MAX_PREC:
         with decimal.localcontext() as ctx:
             ctx.prec = prec
             ctx.Emin = -999999
             ctx.Emax = 999999
-            r = bits(float(str(atan2_dec(Decimal(yf), Decimal(xf)))))
-        if r == prev:
-            return from_bits(r)
-        prev = r
+            r = atan2_dec(Decimal(yf), Decimal(xf))
+        if rounding_decided(r, prec):
+            return float(str(r))
         prec *= 2
-    sys.exit(f"no agreement up to {MAX_PREC} digits for y={yf.hex()} x={xf.hex()}")
+    sys.exit(f"rounding not decided at {MAX_PREC} digits for y={yf.hex()} x={xf.hex()}")
 
 
 def parse_hex(s):
