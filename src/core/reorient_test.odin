@@ -59,7 +59,7 @@ on_z_axis :: proc(head_x: f64) -> Position {
 
 @(test)
 test_rotate_v3_zero_angle_adds_plus_zero :: proc(t: ^testing.T) {
-	// The `+ 0` (m[12..14]·w) of the original's matrix product turns -0 into +0.
+	// The `+ m[12..14]` (= + 0) of the original's matrix product turns -0 into +0.
 	a := 0.0
 	r := rotate_v3(a, {-0.0, -0.0, -0.0})
 	testing.expect_value(t, bits(r.x), bits(0.0))

@@ -3,6 +3,10 @@ Spec: docs/specs/phase-2-core.md (deliverable 4; "Decisions and trade-offs", *Tr
 docs/original.md §4.3, §5.3, §5.5, §5.7 · ADR 0003 (decisions 4-6, "Open points")
 
 ## Pasos
+> **Superseded in part:** the trig of steps 2 and 4 (`math.sin`/`math.cos`/`math.atan2`, the red → escalate path) was
+> replaced by ADR 0003's amendment (#161). `reorient.odin` uses `cr_atan2`/`cr_sin`/`cr_cos`. The measurement went
+> red with `core:math` (data in #161) and, after the switch, gives 0 mismatches.
+
 1. **`src/core/types.odin`**: two types, with the original's field names and defaults (zero value = identity):
    - `Reorientation :: struct {offset: V3, angle: f64}` (`src/math.hpp:235-243`);
    - `Position_Reorientation :: struct {reorientation: Reorientation, swap_players: bool, mirror: bool}`

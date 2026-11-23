@@ -8,9 +8,10 @@ package core
 
 // rotate_v3 is `yrot(a) * v` (src/math.hpp:73-80, 197-209): the 4×4 matrix `yrot(a)` times `V4(v, 1)`, keeping xyz.
 // Each component is the original's sum, left to right, with the matrix entries written literally. The `0 *` and `+ 0`
-// terms MUST NOT be simplified away: they decide the sign of zero (the trailing `+ 0` is `m[12..14] · w`, which turns
+// terms MUST NOT be simplified away: they decide the sign of zero (the trailing `+ 0` is the original's `+ m[12]`/`m[13]`/`m[14]`, which turns
 // -0 into +0). `cos(a)` and `sin(a)` are computed once; the original calls them twice, with the same bits.
 rotate_v3 :: proc(a: f64, v: V3) -> V3 {
+	// The literal entries 0 and 1 of `yrot(a)` and of its translation column, not magic numbers.
 	ZERO :: f64(0)
 	ONE :: f64(1)
 	c := cr_cos(a)
