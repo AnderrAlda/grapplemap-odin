@@ -260,11 +260,11 @@ parse_canonical_fixture :: proc(t: ^testing.T) -> (c: Canonical_Case, ok: bool) 
 			continue
 		}
 		f := line
-		pl, _ := strconv.parse_int(strings.split_by_byte_iterator(&f, ' ') or_else "", 10)
-		j, _ := strconv.parse_int(strings.split_by_byte_iterator(&f, ' ') or_else "", 10)
+		pl, ok_pl := strconv.parse_int(strings.split_by_byte_iterator(&f, ' ') or_else "", 10)
+		j, ok_j := strconv.parse_int(strings.split_by_byte_iterator(&f, ' ') or_else "", 10)
 		if !testing.expectf(
 			t,
-			pl >= 0 && pl < PLAYER_COUNT && j >= 0 && j < JOINT_COUNT,
+			ok_pl && ok_j && pl >= 0 && pl < PLAYER_COUNT && j >= 0 && j < JOINT_COUNT,
 			"bad fixture line %q",
 			line,
 		) {
