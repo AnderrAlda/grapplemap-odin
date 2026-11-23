@@ -12,3 +12,4 @@ build/
 .env*
 .claude/settings.local.json
 tests/golden/_actual/
+__pycache__/
