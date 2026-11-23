@@ -753,7 +753,7 @@ the render boundary remains. That must be verified in raylib's code or docs in t
 
 ### 4.5 Open points (need the oracle/dumper)
 
-Not verifiable by reading: `normalRotation` with both cores at the same `xz` and `−0` inputs (§4.3); whether the JS viewer is mirrored (§3.2). `core` pins the first two against the semantics of `atan2` (C99 Annex F), not against the oracle (`test_normal_rotation_signed_zeros`); they stay open for the oracle.
+Not verifiable by reading: `normalRotation` with both cores at the same `xz` and `−0` inputs (§4.3); whether the JS viewer is mirrored (§3.2). `core` pins the two `normalRotation` cases against the semantics of `atan2` (C99 Annex F), not against the oracle (`test_normal_rotation_signed_zeros`); they stay open for the oracle.
 `normalRotation`'s `atan2` bits were measured in #140: the oracle's `atan2` behaves as correctly rounded on every angle of the DB, so the port uses `cr_atan2` (ADR 0003, amendment #161).
 
 ## 5. Transforms

@@ -298,10 +298,12 @@ test_orient_canonically_literal_bits :: proc(t: ^testing.T) {
 	}
 	// The fixture's mirror case really mirrors (else the two expected positions would be equal).
 	testing.expect(t, !same_position(c.without_mirror, c.with_mirror), "fixture cases must differ")
+	without := orient_canonically_without_mirror(c.input)
+	with_mirror := orient_canonically_with_mirror(c.input)
 	for pl in 0 ..< PLAYER_COUNT {
 		for j in Joint {
-			a := orient_canonically_without_mirror(c.input)[pl][j]
-			b := orient_canonically_with_mirror(c.input)[pl][j]
+			a := without[pl][j]
+			b := with_mirror[pl][j]
 			testing.expectf(
 				t,
 				same_v3(a, c.without_mirror[pl][j]),

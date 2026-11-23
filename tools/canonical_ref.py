@@ -39,7 +39,7 @@ def make_position(seed):
     """Asymmetric position of 2 x 23 joints on the 1/1000 grid, no coordinate pattern, one joint at (-0, -0, -0)."""
     rng = random.Random(seed)
     p = [[tuple(grid(rng.randrange(4000)) for _ in range(3)) for _ in range(JOINTS)] for _ in range(PLAYERS)]
-    p[0][0] = (-0.0, -0.0, -0.0)  # signed zeros through rotate/mirror (the offset of apply masks a dropped `+ 0`)
+    p[0][0] = (-0.0, -0.0, -0.0)  # kept for coverage: the offset of apply masks the sign of these zeros
     return p
 
 
