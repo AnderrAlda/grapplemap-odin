@@ -88,6 +88,10 @@ test_is_reoriented_prefilter :: proc(t: ^testing.T) {
 	u, ok = is_reoriented(a, b)
 	testing.expect(t, ok)
 	testing.expect(t, !u.swap_players && !u.mirror)
+	// The pre-filter's strict `>` at exactly 0.05 is not observable. A match needs player 1's head within 4 cm after
+	// aligning player 0's heads, so |d_a − d_b| ≤ 0.04. With d_a² − d_b² = 0.05, both head2head values are then
+	// ≥ 0.36. Doubles that large are multiples of 2⁻⁵⁴, but 0.05 needs a 2⁻⁵⁶ step: no such pair differs by
+	// exactly 0.05.
 }
 
 @(test)
@@ -126,7 +130,7 @@ test_is_reoriented_four_attempts :: proc(t: ^testing.T) {
 	testing.expect(t, basically_same(apply(u.reorientation, a), ra))
 	expect_case(t, a, mirror(ra), swap = false, mirror = true)
 	expect_case(t, a, swap_players(ra), swap = true, mirror = false)
-	// The mirror of the second pass is of the swapped copy.
+	// Both flags at once. (Mirror and swap commute on a position, so this case cannot tell which copy is mirrored.)
 	expect_case(t, a, swap_players(mirror(ra)), swap = true, mirror = true)
 }
 

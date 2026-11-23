@@ -54,6 +54,8 @@ test_node_matching_matches_oracle_graph :: proc(t: ^testing.T) {
 	state := Match_State {
 		t     = t,
 		seqs  = seqs,
+		// Made here, with the test's allocator: a map keeps the allocator it was made with, so the inserts in
+		// `check_graph_line` (where `context.allocator` is the per-line arena) never land in the arena.
 		nodes = make(map[int]core.Position),
 	}
 	defer delete(state.nodes)
@@ -101,6 +103,9 @@ check_graph_line :: proc(line: []byte, ctx: rawptr) -> bool {
 			if !expect_position(t, p, want, "named node position, block", b, 0) {
 				return false
 			}
+		}
+		if !testing.expectf(t, node.index not_in state.nodes, "node %d: repeated", node.index) {
+			return false
 		}
 		state.nodes[node.index] = p
 		return true
