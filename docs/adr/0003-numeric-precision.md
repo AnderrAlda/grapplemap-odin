@@ -118,12 +118,15 @@ still not contracted, at `-o:speed` and `-o:aggressive`. Tests compare bit for b
 `tools/cr_atan2_ref.py`, a Python `decimal` reference independent of CORE-MATH: special values (C99 Annex F),
 edge cases, a selection of CORE-MATH's worst cases and 1,000 random pairs.
 
-**Known gap (decision pending, #161).** At the pinned commit, CORE-MATH's `atan2` cannot round one known input:
-`atan2(0x1.8000000000003p-51, 0x1.0000000000003p+0)`, the last line of its own `atan2.wc` ("inputs [that] gave
-\"Unexpected worst-case found\""). The exact value lies 1.2e-46 ulp above a rounding midpoint (about 2^-152.6
-ulp), finer than the accurate path's 192-bit error bound. The C prints a message and calls `exit(1)`. The port, which
-drops that branch, returns `0x3cc7fffffffffffe` instead of the correctly rounded `0x3cc7ffffffffffff`. It is far
-from the DB's angles: all 8,323 headings give the correctly rounded value.
+**Upstream gap, handled as an exception (#161).** At the pinned commit (upstream `master` at the time),
+CORE-MATH's `atan2` cannot round one known input: `atan2(±0x1.8000000000003p-51, 0x1.0000000000003p+0)`, the last
+line of its own `atan2.wc` ("inputs [that] gave \"Unexpected worst-case found\""). The exact value lies 1.2e-46
+ulp above a rounding midpoint (about 2^-152.6 ulp), finer than the accurate path's 192-bit error bound; the C prints
+a message and calls `exit(1)`. The port checks an `EXCEPTIONS` table first in `atan2_accurate`, in the style of
+CORE-MATH's own tables (`atanpi.c:203-233`), and returns the correctly rounded `±0x3cc7ffffffffffff` there, as
+computed by `tools/cr_atan2_ref.py` at 100, 1000 and 3000 digits. Decided by MAIN (delegated by Ander). It should be
+reported upstream; when a CORE-MATH commit fixes it, re-pin and drop the entry. The input is far from the DB's
+angles.
 
 **Rejected.**
 - *glibc 2.27's IBM libm* (`e_atan2.c`, `s_sin.c` with their multi-precision slow paths): the literal source of the

@@ -17,6 +17,8 @@ Differences from the C, none of which changes a result in round-to-nearest:
   CORE-MATH's error analysis rules it out, and this function never aborts. The value computed is returned.
 - `as_ldexp` uses the portable integer form (tint.h:377-379), not the SSE2 one.
 - The disabled `#if 0` block (atan2.c:287-293) is not ported.
+- Added: an `EXCEPTIONS` table, checked first in `atan2_accurate`, for one input that the pinned commit cannot round
+  (an upstream gap; see EXCEPTIONS).
 
 Licence of the original (MIT):
 
@@ -236,6 +238,12 @@ atan2_special :: proc "contextless" (y0, x0: f64) -> f64 {
 // 192-bit `Tint` arithmetic. Reached when the fast path cannot decide the rounding.
 @(private = "file")
 atan2_accurate :: proc "contextless" (y, x: f64) -> f64 {
+	// Not in CORE-MATH: exceptional inputs the 192-bit path cannot round (see EXCEPTIONS). atan2 is odd in y.
+	for e in EXCEPTIONS {
+		if transmute(u64)abs(y) == e[0] && transmute(u64)x == e[1] {
+			return copysign(transmute(f64)e[2], y)
+		}
+	}
 	// atan2.c:214-244: t = y/x; when it underflows to 0, atan2 is t (x > 0) or ±π.
 	t := y / x
 	if t == 0 {
@@ -657,6 +665,21 @@ TINT_PI2 :: Tint {
 	ex  = 1,
 	sgn = 0,
 }
+
+// EXCEPTIONS: {|y|, x, atan2(|y|, x)} as bits, for inputs where CORE-MATH's accurate path cannot decide the
+// rounding at the pinned commit (an upstream gap, not part of the original code). The C prints "Unexpected
+// worst-case found" and calls exit(1) (tint.h:409-416); without this table the port would return the value 1 ulp
+// below. Same style as CORE-MATH's exception tables (e.g. src/binary64/atanpi/atanpi.c:203-233).
+// - atan2(0x1.8000000000003p-51, 0x1.0000000000003p+0), the last line of atan2.wc ("inputs [that] gave
+//   'Unexpected worst-case found'"). tools/cr_atan2_ref.py at 100 digits:
+//   6.661338147750937763427592719147786728008940094775819362737934287170141549501921154939992961230463413e-16;
+//   the midpoint of 0x3cc7fffffffffffe and 0x3cc7ffffffffffff is
+//   6.6613381477509377634275927191477867280089400947758193627379341705818660557270050048828125e-16,
+//   so the value is 1.2e-46 ulp above it and rounds to 0x3cc7ffffffffffff (same at 1000 and 3000 digits).
+//   With x < 0 the result (±π minus a tiny value) is far from a midpoint and needs no entry.
+@(private = "file")
+@(rodata)
+EXCEPTIONS := [1][3]u64{{0x3cc8000000000003, 0x3ff0000000000003, 0x3cc7ffffffffffff}}
 
 @(private = "file")
 @(rodata)
