@@ -82,15 +82,55 @@ What Odin does was checked, not assumed, with the pinned toolchain (`.odin-versi
 - The render boundary does one `f64 → f32` conversion per joint per frame.
 
 ### Open points (not verifiable now)
-- **`sin`/`cos` bits.** The original uses glibc 2.27; the port calls the libm of the machine it runs on (a newer
-  glibc on Linux, Apple's libm on macOS, the browser on wasm). None of them is required to be correctly rounded, so
-  equality over every angle in the DB is **unverified** (phase 2, with the full dump). Options if it fails: port
-  glibc 2.27's `sin`/`cos`/`atan2` (or a correctly rounded library), verified against the full dump, for every
-  target; or a tolerance (Ander decides).
-- **`atan2` bits.** Odin's `atan2` is Cephes, not glibc's: likely to differ in the last bit for some inputs
-  (**unverified**). The same options apply; it feeds node matching (`angleOff`), `normalRotation` and canonical
-  orientation.
-- **Constant folding.** LLVM may evaluate `llvm.sin`/`llvm.cos` with constant arguments at compile time with its own
-  implementation; whether that can differ from the runtime call is **unverified**. It matters only for
-  compile-time constant angles.
-- **wasm** (phase 7): `sin`/`cos` from the JS host; to be checked against the same fixtures when the target exists.
+- **`sin`/`cos`/`atan2` bits: resolved by the amendment below (#161).** `core` uses its own correctly rounded
+  functions, not the libm or `math.atan2`; `cr_atan2` lands in #161, `cr_sin`/`cr_cos` in #162.
+- **Constant folding.** No longer applies to these functions: `cr_atan2` (and `cr_sin`/`cr_cos`) are ordinary Odin
+  procs, not the `llvm.sin`/`llvm.cos` intrinsics, so LLVM has no built-in implementation to fold them with. It
+  would still apply to any `math.sin`/`math.cos` call, which `core` does not make.
+- **wasm** (phase 7): the `cr_*` functions do not depend on the host; only `fma` must still be a true fused
+  multiply-add there (`llvm.fma`, see the amendment), to be checked when the target exists.
+
+## Amendment (#161), 2026-11-23
+**Decision.** `core` computes `atan2`, `sin` and `cos` with its own **correctly rounded** binary64 functions,
+ported from [CORE-MATH](https://core-math.gitlabpages.inria.fr/) (MIT): `cr_atan2` (`src/core/cr_atan2.odin`,
+#161) and `cr_sin`/`cr_cos` (#162). It uses them on every target (linux, macOS, wasm later), and never calls
+`math.atan2`, `math.sin`, `math.cos` or the platform libm. This settles points 5 and 6 above for trigonometry: the
+results are compared bit for bit, with no tolerance.
+
+**Why.**
+- *Measurement (#140, full oracle dump, 8,323 positions).* With Odin's `math.atan2` (Cephes) and glibc 2.39's
+  `sin`/`cos`, 2,119 canonical orientations differ from the oracle. With a correctly rounded `atan2` and glibc
+  2.39's `sin`/`cos`, 29 differ: exactly the angles where glibc 2.39's `sin`/`cos` are not correctly rounded. With
+  all three correctly rounded, 0 differ. The oracle (glibc 2.27, which still had the IBM Accurate Mathematical
+  Library's slow paths) behaves as correctly rounded on every angle of the DB; no modern libm, and not Odin's
+  `atan2`, reproduces it.
+- *Platform independence.* A correctly rounded function has one right answer per input, so the port gives the same
+  bits on linux, macOS and wasm, whatever the host libm. macOS does not need measuring separately.
+- *Licence and size.* CORE-MATH is MIT and each function is one self-contained file.
+- *wasm later.* No dependency on the JS host's `Math.sin`/`Math.atan2`.
+
+**How.** The port keeps CORE-MATH's algorithm, operation order and constants (bit literals), cites the C line
+ranges, and supports round-to-nearest only (no `fenv`, no `errno`). It uses `intrinsics.fused_mul_add`, so
+decision 2's ban on hand-written FMA does not cover these files: the algorithm requires a true FMA. Checked with
+the pinned toolchain: it lowers to `llvm.fma.f64`, never `llvm.fmuladd`. That is `fmadd` on arm64, and a call to
+the libm's `fma`, which is correctly rounded, on x86-64 without the FMA extension (`-o:speed`). Plain `a*b + c` is
+still not contracted, at `-o:speed` and `-o:aggressive`. Tests compare bit for bit against
+`tools/cr_atan2_ref.py`, a Python `decimal` reference independent of CORE-MATH: special values (C99 Annex F),
+edge cases, a selection of CORE-MATH's worst cases and 1,000 random pairs.
+
+**Upstream gap, handled as an exception (#161).** At the pinned commit (upstream `master` at the time),
+CORE-MATH's `atan2` cannot round one known input: `atan2(±0x1.8000000000003p-51, 0x1.0000000000003p+0)`, the last
+line of its own `atan2.wc` ("inputs [that] gave \"Unexpected worst-case found\""). The exact value lies 1.2e-46
+ulp above a rounding midpoint (about 2^-152.6 ulp), finer than the accurate path's 192-bit error bound; the C prints
+a message and calls `exit(1)`. The port checks an `EXCEPTIONS` table first in `atan2_accurate`, in the style of
+CORE-MATH's own tables (`atanpi.c:203-233`), and returns the correctly rounded `±0x3cc7ffffffffffff` there, as
+computed by `tools/cr_atan2_ref.py` at 100, 1000 and 3000 digits. Decided by MAIN (delegated by Ander). It should be
+reported upstream; when a CORE-MATH commit fixes it, re-pin and drop the entry. The input is far from the DB's
+angles.
+
+**Rejected.**
+- *glibc 2.27's IBM libm* (`e_atan2.c`, `s_sin.c` with their multi-precision slow paths): the literal source of the
+  oracle, but LGPL-2.1, large, and it carries multi-precision code.
+- *A tolerance on trig results*: against decisions 5 and 6. The discrete `mirror` flag of the canonical orientation
+  and node matching would flip near a threshold, so a tolerance does not make them reliable.
+- *The host libm, or Odin's `math`*: measured above, they do not match the oracle and differ between platforms.
