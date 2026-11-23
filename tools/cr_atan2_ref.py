@@ -30,7 +30,8 @@ RANDOM_N, RANDOM_SEED = 1000, 161
 
 # Subnormal inputs, y/x overflow and underflow, the tiny-y/x shortcuts of atan2_accurate, the 2^-920 and 2^1022
 # rescaling of the fast path, |x/y| >= 2^53, the octant boundaries, and y/x exactly at the midpoint between the
-# largest subnormal and 2^-1022 (atan's -t^3/3 decides the rounding: needs ~620 digits).
+# largest subnormal and 2^-1022 (atan's -t^3/3 decides the rounding: needs ~620 digits), and accurate-path pairs
+# with a subnormal divisor (tint_inv's subnormal branch).
 EDGE = """
 0x1p-1074,0x1p-1074
 0x1p-1074,0x1p+0
@@ -77,6 +78,10 @@ EDGE = """
 0x1.fffffffffffffp-1,0x1p+0
 0x1.fffffffffffffp-542,0x1p+481
 -0x1.fffffffffffffp-542,0x1p+481
+-0x1p-1074,0x0.fffffffffffffp-1022
+0x1.8p-1073,-0x0.0000000000003p-1022
+0x0.8000000000001p-1022,0x0.fffffffffffffp-1022
+-0x0.0000000abcdefp-1022,-0x0.1234567890123p-1022
 """
 MAX_PREC = 6400
 GUARD = 20  # digits lost to the argument halvings and the series, with a wide margin
@@ -196,7 +201,10 @@ def parse_pairs(lines):
         line = line.split("#")[0].strip()
         if line:
             ys, xs = line.split(",")
-            pairs.append((parse_hex(ys), parse_hex(xs)))
+            try:
+                pairs.append((parse_hex(ys), parse_hex(xs)))
+            except ValueError:  # "snan", "nan" and other non-hex spellings of atan2.wc: special values
+                print(f"skipped non-finite input: {line}", file=sys.stderr)
     return pairs
 
 

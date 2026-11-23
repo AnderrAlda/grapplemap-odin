@@ -183,7 +183,15 @@ test_cr_atan2_quadrants_and_odd_symmetry :: proc(t: ^testing.T) {
 	for c in fixture_cases(t, "random") {
 		y, x := from_bits(c.y), from_bits(c.x)
 		r := cr_atan2(y, x)
-		testing.expectf(t, (r < 0) == (y < 0), "sign of cr_atan2(%16x, %16x) = %v", c.y, c.x, r)
+		// Sign bits, not `r < 0`: a result that underflows to -0 is negative too.
+		testing.expectf(
+			t,
+			transmute(u64)r >> 63 == c.y >> 63,
+			"sign of cr_atan2(%16x, %16x) = %v",
+			c.y,
+			c.x,
+			r,
+		)
 		if x < 0 {
 			testing.expectf(
 				t,

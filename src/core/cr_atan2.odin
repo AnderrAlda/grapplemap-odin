@@ -13,8 +13,9 @@ Differences from the C, none of which changes a result in round-to-nearest:
 - `tint_t` is a struct of `h, m, l, ex, sgn`, and the C union's 128-bit view `_h` is `(h << 64) | m`. The C
   routines write through pointers that may alias their inputs; here they take values and return values. Each C
   routine reads its operands before it overwrites them, so the two are equivalent.
-- `tint_tod`'s "Unexpected worst-case found" branch (tint.h:409-416) prints and calls `exit(1)`. It is dropped:
-  CORE-MATH's error analysis rules it out, and this function never aborts. The value computed is returned.
+- `tint_tod`'s "Unexpected worst-case found" branch (tint.h:409-416) prints and calls `exit(1)`. It is dropped by
+  decision (this function never aborts): the known trigger at the pinned commit is in `EXCEPTIONS`, and any other
+  trigger would return the computed value, which may then be 1 ulp off.
 - `as_ldexp` uses the portable integer form (tint.h:377-379), not the SSE2 one.
 - The disabled `#if 0` block (atan2.c:287-293) is not ported.
 - Added: an `EXCEPTIONS` table, checked first in `atan2_accurate`, for one input that the pinned commit cannot round
@@ -22,7 +23,8 @@ Differences from the C, none of which changes a result in round-to-nearest:
 
 Licence of the original (MIT):
 
-Copyright (c) 2024-2025 Paul Zimmermann and Alexei Sibidanov
+Copyright (c) 2024-2025 Paul Zimmermann and Alexei Sibidanov (atan2.c)
+Copyright (c) 2023-2024 Paul Zimmermann and Alexei Sibidanov (tint.h)
 
 This file is part of the CORE-MATH project
 (https://core-math.gitlabpages.inria.fr/).
