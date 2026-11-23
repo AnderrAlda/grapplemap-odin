@@ -1,5 +1,5 @@
 # Assets de terceros
-No se añade ningún asset (texturas, fuentes, HDRIs) sin registrar aquí su origen y licencia compatible.
+No se añade ningún asset (texturas, fuentes, HDRIs, código portado) sin registrar aquí su origen y licencia compatible.
 
 | Asset | Origen (URL) | Licencia | Fecha |
 |---|---|---|---|

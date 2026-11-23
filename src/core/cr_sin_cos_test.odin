@@ -125,8 +125,9 @@ test_cr_sin_cos_special_values :: proc(t: ^testing.T) {
 	}
 	for x in specials {
 		s, c := cr_sin(x), cr_cos(x)
-		testing.expectf(t, s != s, "cr_sin(0x%16x) = 0x%16x, want NaN", bits(x), bits(s))
-		testing.expectf(t, c != c, "cr_cos(0x%16x) = 0x%16x, want NaN", bits(x), bits(c))
+		// Upstream: sin returns the positive quiet NaN; cos returns x with the quiet bit set (sign and payload kept).
+		testing.expect_value(t, bits(s), u64(0x7FF8000000000000))
+		testing.expect_value(t, bits(c), bits(x) | (u64(1) << 51))
 	}
 
 	// Subnormals and the tiny-|x| fast paths: sin(x) rounds to x and cos(x) to 1.

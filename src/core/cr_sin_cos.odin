@@ -139,7 +139,7 @@ mh_uu :: #force_inline proc "contextless" (a, b: u128) -> u128 {
 }
 
 // eval_ps: Sr/2^128 ~ sin(2 pi r) for 0 <= r < 2^-14, u = 8r, u2 ~ u^2, u4 ~ u^4, u2h = floor(u2/2^64), fixed
-// point, Estrin's scheme. sin.c:191-211 (`evalPS`).
+// point, Estrin's scheme. sin.c:191-209 (`evalPS`).
 @(private = "file")
 eval_ps :: proc "contextless" (u, u2, u2h, u4: u128) -> u128 {
 	sh := PS[2] - PS[3] * u2h
@@ -307,7 +307,8 @@ sin_large_accurate :: proc "contextless" (x: f64) -> f64 {
 }
 
 // cos_exceptions: inputs where cos(x) has 72-88 identical bits after the round bit. cos.c:750-762. Upstream returns
-// `hi + tiny` for the directed roundings; to nearest that sum is `hi`.
+// `hi + tiny` for the directed roundings; to nearest that sum is `hi`. Kept for fidelity: in round to nearest the
+// fixture never reaches it with a result other than `ret` (a mutation of these constants does not turn a test red).
 @(private = "file")
 cos_exceptions :: proc "contextless" (x, ret: f64) -> f64 {
 	switch abs(x) {
@@ -369,8 +370,8 @@ sin_small_accurate :: proc "contextless" (x: f64) -> f64 {
 	return h + l
 }
 
-// sin_table: sin(t1 + t2) as Sh + Sl and cos(t1 + t2) as Ch, t1 = i1 pi/2^7, t2 = i2 pi/2^14. sin.c:900-905 =
-// sin.c:933-938.
+// sin_table: sin(t1 + t2) as Sh + Sl and cos(t1 + t2) as Ch, t1 = i1 pi/2^7, t2 = i2 pi/2^14. sin.c:898-902 =
+// sin.c:935-939.
 @(private = "file")
 sin_table :: #force_inline proc "contextless" (i1, i2: i64) -> (sh, sl, ch: f64) {
 	s1h, s1l := mul_dd(U1[i1][0], U1[i1][1], U2[i2][2], U2[i2][3])
@@ -380,7 +381,7 @@ sin_table :: #force_inline proc "contextless" (i1, i2: i64) -> (sh, sl, ch: f64)
 	return
 }
 
-// cos_table: cos(t1 + t2) as Ch + Cl and sin(t1 + t2) as Sh. cos.c:846-855 = cos.c:924-929.
+// cos_table: cos(t1 + t2) as Ch + Cl and sin(t1 + t2) as Sh. cos.c:846-853 = cos.c:923-927.
 @(private = "file")
 cos_table :: #force_inline proc "contextless" (i1, i2: i64) -> (ch, cl, sh: f64) {
 	c1h, c1l := mul_dd(U1[i1][2], U1[i1][3], U2[i2][2], U2[i2][3]) // cos(t1) cos(t2)
