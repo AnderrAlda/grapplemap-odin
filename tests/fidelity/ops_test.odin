@@ -2,11 +2,13 @@ package fidelity
 
 import "app:core"
 import "core:encoding/json"
+import "core:log"
 import "core:testing"
 
-// Trig-free transforms of `core` (transform.odin) against `ops.ndjson` (tools/oracle/README.md): `mirror`,
-// `swap_players`, `heading` and `center` of every dumped position, bit for bit. `orient_canonically_*` is decoded
-// but not compared (#140).
+// Position transforms of `core` (transform.odin, reorient.odin) against `ops.ndjson` (tools/oracle/README.md):
+// `mirror`, `swap_players`, `heading`, `center` and `orient_canonically_with_mirror`/`…_without_mirror` of every
+// dumped position, bit for bit. The canonical orientations go through `atan2`, `sin` and `cos` of each position's
+// angle: this test is the measurement of the trig bits of ADR 0003 ("Open points").
 
 // Oracle_Position is a position as the dumper writes it: doubles `[player][joint] = [x, y, z]`.
 Oracle_Position :: [core.PLAYER_COUNT][core.JOINT_COUNT][3]f64
@@ -142,6 +144,7 @@ test_transforms_match_oracle_ops :: proc(t: ^testing.T) {
 	testing.expectf(t, nerr == .None, "%s: %v", path, nerr)
 	testing.expectf(t, lines > 0, "%s: no records", path)
 	testing.expect_value(t, state.compared, lines)
+	log.infof("%s: %d records compared", path, state.compared)
 	// Outside the sample (the full dump), every position must have a record: a truncated file must not pass.
 	if oracle_dir() != DEFAULT_ORACLE_DIR {
 		positions := 0
@@ -192,8 +195,34 @@ check_ops_line :: proc(line: []byte, ctx: rawptr) -> bool {
 	for axis in 0 ..< 3 {
 		ok &= expect_bits(t, c[axis], rec.center[axis], "center, block", b)
 	}
+	ok &= expect_position(
+		t,
+		core.orient_canonically_with_mirror(p),
+		rec.orient_canonically_with_mirror,
+		"orient_canonically_with_mirror, block",
+		b,
+		k,
+	)
+	ok &= expect_position(
+		t,
+		core.orient_canonically_without_mirror(p),
+		rec.orient_canonically_without_mirror,
+		"orient_canonically_without_mirror, block",
+		b,
+		k,
+	)
 	if !ok {
-		testing.expectf(t, false, "  at block %d pos %d", b, k)
+		// The angle tells a wrong `atan2` (angle off) from a wrong `sin`/`cos` (same angle, rotation off).
+		a := core.normal_rotation(p)
+		testing.expectf(
+			t,
+			false,
+			"  at block %d pos %d (normal_rotation %.17g, 0x%016x)",
+			b,
+			k,
+			a,
+			transmute(u64)a,
+		)
 	}
 	state.compared += 1
 	return ok

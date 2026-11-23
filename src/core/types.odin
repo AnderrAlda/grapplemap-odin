@@ -46,6 +46,21 @@ Player_Joint :: struct {
 	joint:  Joint,
 }
 
+// Reorientation is `Reorientation` (src/math.hpp:235-243): a rotation of `angle` radians about the y axis, then a
+// translation by `offset`. The zero value is the original's default `{{0,0,0}, 0}`, the identity.
+Reorientation :: struct {
+	offset: V3,
+	angle:  f64,
+}
+
+// Position_Reorientation is `PositionReorientation` (src/positions.hpp:73-96): `reorientation`, then `mirror`, then
+// `swap_players`. The zero value is the original's default (identity, no swap, no mirror).
+Position_Reorientation :: struct {
+	reorientation: Reorientation,
+	swap_players:  bool,
+	mirror:        bool,
+}
+
 // opponent(p) = 1 − p (src/players.hpp:38).
 opponent :: proc(player: int) -> int {
 	assert(player == 0 || player == 1)

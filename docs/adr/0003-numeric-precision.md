@@ -84,6 +84,10 @@ What Odin does was checked, not assumed, with the pinned toolchain (`.odin-versi
 ### Open points (not verifiable now)
 - **`sin`/`cos`/`atan2` bits: resolved by the amendment below (#161).** `core` uses its own correctly rounded
   functions, not the libm or `math.atan2`; `cr_atan2` lands in #161, `cr_sin`/`cr_cos` in #162.
+  Verified in #140: with `cr_atan2`/`cr_sin`/`cr_cos`, `orient_canonically_with_mirror`/`…_without_mirror` match
+  the oracle bit for bit with **0 mismatches**, on the sample (62 positions) and on the full dump (8,323 positions,
+  the pinned `FULL.sha256`), linux x86-64, Odin `dev-2026-11-nightly:9a69916`; and on the full dump in CI, linux
+  and macOS (`fidelity` workflow run 45129349035, PR #167).
 - **Constant folding.** No longer applies to these functions: `cr_atan2` (and `cr_sin`/`cr_cos`) are ordinary Odin
   procs, not the `llvm.sin`/`llvm.cos` intrinsics, so LLVM has no built-in implementation to fold them with. It
   would still apply to any `math.sin`/`math.cos` call, which `core` does not make.

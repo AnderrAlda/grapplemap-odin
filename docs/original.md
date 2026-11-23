@@ -754,6 +754,7 @@ the render boundary remains. That must be verified in raylib's code or docs in t
 ### 4.5 Open points (need the oracle/dumper)
 
 Not verifiable by reading: `normalRotation` with both cores at the same `xz` and `−0` inputs (§4.3); whether the JS viewer is mirrored (§3.2).
+`normalRotation`'s `atan2` bits were measured in #140: the oracle's `atan2` behaves as correctly rounded on every angle of the DB, so the port uses `cr_atan2` (ADR 0003, amendment #161).
 
 ## 5. Transforms
 
@@ -948,9 +949,9 @@ Must match semantically (the port may choose its own representation as long as t
 
 ### 5.7 Open points (need the oracle/dumper)
 
-- Bit equality of `sin`/`cos`/`atan2`: the original uses glibc's `libm` (via `<cmath>`); whether the Odin port's
-  functions give the same bits for every angle in the DB is **[unverified]**; if not, either call the same libm or
-  compare with a tolerance (needs a decision, phase 2).
+- Bit equality of `sin`/`cos`/`atan2`: **measured in #140.** On every angle of the DB the original's (glibc 2.27)
+  behave as correctly rounded; Odin's `atan2` and a modern libm's `sin`/`cos` are not. The port uses its own correctly rounded
+  `cr_atan2`/`cr_sin`/`cr_cos` and matches the full dump with 0 mismatches (ADR 0003, amendment #161).
 - ~~`compose`/`inverse` are not dumped directly~~: closed by dumper v4 (#141): `compose.ndjson` has, per transition,
   `inverse` of both endpoint reorientations, `compose(from, to)` and `compose(inverse(from), to)`
   (`tools/oracle/README.md`).
