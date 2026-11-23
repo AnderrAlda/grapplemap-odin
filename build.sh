@@ -56,8 +56,18 @@ cmd_changelog_check() {
 	return $bad
 }
 
+# core-trig-check: `core` computes atan2/sin/cos only with its correctly rounded `cr_*` functions, never with
+# `math.atan2`/`math.sin`/`math.cos` or the libm (ADR 0003, amendment #161).
+cmd_core_trig_check() {
+	if grep -nE '(^|[^A-Za-z0-9_])math\.(atan2|sin|cos)[a-z0-9_]*[[:space:]]*\(' src/core/*.odin; then
+		echo "src/core must use cr_atan2/cr_sin/cr_cos, not math.atan2/sin/cos (ADR 0003, amendment #161)" >&2
+		return 1
+	fi
+}
+
 cmd_check() {
 	cmd_changelog_check
+	cmd_core_trig_check
 	odin check src $COLLECTION $VET
 	odin check tests/fidelity $COLLECTION $VET -no-entry-point
 }
