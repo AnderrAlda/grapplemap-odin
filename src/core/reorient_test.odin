@@ -323,3 +323,201 @@ test_orient_canonically_literal_bits :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+// Inverse and composition (#144, src/math.hpp:257-265, src/positions.cpp:97-128). The literals come from this Python
+// (Python floats, the correctly rounded sin/cos of tools/cr_trig_ref.py, the operation order of reorient.odin), run
+// from tools/:
+//
+//     import cr_trig_ref
+//     def rot(a, v):
+//         s, c = cr_trig_ref.sin_cos(a); ns = -s; x, y, z = v
+//         return (((c*x + 0.0*y) + s*z) + 0.0, ((0.0*x + 1.0*y) + 0.0*z) + 0.0, ((ns*x + 0.0*y) + c*z) + 0.0)
+//     def inv(o, a): return (rot(-a, tuple(-k for k in o)), -a)
+//     def comp(ao, aa, bo, ba): return (tuple(p + q for p, q in zip(bo, rot(ba, ao))), aa + ba)
+//     A = ((1.0, 2.0, 3.0), 0.5); B = ((-0.25, 0.75, 1.5), -1.2)
+//     inv(*A); comp(*A, *B); comp(*B, *A)
+//     o, a = inv(*A); ((-o[0], o[1], o[2]), -a)                      # inverse, mirrored
+//     comp(A[0], A[1], (-B[0][0], B[0][1], B[0][2]), -B[1])         # compose, a mirrored
+
+@(private = "file")
+REORIENTATION_A :: Reorientation {
+	offset = {1, 2, 3},
+	angle  = 0.5,
+}
+
+@(private = "file")
+REORIENTATION_B :: Reorientation {
+	offset = {-0.25, 0.75, 1.5},
+	angle  = -1.2,
+}
+
+@(private = "file")
+same_reorientation :: proc(a, b: Reorientation) -> bool {
+	return same_v3(a.offset, b.offset) && bits(a.angle) == bits(b.angle)
+}
+
+@(test)
+test_reorientation_inverse_literal_bits :: proc(t: ^testing.T) {
+	r := reorientation_inverse(REORIENTATION_A)
+	testing.expectf(
+		t,
+		same_reorientation(r, {{0.5606940539222363, -2.0, -3.1121732242753213}, -0.5}),
+		"inverse(A) = %v",
+		r,
+	)
+}
+
+@(test)
+test_reorientation_inverse_of_identity_signed_zeros :: proc(t: ^testing.T) {
+	// rotate_v3(-0, (-0, -0, -0)): the `+ 0` terms give +0 everywhere; the angle is -0 (the oracle's `inverse_from`
+	// of an identity end).
+	r := reorientation_inverse(Reorientation{})
+	testing.expect_value(t, bits(r.offset.x), bits(0.0))
+	testing.expect_value(t, bits(r.offset.y), bits(0.0))
+	testing.expect_value(t, bits(r.offset.z), bits(0.0))
+	testing.expect_value(t, bits(r.angle), bits(-0.0))
+}
+
+@(test)
+test_reorientation_compose_literal_bits_and_order :: proc(t: ^testing.T) {
+	ab := reorientation_compose(REORIENTATION_A, REORIENTATION_B)
+	testing.expectf(
+		t,
+		same_reorientation(ab, {{-2.683759503425005, 2.75, 3.519112349397247}, -0.7}),
+		"compose(A, B) = %v",
+		ab,
+	)
+	ba := reorientation_compose(REORIENTATION_B, REORIENTATION_A)
+	testing.expectf(
+		t,
+		same_reorientation(ba, {{1.4997426674337113, 2.75, 4.43623022748661}, -0.7}),
+		"compose(B, A) = %v",
+		ba,
+	)
+}
+
+@(test)
+test_reorientation_compose_does_not_wrap_angle :: proc(t: ^testing.T) {
+	a := Reorientation {
+		angle = 3,
+	}
+	testing.expect_value(t, bits(reorientation_compose(a, a).angle), bits(6.0))
+}
+
+@(test)
+test_inverse_mirror_flips_after_inverting :: proc(t: ^testing.T) {
+	u := Position_Reorientation {
+		reorientation = REORIENTATION_A,
+		swap_players  = true,
+		mirror        = true,
+	}
+	r := inverse(u)
+	testing.expectf(
+		t,
+		same_reorientation(
+			r.reorientation,
+			{{-0.5606940539222363, -2.0, -3.1121732242753213}, 0.5},
+		),
+		"inverse(A, mirror) = %v",
+		r.reorientation,
+	)
+	testing.expect(t, r.swap_players && r.mirror, "flags kept")
+	u.mirror = false
+	u.swap_players = false
+	r = inverse(u)
+	testing.expect(t, same_reorientation(r.reorientation, reorientation_inverse(REORIENTATION_A)))
+	testing.expect(t, !r.swap_players && !r.mirror, "flags kept")
+}
+
+@(test)
+test_inverse_mirror_of_identity_signed_zeros :: proc(t: ^testing.T) {
+	// Away from zero, flipping before or after inverting gives the same bits (rounding is symmetric in the sign); only
+	// the signed zeros tell them apart. After (the original): {(+0, +0, +0), -0} flipped to {(-0, +0, +0), +0}.
+	// Before: inverse of {(-0, 0, 0), -0} = {rotate_v3(+0, (+0, -0, -0)), +0} = {(+0, +0, +0), +0}.
+	r := inverse({mirror = true})
+	testing.expect_value(t, bits(r.reorientation.offset.x), bits(-0.0))
+	testing.expect_value(t, bits(r.reorientation.offset.y), bits(0.0))
+	testing.expect_value(t, bits(r.reorientation.offset.z), bits(0.0))
+	testing.expect_value(t, bits(r.reorientation.angle), bits(0.0))
+}
+
+@(test)
+test_compose_a_mirror_conjugates_b :: proc(t: ^testing.T) {
+	a := Position_Reorientation {
+		reorientation = REORIENTATION_A,
+		mirror        = true,
+	}
+	b := Position_Reorientation {
+		reorientation = REORIENTATION_B,
+	}
+	r := compose(a, b)
+	testing.expectf(
+		t,
+		same_reorientation(r.reorientation, {{3.4084750123783527, 2.75, 1.6550341774627946}, 1.7}),
+		"compose(A mirror, B) = %v",
+		r.reorientation,
+	)
+	// b.mirror alone does not conjugate.
+	a.mirror = false
+	b.mirror = true
+	r = compose(a, b)
+	testing.expectf(
+		t,
+		same_reorientation(r.reorientation, {{-2.683759503425005, 2.75, 3.519112349397247}, -0.7}),
+		"compose(A, B mirror) = %v",
+		r.reorientation,
+	)
+}
+
+@(test)
+test_compose_flags_xor :: proc(t: ^testing.T) {
+	for i in 0 ..< 16 {
+		a := Position_Reorientation {
+			swap_players = i & 1 != 0,
+			mirror       = i & 2 != 0,
+		}
+		b := Position_Reorientation {
+			swap_players = i & 4 != 0,
+			mirror       = i & 8 != 0,
+		}
+		r := compose(a, b)
+		testing.expectf(
+			t,
+			r.swap_players == (a.swap_players != b.swap_players),
+			"swap, case %d",
+			i,
+		)
+		testing.expectf(t, r.mirror == (a.mirror != b.mirror), "mirror, case %d", i)
+	}
+}
+
+// Semantic properties (not fidelity: `basically_same`, 4 cm): `compose(a, b)` is "first a, then b" and `inverse(u)`
+// undoes `u`, for every flag combination.
+@(test)
+test_compose_and_inverse_semantics :: proc(t: ^testing.T) {
+	p := sample_position()
+	for i in 0 ..< 16 {
+		a := Position_Reorientation {
+			reorientation = REORIENTATION_A,
+			swap_players  = i & 1 != 0,
+			mirror        = i & 2 != 0,
+		}
+		b := Position_Reorientation {
+			reorientation = REORIENTATION_B,
+			swap_players  = i & 4 != 0,
+			mirror        = i & 8 != 0,
+		}
+		testing.expectf(
+			t,
+			basically_same(reorient(compose(a, b), p), reorient(b, reorient(a, p))),
+			"compose, case %d",
+			i,
+		)
+		testing.expectf(
+			t,
+			basically_same(reorient(inverse(a), reorient(a, p)), p),
+			"inverse, case %d",
+			i,
+		)
+	}
+}

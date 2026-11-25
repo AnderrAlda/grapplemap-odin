@@ -52,6 +52,46 @@ apply :: proc(r: Reorientation, p: Position) -> Position {
 	return q
 }
 
+// reorientation_inverse is `inverse(Reorientation)` (src/math.hpp:257-260): `{yrot(-angle) * -offset, -angle}`. The
+// offset is negated per component **before** rotating (it decides the sign of zero: the identity gives
+// `{(+0, +0, +0), -0}`).
+reorientation_inverse :: proc(x: Reorientation) -> Reorientation {
+	return {rotate_v3(-x.angle, -x.offset), -x.angle}
+}
+
+// reorientation_compose is `compose(Reorientation, Reorientation)` (src/math.hpp:262-265): first `a`, then `b`. The
+// angle is the plain sum, never wrapped to (−π, π].
+reorientation_compose :: proc(a, b: Reorientation) -> Reorientation {
+	return {b.offset + rotate_v3(b.angle, a.offset), a.angle + b.angle}
+}
+
+// inverse is `inverse(PositionReorientation)` (src/positions.cpp:97-109): the inverse reorientation, same flags; when
+// mirrored, its angle and offset.x are negated after inverting. `inverse(inverse(u))` equals `u` only up to rounding.
+inverse :: proc(u: Position_Reorientation) -> Position_Reorientation {
+	r := Position_Reorientation{reorientation_inverse(u.reorientation), u.swap_players, u.mirror}
+	if u.mirror {
+		r.reorientation.angle = -r.reorientation.angle
+		r.reorientation.offset.x = -r.reorientation.offset.x
+	}
+	return r
+}
+
+// compose is `compose(PositionReorientation, PositionReorientation)` (src/positions.cpp:111-128): first `a`, then `b`.
+// `a.mirror` (not `b.mirror`) conjugates `b`'s reorientation (angle and offset.x negated); the flags combine by XOR.
+// The angle is not wrapped.
+compose :: proc(a, b: Position_Reorientation) -> Position_Reorientation {
+	br := b.reorientation
+	if a.mirror {
+		br.angle = -br.angle
+		br.offset.x = -br.offset.x
+	}
+	return {
+		reorientation_compose(a.reorientation, br),
+		a.swap_players != b.swap_players,
+		a.mirror != b.mirror,
+	}
+}
+
 // reorient is `PositionReorientation::operator()(Position)` (src/positions.hpp:82-88): apply, then mirror, then swap.
 reorient :: proc(u: Position_Reorientation, p: Position) -> Position {
 	q := apply(u.reorientation, p)
