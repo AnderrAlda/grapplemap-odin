@@ -300,6 +300,17 @@ json_read_errors :: proc(t: ^testing.T) {
 			6,
 			1,
 		},
+		{
+			"duplicate description, entry over several lines",
+			sub(
+				doc,
+				`{"id":2,"description":["B"],`,
+				"{\"id\":2,\n\"description\":[\"A\",\"tags: x\"],\n",
+			),
+			.Duplicate_Description,
+			6,
+			1,
+		},
 		{"id 0", sub(doc, `{"id":2,`, `{"id":0,`), .Duplicate_Id, 6, 1},
 		{"id = next_id", sub(doc, `{"id":2,`, `{"id":5,`), .Duplicate_Id, 6, 1},
 		{"id across arrays", sub(doc, `{"id":4,`, `{"id":1,`), .Duplicate_Id, 10, 3},
