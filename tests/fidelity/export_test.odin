@@ -10,14 +10,12 @@ import "core:testing"
 // `meta.json` `save_md5`/`save_equals_db` always, and `save.txt` byte for byte when the oracle dir has it (full
 // dump only).
 
-@(private = "file")
 Save_Meta :: struct {
 	save_md5:       Maybe(string), // null when only meta.json was written
 	save_equals_db: bool,
 }
 
 // expect_same_bytes: on the first difference, the offset and the 1-based line, not the whole buffer.
-@(private = "file")
 expect_same_bytes :: proc(
 	t: ^testing.T,
 	got, want: []byte,
