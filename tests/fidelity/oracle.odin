@@ -50,9 +50,10 @@ load_db :: proc(t: ^testing.T, allocator := context.allocator) -> (data: []byte,
 }
 
 // The DB graph shared by every test of this binary (one full-DB `load_graph` costs ~1 min under test flags, #174).
-// Loaded once (`sync.once_do`), never destroyed: the DB bytes are on `runtime.heap_allocator()` and the graph in its
-// own arena, so the per-test tracking allocator never sees them, and both stay reachable from these globals until
-// exit, which ASan's leak checker does not report. A failed load is cached and reported by every caller.
+// Loaded once (`sync.once_do`), never destroyed: the DB bytes are read on `runtime.heap_allocator()` and freed after
+// the load, and the graph lives in its own virtual (mmap'd) arena, so neither the per-test tracking allocator nor
+// ASan's leak checker sees it. Tests must only read it (a test that mutates a graph loads its own). A failed load is
+// cached and reported by every caller.
 @(private = "file")
 Shared_Graph :: struct {
 	graph:    core.Graph,

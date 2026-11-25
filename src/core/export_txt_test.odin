@@ -61,6 +61,8 @@ expect_export_error :: proc(
 		testing.expect_value(t, ee.line, 0, loc = loc)
 	}
 	testing.expect(t, out == nil, "result must be nil on error", loc = loc)
+	// "A failed export allocates nothing" (export_txt.odin), not only "frees what it allocated".
+	testing.expect_value(t, track.total_allocation_count, 0, loc = loc)
 	testing.expect_value(t, len(track.allocation_map), 0, loc = loc)
 	if out != nil {
 		delete(out, mem.tracking_allocator(&track))
@@ -178,7 +180,8 @@ test_export_edge_coordinates :: proc(t: ^testing.T) {
 @(test)
 test_export_full_grid :: proc(t: ^testing.T) {
 	// Every q in 0…3843 on every axis: the decoded f64 `(62·d0 + d1) / 1000 (− 2)` encodes back to its digits.
-	POSITIONS :: 84 // 84 × 46 slots per axis ≥ 3844
+	// 46 = PLAYER_COUNT * JOINT_COUNT slots per axis and position; 84 × 46 ≥ 3844 (= Q_MAX + 1).
+	POSITIONS :: 84
 	ALPHABET :: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	sb := strings.builder_make(context.temp_allocator)
 	strings.write_string(&sb, "grid\n")
@@ -187,7 +190,7 @@ test_export_full_grid :: proc(t: ^testing.T) {
 		n := 0
 		for p in 0 ..< PLAYER_COUNT {
 			for j in 0 ..< JOINT_COUNT {
-				for a in 0 ..< 3 {
+				for a in 0 ..< len(V3) {
 					q := (i * 46 + p * 23 + j + a * 1000) % (Q_MAX + 1)
 					for d in ([2]int{q / 62, q % 62}) {
 						if n % LINE_DIGITS == 0 {
@@ -344,4 +347,40 @@ test_export_error_first_wins :: proc(t: ^testing.T) {
 	nodes := []Node{node(desc("A"), p), node(desc(" B"), bad), node(desc("C\n"))}
 	g := hand_graph(nodes, nil, 3)
 	expect_export_error(t, &g, .Description_Starts_With_Space, 1)
+}
+
+@(test)
+test_export_error_coordinate_inf :: proc(t: ^testing.T) {
+	p := grid_position()
+	p[0][.Head].y = math.inf_f64(1)
+	q := grid_position()
+	q[1][.Head].x = math.inf_f64(-1)
+	nodes := []Node{node(desc("A"), p), node(desc("B"), q)}
+	g := hand_graph(nodes, nil, 2)
+	expect_export_error(t, &g, .Coordinate_Out_Of_Range, 0)
+	g.nodes = nodes[1:]
+	g.named_count = 1
+	expect_export_error(t, &g, .Coordinate_Out_Of_Range, 0)
+}
+
+@(test)
+test_export_writes_described_anonymous_node :: proc(t: ^testing.T) {
+	// The original's `save` writes every node with a non-empty description, whatever its index; the empty
+	// anonymous node in between is skipped (no block).
+	line := cat("    ", strings.repeat("a", LINE_DIGITS, context.temp_allocator), "\n")
+	pos := strings.repeat(line, 4, context.temp_allocator)
+	nodes := []Node {
+		node(desc("A"), grid_position()),
+		node(nil, grid_position()),
+		node(desc("Z"), grid_position()),
+	}
+	g := hand_graph(nodes, nil, 1)
+	out, err := export_txt(&g, context.temp_allocator)
+	if testing.expectf(t, err == nil, "export_txt: %v", err) {
+		testing.expect(
+			t,
+			string(out) == cat("A\n", pos, "Z\n", pos),
+			"described anonymous node must be written",
+		)
+	}
 }

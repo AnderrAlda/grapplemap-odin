@@ -38,7 +38,7 @@ OUT_POSITION_BYTES :: OUT_LINES * (len(OUT_INDENT) + OUT_LINE_DIGITS + 1) // 296
 //
 // Errors (`Export_Error`, `line = 0`; `block` = 0-based index of the block in the output: written nodes first,
 // then edges), first one stops; within a block, in this order:
-//  - a written node with `index < named_count`, or an edge, with an empty description → `Empty_Description`;
+//  - a node with `index < named_count`, or an edge, with an empty description → `Empty_Description`;
 //  - a description line starting with ' ' → `Description_Starts_With_Space`; containing '\n' →
 //    `Description_Has_Newline` (either would not load back as the same block, §1.7). '\r' is written verbatim;
 //  - a written node whose whole description equals an earlier written node's → `Duplicate_Description`
