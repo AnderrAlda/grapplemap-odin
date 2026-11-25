@@ -61,11 +61,10 @@ test_graph_matches_oracle :: proc(t: ^testing.T) {
 		return
 	}
 	defer delete(db)
-	g, err := core.load_graph(db)
-	if !testing.expectf(t, err == nil, "load_graph(%s): %v", db_path(), err) {
+	g, gok := shared_graph(t)
+	if !gok {
 		return
 	}
-	defer core.graph_destroy(&g)
 	seqs, perr := core.parse_db(db)
 	if !testing.expectf(t, perr == nil, "parse_db: %v", perr) {
 		return
@@ -87,7 +86,7 @@ test_graph_matches_oracle :: proc(t: ^testing.T) {
 
 	state := Graph_State {
 		t     = t,
-		g     = &g,
+		g     = g,
 		seqs  = seqs,
 		pairs = -1,
 	}
