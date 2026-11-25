@@ -232,7 +232,7 @@ test_follow_direction_by_node :: proc(t: ^testing.T) {
 	// `from` is tested first: a self-loop is walked forwards.
 	loop := hand_graph(
 		anon_nodes(1),
-		{seq_edge(desc("loop"), at(0), at(0), uniform(0.2), uniform(0.9), uniform(0.2))},
+		{seq_edge(desc("loop"), at(0), at(0), uniform(0.2), uniform(0.9), uniform(1.3))},
 	)
 	f, next, ferr := follow(&loop, at(0), 0, 1, context.temp_allocator)
 	testing.expect_value(t, ferr, nil)

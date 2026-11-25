@@ -164,8 +164,8 @@ SMOOTHEN_LAG_BASE :: 0.6
 // smoothen is `smoothen(Frames)` (src/paths.cpp:8-21), in place (the original filters a copy: clone the frames first
 // to keep the raw ones). One pass over every frame of every step, the state crossing step boundaries: starting from
 // the first frame of the first step, per frame, player and joint, `lag = 0.6 + y` if that is below 0.83, else 0.83
-// (`std::min(0.83, x)`: a NaN gives 0.83; written out, not Odin's `min`), and `p = last = last·lag + p·(1 − lag)`
-// per component. The first frame is computed too, not copied (it can move by 1 ulp, §6.3). If there is no step or
+// (`std::min(0.83, x)`: a NaN gives 0.83; written out to mirror it, although Odin's `min` also gives 0.83), and
+// `p = last = last·lag + p·(1 − lag)` per component. The first frame is computed too, not copied (it can move by 1 ulp, §6.3). If there is no step or
 // the first step has no frame, nothing happens (the original reads `f[0].second[0]`: UB); later empty steps are
 // skipped.
 smoothen :: proc(steps: []Frame_Step) {
