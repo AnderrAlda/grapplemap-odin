@@ -19,13 +19,16 @@ Spec: docs/specs/phase-2-core.md (deliverable 6, second part; split from #142, m
    (by `s`, then the four rules), and the unit tests below pin it.
 2. Doc comments: `Node` and `build` stop saying "filled by #173"; `build` gains step 4.
 3. **Mutation test extension** (`tests/fidelity/mutation_test.odin`, M1 of #174 / issue comment): measured in #174, a
-   full-DB `load_graph` takes 67 s under test flags, so mutate a **prefix** of the DB instead: the first `K` blocks
-   (cut at a block boundary; `K` chosen so that one `load_graph` of the prefix takes ≲ 0.5 s with ASan, e.g. 150-250
-   blocks: it must contain ≥ 1 transition and ≥ 1 anonymous node, asserted). Same seeded mutations as today
-   (truncations, byte flips, line swaps) on the prefix; for every mutant that `parse_db` accepts, also `load_graph`,
-   asserting "error or a graph whose every edge's `from.node`/`to.node` and every `Step.seq` is in range, no panic, no
-   leak" and `graph_destroy`. The existing full-DB `parse_db` mutations stay as they are. Budget: `./build.sh test`
-   grows by < 30 s in debug; the PR states the time, `K` and the number of `load_graph` cases.
+   full-DB `load_graph` takes 67 s under test flags. **Decisión de Ander tras la escalación** (el prefijo no sirve: los
+   bloques 0-600 son las ~600 posiciones con nombre, así que un prefijo con transiciones tarda ≥ 3 s por `load_graph` y
+   sigue sin nodos anónimos): mutar una **muestra** de bloques del DB, los bloques 0-39 (posiciones con nombre) + las
+   transiciones a partir del bloque 601, cortados por bloque y concatenados en ese orden. El test asegura que la muestra
+   tiene ≥ 1 arista y ≥ 1 nodo anónimo. Se mide un `load_graph` de la muestra con ASan y se elige el nº de transiciones
+   y de casos para que `./build.sh test` crezca < 30 s (con ~150 transiciones un `load_graph` tarda 17 s, así que se
+   reducen hasta ≲ 0.5 s por carga). Same seeded mutations as today (truncations, byte flips, line swaps) on the sample;
+   for every mutant that `parse_db` accepts, also `load_graph`, asserting "error or a graph whose every edge's
+   `from.node`/`to.node` and every `Step.seq` is in range, no panic, no leak" and `graph_destroy`. The existing full-DB
+   `parse_db` mutations stay as they are. The PR states the time, the sample size and the number of cases.
 4. Docs: `src/core/CLAUDE.md`, bullet `graph.odin` only (replace "y los rellena #173" with the §2.6 rule in one line:
    order by edge, then `to` before `from`, reverse steps of bidirectional edges only in `incoming`/`outgoing`).
    `changelog.d/173-node-in-out.md`.
