@@ -134,7 +134,7 @@ check_position :: proc(p: ^Position, block: int) -> Error {
 
 // quantize is the original's `g(d)` on `x + 2`, `y`, `z + 2` (src/persistence.cpp:122-135). `ok = false` when the
 // rounded value is outside 0…Q_MAX or NaN (`!(r >= 0 && r <= Q_MAX)` is true for NaN).
-@(private = "file")
+@(private)
 quantize :: proc(v: f64, axis: int) -> (q: int, ok: bool) {
 	d := v if axis == 1 else v + ENCODING_OFFSET_XZ
 	r := math.round_f64(d * QUANT_SCALE)

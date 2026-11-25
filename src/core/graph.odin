@@ -11,6 +11,9 @@ import "core:slice"
 // NO_LINE is the `line_nr` of an anonymous node: the original's empty `optional<unsigned>` (src/graph.cpp:222-233).
 NO_LINE :: -1
 
+// NO_ID is the `id` of an anonymous node: it has none and is not stored (ADR 0005 d3). Real ids are ≥ 1.
+NO_ID :: 0
+
 // Step is `Reversible<SeqNum>` (src/graph.hpp:44-47): a sequence index and the direction it is played in.
 Step :: struct {
 	seq:     int,
@@ -28,6 +31,7 @@ Reoriented_Node :: struct {
 // `description = nil` and `line_nr = NO_LINE`. `incoming`/`outgoing`/`in_out` are the original's `in`/`out`/`in_out`
 // (`in` is an Odin keyword), filled by `compute_in_out`; `nil` when the node has no incident edge.
 Node :: struct {
+	id:                         int, // its sequence's id (ADR 0005 d3), or NO_ID for an anonymous node
 	position:                   Position,
 	description:                []string,
 	line_nr:                    int, // as `Sequence.line_nr`, or NO_LINE
@@ -51,6 +55,7 @@ Graph :: struct {
 	nodes:       []Node, // named positions in file order (`named_count` of them), then anonymous nodes
 	edges:       []Edge, // the sequences of ≥ 2 positions, in file order
 	named_count: int,
+	next_id:     int, // greater than every id (ADR 0005 d3): number of sequences + 1
 }
 
 // load_graph is `loadGraph` (src/persistence.cpp:154-169) + `Graph::Graph(pp, ss)` (src/graph.cpp:279-302):
@@ -112,7 +117,12 @@ build :: proc(g: ^Graph, seqs: []Sequence) -> Error {
 		}
 		append(
 			&nodes,
-			Node{position = s.positions[0], description = s.description, line_nr = s.line_nr},
+			Node {
+				id = s.id,
+				position = s.positions[0],
+				description = s.description,
+				line_nr = s.line_nr,
+			},
 		) or_return
 	}
 	named_count := len(nodes)
@@ -134,6 +144,7 @@ build :: proc(g: ^Graph, seqs: []Sequence) -> Error {
 	g.nodes = slice.clone(nodes[:], allocator) or_return
 	g.edges = edges
 	g.named_count = named_count
+	g.next_id = len(seqs) + 1
 	scratch: In_Out_Scratch
 	for &list in scratch {
 		list = make([dynamic]Step, context.temp_allocator) or_return

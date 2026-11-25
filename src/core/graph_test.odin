@@ -477,3 +477,41 @@ test_graph_in_out_isolated_and_anonymous :: proc(t: ^testing.T) {
 	expect_steps(t, g.nodes[3].outgoing, {{1, false}})
 	expect_steps(t, g.nodes[3].in_out, {{1, false}})
 }
+
+@(test)
+test_ids_and_next_id :: proc(t: ^testing.T) {
+	// A (block 1), T (2) ending on an anonymous node, B (3): nodes and edges keep their sequence's id.
+	seqs := []Sequence {
+		seq_of({"A"}, gap_position(0.5)),
+		seq_of({"T"}, gap_position(1), gap_position(2)),
+		seq_of({"B"}, gap_position(3)),
+	}
+	for &q, i in seqs {
+		q.id = i + 1
+	}
+	g, ok := build_seqs(t, seqs)
+	if !ok {
+		return
+	}
+	defer graph_destroy(&g)
+	if !testing.expect_value(t, len(g.nodes), 4) || !testing.expect_value(t, len(g.edges), 1) {
+		return
+	}
+	testing.expect_value(t, g.next_id, 4)
+	testing.expect_value(t, g.named_count, 2)
+	testing.expect_value(t, g.nodes[0].id, 1)
+	testing.expect_value(t, g.nodes[1].id, 3)
+	testing.expect_value(t, g.nodes[2].id, NO_ID)
+	testing.expect_value(t, g.nodes[3].id, NO_ID)
+	testing.expect_value(t, g.edges[0].sequence.id, 2)
+}
+
+@(test)
+test_next_id_empty_db :: proc(t: ^testing.T) {
+	g, ok := load_text(t, "")
+	if !ok {
+		return
+	}
+	defer graph_destroy(&g)
+	testing.expect_value(t, g.next_id, 1)
+}
