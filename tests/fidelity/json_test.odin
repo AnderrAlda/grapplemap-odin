@@ -51,11 +51,11 @@ test_export_json_db :: proc(t: ^testing.T) {
 	}
 	c := meta.counts
 	testing.expect(t, c.named_positions > 0 && c.transitions > 0, "meta.json: counts missing")
-	if !testing.expect(t, json.is_valid(out), "output is not valid JSON") {
+	if !testing.expect(t, json.is_valid(out, .JSON), "output is not valid JSON") {
 		return
 	}
 	doc: Json_Doc
-	if uerr := json.unmarshal(out, &doc, allocator = context.temp_allocator);
+	if uerr := json.unmarshal(out, &doc, .JSON, context.temp_allocator);
 	   !testing.expectf(t, uerr == nil, "unmarshal: %v", uerr) {
 		return
 	}

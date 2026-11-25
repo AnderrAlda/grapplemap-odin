@@ -1,7 +1,8 @@
 package core
 
+import "core:math"
 import "core:mem"
-import "core:strconv"
+import "core:slice"
 import "core:strings"
 import "core:testing"
 
@@ -208,7 +209,7 @@ test_json_quantization_edges :: proc(t: ^testing.T) {
 
 @(test)
 test_json_matches_txt_digits :: proc(t: ^testing.T) {
-	// The same graph through export_txt and export_json: decode both, same integers.
+	// The same graph through export_txt and export_json: decode both, same 138 integers per position.
 	s := cat("A\n", pos_text(1), "B\n", pos_text(9))
 	g, err := load_graph(transmute([]byte)s)
 	if !testing.expectf(t, err == nil, "load_graph: %v", err) {
@@ -219,34 +220,46 @@ test_json_matches_txt_digits :: proc(t: ^testing.T) {
 	if !ok {
 		return
 	}
-	for &x, i in g.nodes {
-		want := strings.builder_make(context.temp_allocator)
-		strings.write_byte(&want, '[')
-		for pl in 0 ..< PLAYER_COUNT {
-			if pl > 0 {
-				strings.write_byte(&want, ',')
-			}
-			strings.write_byte(&want, '[')
-			for j in Joint {
-				if j != min(Joint) {
-					strings.write_byte(&want, ',')
-				}
-				q0, _ := quantize(x.position[pl][j][0], 0)
-				q1, _ := quantize(x.position[pl][j][1], 1)
-				q2, _ := quantize(x.position[pl][j][2], 2)
-				strings.write_string(&want, cat("[", itoa(q0), ",", itoa(q1), ",", itoa(q2), "]"))
-			}
-			strings.write_byte(&want, ']')
-		}
-		strings.write_byte(&want, ']')
-		testing.expectf(t, strings.contains(got, strings.to_string(want)), "node %d", i)
+	txt, terr := export_txt(&g, context.temp_allocator)
+	if !testing.expectf(t, terr == nil, "export_txt: %v", terr) {
+		return
 	}
-}
-
-@(private = "file")
-itoa :: proc(v: int) -> string {
-	buf := make([]byte, 24, context.temp_allocator)
-	return strings.clone(strconv.write_int(buf, i64(v), 10), context.temp_allocator)
+	digits := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	rest := string(txt)
+	json_rest := got
+	for _ in 0 ..< 2 {
+		// txt: skip the description line, take the 4 position lines.
+		nl := strings.index_byte(rest, '\n')
+		rest = rest[nl + 1:]
+		all_digits := make([dynamic]byte, context.temp_allocator)
+		for _ in 0 ..< 4 {
+			end := strings.index_byte(rest, '\n')
+			append(&all_digits, ..transmute([]byte)rest[4:end])
+			rest = rest[end + 1:]
+		}
+		want := make([dynamic]int, context.temp_allocator)
+		for k := 0; k < len(all_digits); k += 2 {
+			hi := strings.index_byte(digits, all_digits[k])
+			lo := strings.index_byte(digits, all_digits[k + 1])
+			append(&want, hi * 62 + lo)
+		}
+		// json: every integer between `"position":` and the closing `}`.
+		start := strings.index(json_rest, `"position":`) + len(`"position":`)
+		end := start + strings.index_byte(json_rest[start:], '}')
+		have := make([dynamic]int, context.temp_allocator)
+		cur := -1
+		for c in json_rest[start:end] {
+			if c >= '0' && c <= '9' {
+				cur = max(cur, 0) * 10 + int(c - '0')
+			} else if cur >= 0 {
+				append(&have, cur)
+				cur = -1
+			}
+		}
+		testing.expect_value(t, len(want), PLAYER_COUNT * JOINT_COUNT * len(V3))
+		testing.expect(t, slice.equal(have[:], want[:]), "JSON and txt integers differ")
+		json_rest = json_rest[end:]
+	}
 }
 
 @(test)
@@ -284,7 +297,7 @@ test_json_errors :: proc(t: ^testing.T) {
 	bad_pos := grid_position()
 	bad_pos[1][.Head] = {1000, 0, 0}
 	nan_pos := grid_position()
-	nan_pos[0][.Head].y = transmute(f64)u64(0x7ff8000000000000)
+	nan_pos[0][.Head].y = math.nan_f64()
 
 	{ 	// empty description on a named node
 		g := hand_graph({ok_node, node(2, nil, grid_position())}, nil, 2, 3)

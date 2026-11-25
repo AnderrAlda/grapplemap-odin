@@ -48,7 +48,7 @@ Graph_Error :: struct {
 	block: int,
 }
 
-// Json_Error_Kind: malformed graph JSON (ADR 0005). May grow.
+// Json_Error_Kind: malformed graph JSON, or a graph that cannot be written as such (ADR 0005). May grow.
 Json_Error_Kind :: enum u8 {
 	Syntax,
 	Unknown_Key,

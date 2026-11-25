@@ -40,7 +40,8 @@ HEX_DIGITS := "0123456789abcdef"
 //  - a written node whose whole description equals an earlier written node's → `Duplicate_Description`;
 //  - a coordinate outside 0…Q_MAX after rounding, or NaN → `Coordinate_Out_Of_Range`;
 //  - an id `<= 0`, `>= g.next_id` or already used by an earlier entry → `Duplicate_Id`.
-// A graph from `load_graph` never triggers any of them.
+// Scratch (one `bool` per id below `next_id`) goes to `context.temp_allocator` (the caller frees it); the output
+// is the only allocation on `allocator`. A graph from `load_graph` never triggers any of the errors.
 export_json :: proc(g: ^Graph, allocator := context.allocator) -> (out: []byte, err: Error) {
 	size := check_json(g) or_return
 	out = make([]byte, size, allocator) or_return
