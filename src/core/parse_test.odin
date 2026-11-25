@@ -666,3 +666,18 @@ test_parse_alloc_failure_frees_everything :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+@(test)
+test_parse_ids_are_block_numbers :: proc(t: ^testing.T) {
+	// Named and transition blocks interleaved: `id` = 1-based block number in the file (ADR 0005 d3).
+	s := cat("A\n", pos_text(1), "T\n", pos_text(1), pos_text(2), "B\n", pos_text(2))
+	seqs, err := parse_db(transmute([]byte)s)
+	defer sequences_destroy(seqs)
+	if !testing.expectf(t, err == nil, "parse_db: %v", err) {
+		return
+	}
+	testing.expect_value(t, len(seqs), 3)
+	for q, i in seqs {
+		testing.expect_value(t, q.id, i + 1)
+	}
+}

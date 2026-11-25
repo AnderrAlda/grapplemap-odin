@@ -10,6 +10,7 @@ import "core:unicode/utf8"
 
 // Sequence is one block of the file (`Sequence`, src/positions.hpp:11; `readSeqs`, src/persistence.cpp:58-116).
 Sequence :: struct {
+	id:            int, // stable id (ADR 0005 d3): 1-based block number in the file
 	description:   []string, // lines verbatim, first = name; never empty
 	positions:     []Position, // ≥ 1; 1 = named position, ≥ 2 = transition (the graph decides)
 	line_nr:       int, // 0-based line of the first position line (tools/oracle/README.md, "Dumper")
@@ -205,7 +206,7 @@ start_sequence :: proc(
 	line: int,
 	allocator: mem.Allocator,
 ) -> Error {
-	append(out, Sequence{line_nr = line}) or_return
+	append(out, Sequence{id = len(out) + 1, line_nr = line}) or_return
 	seq := &out[len(out) - 1]
 	seq.description = make([]string, len(desc), allocator) or_return
 	for text, k in desc {

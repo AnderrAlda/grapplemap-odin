@@ -58,6 +58,7 @@ Json_Error_Kind :: enum u8 {
 	Empty_Description,
 	Duplicate_Description,
 	Duplicate_Id,
+	Invalid_Utf8,
 }
 
 Json_Error :: struct {
