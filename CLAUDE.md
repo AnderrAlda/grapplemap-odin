@@ -7,11 +7,13 @@ render moderno; UX simple; base para editar mi propio grafo. Nativo primero, was
 ## Comandos
 `./build.sh setup|check|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <rama>|worktree-remove <rama>|oracle [--sample]|--full|--update-full-hashes|--test|--images`
 Toolchain: Odin fijado en `.odin-version`; `odinfmt`/`ols` en `~/.local/bin`; `jq` requerido por los hooks.
+App: `grapplemap [--headless] [--frames N] [--load <file>]`; `--load` imprime el resumen del grafo (`--headless`: sin ventana). Salidas: 3 fugas · 4 BD inválida · 5 E/S · 6 uso.
 Tras clonar: `git submodule update --init` (lo hace `./build.sh setup`) para tener `reference/GrappleMap`.
 
 ## Mapa
 - `src/core` datos, parser, grafo, interpolación (sin deps de render/ui) · `src/render` · `src/ui` · `src/editor`
 - `reference/GrappleMap` original, SOLO LECTURA · `tests/golden` imágenes de referencia · `tests/fixtures`
+- `bench/` paquete `bench`: tiempo de carga de la BD completa (`./build.sh bench`; necesita el submódulo)
 - `tests/fidelity` paquete `fidelity`: `core` contra el oráculo (muestra; `GM_ORACLE_DIR=<dump completo>` para el completo); necesita el submódulo
 - `tools/oracle` Dockerfile que compila el original (oráculo, amd64) · `sample.tsv` (muestra) · `images.tsv` (imágenes) · ver su README
 - `docs/` (`original.md`, `architecture.md`, `ai-workflow.md`, `ASSETS.md`, `adr/`, `specs/`, `plans/`)

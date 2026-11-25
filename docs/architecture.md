@@ -68,7 +68,7 @@ GrappleMap.txt (bytes) ──► parser ──► graph (arena) ──► transf
 - Only a **sample** of its output is committed. The full dump (~0.54 GB) is generated in CI and checked against
   committed hashes (`tests/fixtures/oracle/FULL.sha256`); both pending (#35, #36). `./build.sh ci` never needs Docker.
 - What must match bit for bit and what may use a tolerance: [ADR 0003](adr/0003-numeric-precision.md).
-- Every build and test uses `-vet -strict-style -warnings-as-errors` (`build.sh:7`); benchmarks (`cmd_bench`) do not.
+- Every build and test uses `-vet -strict-style -warnings-as-errors` (`build.sh:7`).
 
 ## ADRs
 
