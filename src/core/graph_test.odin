@@ -153,13 +153,19 @@ test_graph_named_nodes_first :: proc(t: ^testing.T) {
 @(test)
 test_graph_duplicate_description :: proc(t: ^testing.T) {
 	p := pos_text()
-	// Lines: block 0 = 1-2 description, 3-6 position; block 1 = 7, 8-15; block 2 starts at line 16.
-	s := strings.concatenate({"A\nB\n", p, "T\n", p, p, "A\nB\n", p}, context.temp_allocator)
+	// Lines: block 0 = 1-2 description, 3-6 position; block 1 = 7, 8-15; block 2 = 16, 17-20; block 3 starts at
+	// line 21. Block 2 sits between the duplicates, so comparing only with the last node pushed would miss it.
+	// Releasing the arena on this error path is not observable here (virtual memory, outside the tracking allocator
+	// and LeakSanitizer; `load_graph` returns `{}` either way): no test verifies it.
+	s := strings.concatenate(
+		{"A\nB\n", p, "T\n", p, p, "X\n", p, "A\nB\n", p},
+		context.temp_allocator,
+	)
 	g, err := load_graph(transmute([]byte)s)
 	testing.expect_value(
 		t,
 		err,
-		Error(Graph_Error{kind = .Duplicate_Position_Description, line = 16, block = 2}),
+		Error(Graph_Error{kind = .Duplicate_Position_Description, line = 21, block = 3}),
 	)
 	testing.expect(
 		t,

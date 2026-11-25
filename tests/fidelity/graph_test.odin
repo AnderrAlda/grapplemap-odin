@@ -13,7 +13,8 @@ import "core:testing"
 
 @(private = "file")
 Graph_Meta :: struct {
-	counts: struct {
+	index_consistent: bool, // the `.index` pairs equal loadGraph's numbering (tools/oracle/README.md)
+	counts:           struct {
 		named_positions: int,
 		transitions:     int,
 		nodes:           int,
@@ -75,6 +76,8 @@ test_graph_matches_oracle :: proc(t: ^testing.T) {
 	if !read_json(t, "meta.json", &meta, context.temp_allocator) {
 		return
 	}
+	// The `index` pairs come from the original's `.index` file; this makes them `loadGraph`'s numbering.
+	testing.expect(t, meta.index_consistent, "meta.json: index_consistent is not true")
 	c := meta.counts
 	testing.expect(t, c.nodes > 0 && c.transitions > 0, "meta.json: counts missing")
 	testing.expect_value(t, len(g.nodes), c.nodes)

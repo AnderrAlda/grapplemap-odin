@@ -93,11 +93,14 @@ build :: proc(g: ^Graph, seqs: []Sequence) -> Error {
 	nodes := make([dynamic]Node, context.temp_allocator) or_return
 	edge_count := 0
 	for s, block in seqs {
+		assert(len(s.positions) >= 1, "parse_db never yields a sequence without positions")
 		if len(s.positions) != 1 {
 			edge_count += 1
 			continue
 		}
-		for x in nodes {
+		for &x in nodes {
+			// The original's `!x.description.empty()`: never false here (all nodes are named so far and parse_db
+			// never yields an empty description), kept for fidelity.
 			if len(x.description) != 0 && slice.equal(x.description, s.description) {
 				return Graph_Error {
 					kind = .Duplicate_Position_Description,
@@ -138,7 +141,7 @@ build :: proc(g: ^Graph, seqs: []Sequence) -> Error {
 // zero `Position_Reorientation`.
 @(private)
 find_or_add :: proc(nodes: ^[dynamic]Node, p: Position) -> (r: Reoriented_Node, err: Error) {
-	for x, n in nodes {
+	for &x, n in nodes {
 		if u, ok := is_reoriented(x.position, p); ok {
 			return {node = n, reorientation = u}, nil
 		}
