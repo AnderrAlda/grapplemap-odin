@@ -74,6 +74,8 @@ cmd_check() {
 	cmd_core_trig_check
 	odin check src $COLLECTION $VET
 	odin check tests/fidelity $COLLECTION $VET -no-entry-point
+	[ -d bench ] && ls bench/*.odin >/dev/null 2>&1 && odin check bench $COLLECTION $VET
+	return 0
 }
 
 cmd_fmt() {
@@ -141,7 +143,8 @@ cmd_test_golden() {
 
 cmd_bench() {
 	[ -d bench ] && ls bench/*.odin >/dev/null 2>&1 || { echo "no benchmarks yet."; return 0; }
-	odin run bench $COLLECTION -o:speed -out:"$OUT/bench"
+	mkdir -p "$OUT"
+	odin run bench $COLLECTION $VET -o:speed -out:"$OUT/bench"
 }
 
 cmd_ci() {

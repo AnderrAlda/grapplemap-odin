@@ -1,5 +1,6 @@
 package main
 
+import "app:core"
 import "core:fmt"
 import "core:mem"
 import "core:os"
@@ -11,13 +12,19 @@ WINDOW_HEIGHT :: 720
 WINDOW_TITLE :: "grapplemap-odin"
 TARGET_FPS :: 60
 TRACK_LEAKS :: ODIN_DEBUG
-EXIT_MEMORY_ERROR :: 3
+
+// Process exit codes, all distinct. 0 = success; 1/2 are left to the runtime and the shell.
+EXIT_MEMORY_ERROR :: 3 // the leak tracker found a leak or a bad free (debug builds only)
+EXIT_LOAD_ERROR :: 4 // `--load`: the file was read but is not a valid database
+EXIT_IO_ERROR :: 5 // `--load`: the file could not be read
+EXIT_USAGE_ERROR :: 6 // bad command line (e.g. `--load` without a file)
 BACKGROUND :: rl.Color{24, 26, 32, 255}
 
 // App_State holds all mutable application state; it is passed explicitly.
 App_State :: struct {
 	headless:   bool,
 	max_frames: int,
+	load_path:  string, // `--load <file>`; "" = none
 }
 
 // frames_label returns the text shown on the placeholder screen.
@@ -32,16 +39,112 @@ main :: proc() {
 		context.allocator = mem.tracking_allocator(&track)
 	}
 
-	state := parse_args(os.args)
-	run(&state)
+	code := run_app(os.args)
 
 	if TRACK_LEAKS {
 		has_problems := report_leaks(&track)
 		mem.tracking_allocator_destroy(&track)
 		if has_problems {
-			os.exit(EXIT_MEMORY_ERROR)
+			code = EXIT_MEMORY_ERROR
 		}
 	}
+	if code != 0 {
+		os.exit(code)
+	}
+}
+
+// run_app is everything `main` does except the leak report; it returns the exit code. All exits go through
+// `main` so the leak report always runs.
+@(private)
+run_app :: proc(args: []string) -> int {
+	state, ok := parse_args(args)
+	if !ok {
+		fmt.eprintln("error: --load needs a file")
+		return EXIT_USAGE_ERROR
+	}
+	if state.load_path != "" {
+		if code := load_summary(state.load_path); code != 0 {
+			return code
+		}
+		// The viewer comes in phase 3: the graph is not kept. Headless stops here, before any raylib call.
+		if state.headless {
+			return 0
+		}
+	}
+	run(&state)
+	return 0
+}
+
+// load_summary loads the database at `path`, prints its summary line to stdout and frees the graph. On failure it
+// prints the error to stderr and returns EXIT_IO_ERROR or EXIT_LOAD_ERROR.
+@(private)
+load_summary :: proc(path: string) -> int {
+	data, read_err := os.read_entire_file(path, context.allocator)
+	if read_err != nil {
+		fmt.eprintfln("error: cannot read %s: %s", path, os.error_string(read_err))
+		return EXIT_IO_ERROR
+	}
+	defer delete(data)
+
+	// `load_graph` leaves its scratch in the temp allocator for the caller to free.
+	defer free_all(context.temp_allocator)
+	g, err := core.load_graph(data)
+	if err != nil {
+		fmt.eprintln(format_load_error(err, context.temp_allocator))
+		return EXIT_LOAD_ERROR
+	}
+	defer core.graph_destroy(&g)
+	fmt.println(summary_line(&g, context.temp_allocator))
+	return 0
+}
+
+// summary_line is the one-line `--load` report (docs/original.md §10.1 counts): `blocks` = named positions +
+// transitions, `positions` = every position of every block, `anonymous` = nodes that are not named positions.
+@(private)
+summary_line :: proc(g: ^core.Graph, allocator := context.allocator) -> string {
+	positions := g.named_count
+	for e in g.edges {
+		positions += len(e.sequence.positions)
+	}
+	return fmt.aprintf(
+		"blocks=%d positions=%d named=%d transitions=%d nodes=%d anonymous=%d",
+		g.named_count + len(g.edges),
+		positions,
+		g.named_count,
+		len(g.edges),
+		len(g.nodes),
+		len(g.nodes) - g.named_count,
+		allocator = allocator,
+	)
+}
+
+// format_load_error renders a `core.Error` as `error: <kind> at line <n> (block <b>)`; line 0 and `NO_BLOCK` are
+// omitted.
+@(private)
+format_load_error :: proc(err: core.Error, allocator := context.allocator) -> string {
+	located :: proc(kind: any, line, block: int, allocator: mem.Allocator) -> string {
+		b := fmt.aprintf("error: %v", kind, allocator = allocator)
+		if line != 0 {
+			b = fmt.aprintf("%s at line %d", b, line, allocator = allocator)
+		}
+		if block != core.NO_BLOCK {
+			b = fmt.aprintf("%s (block %d)", b, block, allocator = allocator)
+		}
+		return b
+	}
+	switch e in err {
+	case core.Parse_Error:
+		return located(e.kind, e.line, e.block, allocator)
+	case core.Graph_Error:
+		return located(e.kind, e.line, e.block, allocator)
+	case core.Json_Error:
+		return fmt.aprintf("error: %v", e, allocator = allocator)
+	case core.Export_Error:
+		return fmt.aprintf("error: %v", e, allocator = allocator)
+	case mem.Allocator_Error:
+		return fmt.aprintf("error: out of memory (%v)", e, allocator = allocator)
+	}
+	return fmt.aprintf("error: %v", err, allocator = allocator)
 }
 
 // has_memory_problems reports whether the tracker holds a live allocation or a bad free.
@@ -64,14 +167,20 @@ report_leaks :: proc(track: ^mem.Tracking_Allocator) -> bool {
 	return has_memory_problems(track)
 }
 
-// parse_args reads `--headless` and `--frames N` from the command line.
+// parse_args reads `--headless`, `--frames N` and `--load <file>` from the command line. `ok` is false for
+// `--load` without a file; the other flags are lenient.
 @(private)
-parse_args :: proc(args: []string) -> App_State {
-	state := App_State{}
+parse_args :: proc(args: []string) -> (state: App_State, ok: bool) {
 	for i := 1; i < len(args); i += 1 {
 		switch args[i] {
 		case "--headless":
 			state.headless = true
+		case "--load":
+			if i + 1 >= len(args) {
+				return state, false
+			}
+			i += 1
+			state.load_path = args[i]
 		case "--frames":
 			if i + 1 < len(args) {
 				i += 1
@@ -79,7 +188,7 @@ parse_args :: proc(args: []string) -> App_State {
 			}
 		}
 	}
-	return state
+	return state, true
 }
 
 @(private)
