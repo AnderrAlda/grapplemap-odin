@@ -157,6 +157,8 @@ test_follow_frame_counts :: proc(t: ^testing.T) {
 	testing.expect_value(t, ferr, nil)
 	if testing.expect_value(t, len(steps), 1) {
 		testing.expect_value(t, len(steps[0].frames), 2 * 6 - 1)
+		// k = 1 of 5: 0.2 + (0.9 - 0.2) * (1 / 5.0); with 5.5 (`fpp / 2` in float) it would be 0x3fd4f2094f2094f2.
+		testing.expect_value(t, bits(steps[0].frames[1][0][.Neck].x), 0x3fd5c28f5c28f5c2)
 	}
 
 	// fpp = 1 + detailed → 0: one frame per segment at `0 / 0.0` = NaN (the original's `howfar / double(0)`).

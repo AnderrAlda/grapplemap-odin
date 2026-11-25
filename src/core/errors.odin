@@ -36,7 +36,8 @@ Parse_Error :: struct {
 	block: int,
 }
 
-// Graph_Error_Kind: rejected while building or walking the graph (docs/original.md §2, `src/graph.cpp:284-285`). May grow.
+// Graph_Error_Kind: rejected while building (docs/original.md §2, `src/graph.cpp:284-285`) or walking the graph.
+// May grow.
 Graph_Error_Kind :: enum u8 {
 	Duplicate_Position_Description,
 	Step_Not_Connected, // `follow` on a step that does not touch the node (src/graph_util.cpp:101-102)
