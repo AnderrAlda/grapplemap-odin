@@ -137,7 +137,7 @@ test_graph_named_nodes_first :: proc(t: ^testing.T) {
 	n := g.nodes[0]
 	testing.expect_value(t, len(n.description), 2)
 	testing.expect_value(t, n.description[0], "A")
-	testing.expect_value(t, n.line_nr, 12) // 0-based line of its first position line
+	testing.expect_value(t, n.line_nr, 11) // 0-based line of its first position line ("T" = 0, "A" = 9)
 	testing.expect(
 		t,
 		n.incoming == nil && n.outgoing == nil && n.in_out == nil,

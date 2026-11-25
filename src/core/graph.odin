@@ -1,6 +1,7 @@
 package core
 
 import "core:mem/virtual"
+import "core:slice"
 
 // The graph of the original (docs/original.md §2.1, §2.2, §2.4, §2.6, §2.7): named positions and the anonymous
 // nodes created for unmatched sequence ends are the nodes; every sequence of ≥ 2 positions is an edge. Built in
@@ -88,6 +89,47 @@ graph_destroy :: proc(g: ^Graph) {
 // `in`/`out`/`in_out` (src/graph.cpp:298-299) are #173's.
 @(private)
 build :: proc(g: ^Graph, seqs: []Sequence) -> Error {
+	allocator := virtual.arena_allocator(&g.arena)
+	nodes := make([dynamic]Node, context.temp_allocator) or_return
+	edge_count := 0
+	for s, block in seqs {
+		if len(s.positions) != 1 {
+			edge_count += 1
+			continue
+		}
+		for x in nodes {
+			if len(x.description) != 0 && slice.equal(x.description, s.description) {
+				return Graph_Error {
+					kind = .Duplicate_Position_Description,
+					line = s.line_nr - len(s.description) + 1,
+					block = block,
+				}
+			}
+		}
+		append(
+			&nodes,
+			Node{position = s.positions[0], description = s.description, line_nr = s.line_nr},
+		) or_return
+	}
+	named_count := len(nodes)
+	edges := make([]Edge, edge_count, allocator) or_return
+	k := 0
+	for s in seqs {
+		if len(s.positions) == 1 {
+			continue
+		}
+		from := find_or_add(&nodes, s.positions[0]) or_return
+		to := find_or_add(&nodes, s.positions[len(s.positions) - 1]) or_return
+		edges[k] = Edge {
+			sequence = s,
+			from     = from,
+			to       = to,
+		}
+		k += 1
+	}
+	g.nodes = slice.clone(nodes[:], allocator) or_return
+	g.edges = edges
+	g.named_count = named_count
 	return nil
 }
 
@@ -96,5 +138,11 @@ build :: proc(g: ^Graph, seqs: []Sequence) -> Error {
 // zero `Position_Reorientation`.
 @(private)
 find_or_add :: proc(nodes: ^[dynamic]Node, p: Position) -> (r: Reoriented_Node, err: Error) {
-	return {}, nil
+	for x, n in nodes {
+		if u, ok := is_reoriented(x.position, p); ok {
+			return {node = n, reorientation = u}, nil
+		}
+	}
+	append(nodes, Node{position = p, line_nr = NO_LINE}) or_return
+	return {node = len(nodes) - 1}, nil
 }
