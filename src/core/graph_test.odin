@@ -95,6 +95,11 @@ expect_same_bits :: proc(t: ^testing.T, got, want: Position, loc := #caller_loca
 }
 
 @(private = "file")
+expect_steps :: proc(t: ^testing.T, got, want: []Step, loc := #caller_location) {
+	testing.expectf(t, slice.equal(got, want), "steps %v, want %v", got, want, loc = loc)
+}
+
+@(private = "file")
 expect_zero_reorientation :: proc(
 	t: ^testing.T,
 	u: Position_Reorientation,
@@ -138,11 +143,10 @@ test_graph_named_nodes_first :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(n.description), 2)
 	testing.expect_value(t, n.description[0], "A")
 	testing.expect_value(t, n.line_nr, 11) // 0-based line of its first position line ("T" = 0, "A" = 9)
-	testing.expect(
-		t,
-		n.incoming == nil && n.outgoing == nil && n.in_out == nil,
-		"in/out are #173's",
-	)
+	// The transition is a self-loop on node 0 (§10.3).
+	expect_steps(t, n.incoming, {{0, false}})
+	expect_steps(t, n.outgoing, {{0, false}})
+	expect_steps(t, n.in_out, {{0, true}, {0, false}})
 	e := g.edges[0]
 	testing.expect_value(t, e.from.node, 0)
 	testing.expect_value(t, e.to.node, 0)
@@ -341,4 +345,135 @@ test_graph_destroy_releases_arena :: proc(t: ^testing.T) {
 	graph_destroy(&g)
 	testing.expect(t, g.nodes == nil && g.edges == nil && g.named_count == 0, "graph not zeroed")
 	testing.expect(t, g.arena.curr_block == nil && g.arena.total_reserved == 0, "arena not zeroed")
+}
+
+// in/out/in_out (src/graph.cpp:243-277, docs/original.md §2.6): every edge in ascending order, and for each one the
+// `to` rule before the `from` rule; the reverse steps of a bidirectional edge only in `incoming`/`outgoing`.
+
+@(test)
+test_graph_in_out_plain_edge :: proc(t: ^testing.T) {
+	seqs := []Sequence{seq_of({"T"}, gap_position(1), gap_position(2))}
+	g, ok := build_seqs(t, seqs)
+	if !ok {
+		return
+	}
+	defer graph_destroy(&g)
+	if !testing.expect_value(t, len(g.nodes), 2) {
+		return
+	}
+	a, b := g.nodes[0], g.nodes[1]
+	testing.expect(t, a.incoming == nil, "A.incoming must be nil")
+	expect_steps(t, a.outgoing, {{0, false}})
+	expect_steps(t, a.in_out, {{0, false}})
+	expect_steps(t, b.incoming, {{0, false}})
+	testing.expect(t, b.outgoing == nil, "B.outgoing must be nil")
+	expect_steps(t, b.in_out, {{0, true}})
+}
+
+@(test)
+test_graph_in_out_bidirectional :: proc(t: ^testing.T) {
+	seqs := []Sequence{seq_of({"T"}, gap_position(1), gap_position(2))}
+	seqs[0].bidirectional = true
+	g, ok := build_seqs(t, seqs)
+	if !ok {
+		return
+	}
+	defer graph_destroy(&g)
+	if !testing.expect_value(t, len(g.nodes), 2) {
+		return
+	}
+	a, b := g.nodes[0], g.nodes[1]
+	expect_steps(t, a.incoming, {{0, true}})
+	expect_steps(t, a.outgoing, {{0, false}})
+	expect_steps(t, a.in_out, {{0, false}}) // the reverse step is not in in_out
+	expect_steps(t, b.incoming, {{0, false}})
+	expect_steps(t, b.outgoing, {{0, true}})
+	expect_steps(t, b.in_out, {{0, true}})
+}
+
+@(test)
+test_graph_in_out_order_by_edge :: proc(t: ^testing.T) {
+	// Node 0 is named; edges 0 (X → A), 1 (A → Y, bidirectional), 2 (Z → A) in file order.
+	a := gap_position(1)
+	x, y, z := gap_position(2), gap_position(3), gap_position(4)
+	seqs := []Sequence {
+		seq_of({"A"}, a),
+		seq_of({"T0"}, x, reorient(TURN, a)),
+		seq_of({"T1"}, a, y),
+		seq_of({"T2"}, z, a),
+	}
+	seqs[2].bidirectional = true
+	g, ok := build_seqs(t, seqs)
+	if !ok {
+		return
+	}
+	defer graph_destroy(&g)
+	if !testing.expect_value(t, len(g.edges), 3) {
+		return
+	}
+	testing.expect_value(t, g.edges[0].to.node, 0)
+	testing.expect(t, g.edges[0].to.reorientation.swap_players, "edge 0 must reach A reoriented")
+	n := g.nodes[0]
+	expect_steps(t, n.incoming, {{0, false}, {1, true}, {2, false}})
+	expect_steps(t, n.outgoing, {{1, false}})
+	expect_steps(t, n.in_out, {{0, true}, {1, false}, {2, true}})
+}
+
+@(test)
+test_graph_in_out_self_loop :: proc(t: ^testing.T) {
+	a := gap_position(1)
+	for bidirectional in ([]bool{false, true}) {
+		seqs := []Sequence{seq_of({"T"}, a, gap_position(2), a)}
+		seqs[0].bidirectional = bidirectional
+		g, ok := build_seqs(t, seqs)
+		if !ok {
+			return
+		}
+		defer graph_destroy(&g)
+		if !testing.expect_value(t, len(g.nodes), 1) {
+			return
+		}
+		n := g.nodes[0]
+		if bidirectional {
+			expect_steps(t, n.incoming, {{0, false}, {0, true}})
+			expect_steps(t, n.outgoing, {{0, false}, {0, true}})
+		} else {
+			expect_steps(t, n.incoming, {{0, false}})
+			expect_steps(t, n.outgoing, {{0, false}})
+		}
+		expect_steps(t, n.in_out, {{0, true}, {0, false}}) // to-rule before from-rule
+	}
+}
+
+@(test)
+test_graph_in_out_isolated_and_anonymous :: proc(t: ^testing.T) {
+	// Named A is isolated; named B and anonymous C, D are ends of edges 0 (B → C) and 1 (D → C).
+	b := gap_position(2)
+	c, d := gap_position(3), gap_position(4)
+	seqs := []Sequence {
+		seq_of({"A"}, gap_position(1)),
+		seq_of({"B"}, b),
+		seq_of({"T0"}, b, c),
+		seq_of({"T1"}, d, c),
+	}
+	g, ok := build_seqs(t, seqs)
+	if !ok {
+		return
+	}
+	defer graph_destroy(&g)
+	if !testing.expect_value(t, len(g.nodes), 4) || !testing.expect_value(t, g.named_count, 2) {
+		return
+	}
+	iso := g.nodes[0]
+	testing.expect(
+		t,
+		iso.incoming == nil && iso.outgoing == nil && iso.in_out == nil,
+		"isolated node must have nil lists",
+	)
+	expect_steps(t, g.nodes[1].outgoing, {{0, false}})
+	expect_steps(t, g.nodes[2].incoming, {{0, false}, {1, false}})
+	expect_steps(t, g.nodes[2].in_out, {{0, true}, {1, true}})
+	testing.expect(t, g.nodes[2].outgoing == nil, "C.outgoing must be nil")
+	expect_steps(t, g.nodes[3].outgoing, {{1, false}})
+	expect_steps(t, g.nodes[3].in_out, {{1, false}})
 }

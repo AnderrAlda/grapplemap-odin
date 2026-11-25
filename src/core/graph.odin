@@ -25,7 +25,7 @@ Reoriented_Node :: struct {
 
 // Node is `Graph::Node` (src/graph.hpp:40-52): a `NamedPosition` plus its incident sequences. An anonymous node has
 // `description = nil` and `line_nr = NO_LINE`. `incoming`/`outgoing`/`in_out` are the original's `in`/`out`/`in_out`
-// (`in` is an Odin keyword), filled by #173 (`nil` until then).
+// (`in` is an Odin keyword), filled by `compute_in_out`; `nil` when the node has no incident edge.
 Node :: struct {
 	position:                   Position,
 	description:                []string,
@@ -85,8 +85,8 @@ graph_destroy :: proc(g: ^Graph) {
 //     equal) → `Duplicate_Position_Description` with the later block and the 1-based line of its first
 //     description line (src/graph.cpp:283-285). Named positions are never matched with each other;
 //  3. the edges are the other sequences in file order: `from = find_or_add(front)`, then `to = find_or_add(back)`
-//     (src/graph.cpp:290-296). `from == to` is accepted (§10.3).
-// `in`/`out`/`in_out` (src/graph.cpp:298-299) are #173's.
+//     (src/graph.cpp:290-296). `from == to` is accepted (§10.3);
+//  4. `compute_in_out` for every node, once all edges exist (src/graph.cpp:298-299).
 @(private)
 build :: proc(g: ^Graph, seqs: []Sequence) -> Error {
 	allocator := virtual.arena_allocator(&g.arena)
@@ -133,7 +133,55 @@ build :: proc(g: ^Graph, seqs: []Sequence) -> Error {
 	g.nodes = slice.clone(nodes[:], allocator) or_return
 	g.edges = edges
 	g.named_count = named_count
+	for n in 0 ..< len(g.nodes) {
+		compute_in_out(g, n) or_return
+	}
 	return nil
+}
+
+// compute_in_out is `Graph::compute_in_out` (src/graph.cpp:243-277, §2.6): node `n`'s lists, in the arena, by
+// node index only (reorientations ignored). For every edge `s` in ascending order, in this order: `to == n` →
+// `incoming += {s, false}`, `in_out += {s, true}`; `from == n` → `outgoing += {s, false}`, `in_out += {s, false}`;
+// if bidirectional, `from == n` → `incoming += {s, true}` and `to == n` → `outgoing += {s, true}` (the reverse steps
+// are never in `in_out`). An empty list stays `nil`. The calls the original also makes inside `find_or_add`
+// (src/graph.cpp:230) are overwritten by this final pass, so they are not reproduced.
+@(private)
+compute_in_out :: proc(g: ^Graph, n: int) -> Error {
+	incoming := make([dynamic]Step, context.temp_allocator) or_return
+	outgoing := make([dynamic]Step, context.temp_allocator) or_return
+	in_out := make([dynamic]Step, context.temp_allocator) or_return
+	for e, s in g.edges {
+		if e.to.node == n {
+			append(&incoming, Step{s, false}) or_return
+			append(&in_out, Step{s, true}) or_return
+		}
+		if e.from.node == n {
+			append(&outgoing, Step{s, false}) or_return
+			append(&in_out, Step{s, false}) or_return
+		}
+		if e.sequence.bidirectional {
+			if e.from.node == n {
+				append(&incoming, Step{s, true}) or_return
+			}
+			if e.to.node == n {
+				append(&outgoing, Step{s, true}) or_return
+			}
+		}
+	}
+	node := &g.nodes[n]
+	node.incoming = clone_steps(incoming[:], g) or_return
+	node.outgoing = clone_steps(outgoing[:], g) or_return
+	node.in_out = clone_steps(in_out[:], g) or_return
+	return nil
+}
+
+// clone_steps copies `steps` into `g.arena`; `nil` when empty.
+@(private = "file")
+clone_steps :: proc(steps: []Step, g: ^Graph) -> (r: []Step, err: Error) {
+	if len(steps) == 0 {
+		return nil, nil
+	}
+	return slice.clone(steps, virtual.arena_allocator(&g.arena)) or_return, nil
 }
 
 // find_or_add is `Graph::find_or_add` (src/graph.cpp:213-241): the lowest index `n` with
