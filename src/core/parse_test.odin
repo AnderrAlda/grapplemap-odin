@@ -70,7 +70,9 @@ sample_q :: proc(v: int) -> (q: Q) {
 	return
 }
 
-@(private = "file")
+// pos_text: the text of `sample_q(v)` (temp allocator). Package-level for graph_test.odin. The positions of two
+// values `v` differ by a small uniform shift (y included), within the matching threshold, so they all match each
+// other (`is_reoriented`).
 pos_text :: proc(v := 0) -> string {
 	return encode_position_q(sample_q(v))
 }

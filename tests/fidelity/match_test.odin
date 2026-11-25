@@ -8,8 +8,8 @@ import "core:testing"
 
 // Node matching of `core` (match.odin) against `graph.ndjson` (tools/oracle/README.md): for every transition,
 // `is_reoriented(node position, sequence end)` (the original's argument order, src/graph.cpp:216) matches and gives
-// `reorientation_from` (first position) and `reorientation_to` (last position) bit for bit. Not checked here (#142):
-// that the matched node is the lowest-index one, the numbering of anonymous nodes, `in`/`out`.
+// `reorientation_from` (first position) and `reorientation_to` (last position) bit for bit. The lowest-index rule
+// and the numbering of anonymous nodes are graph_test.odin's.
 
 @(private = "file")
 Graph_Node :: struct {
@@ -18,7 +18,7 @@ Graph_Node :: struct {
 	position_q: [core.PLAYER_COUNT][core.JOINT_COUNT][3]int,
 }
 
-@(private = "file")
+// Oracle_Reorientation is a `PositionReorientation` as the dumper writes it (graph.ndjson, compose.ndjson).
 Oracle_Reorientation :: struct {
 	translation: [3]f64,
 	angle:       f64,
@@ -79,16 +79,7 @@ check_graph_line :: proc(line: []byte, ctx: rawptr) -> bool {
 		if jerr := json.unmarshal(line, &node); jerr != nil {
 			return testing.expectf(t, false, "graph.ndjson node: %v", jerr)
 		}
-		// The parser's formula (parse.odin), so the same bits.
-		p: core.Position
-		for pl in 0 ..< core.PLAYER_COUNT {
-			for j in core.Joint {
-				for axis in 0 ..< 3 {
-					v := f64(node.position_q[pl][int(j)][axis]) / core.QUANT_SCALE
-					p[pl][j][axis] = v if axis == 1 else v - core.ENCODING_OFFSET_XZ
-				}
-			}
-		}
+		p := decode_position_q(node.position_q)
 		if b, named := node.block.?; named {
 			if !testing.expectf(
 				t,
@@ -153,13 +144,7 @@ check_end :: proc(
 	if !testing.expectf(t, matched, "block %d %s: node %d does not match", block, which, node) {
 		return false
 	}
-	r := u.reorientation
-	ok := expect_bits(t, r.angle, want.angle, "angle, block", block)
-	for axis in 0 ..< 3 {
-		ok &= expect_bits(t, r.offset[axis], want.translation[axis], "translation, block", block)
-	}
-	ok &= testing.expectf(t, u.swap_players == want.swap, "swap, block %d", block)
-	ok &= testing.expectf(t, u.mirror == want.mirror, "mirror, block %d", block)
+	ok := expect_reorientation(t, u, want, block)
 	if !ok {
 		testing.expectf(t, false, "  at block %d end %s (node %d)", block, which, node)
 	}
@@ -167,7 +152,6 @@ check_end :: proc(
 }
 
 // to_oracle_position: a `core.Position` in the dumper's layout, for `expect_position`.
-@(private = "file")
 to_oracle_position :: proc(p: core.Position) -> Oracle_Position {
 	o: Oracle_Position
 	for pl in 0 ..< core.PLAYER_COUNT {
@@ -176,4 +160,42 @@ to_oracle_position :: proc(p: core.Position) -> Oracle_Position {
 		}
 	}
 	return o
+}
+
+// decode_position_q: the dumper's quantized `position_q` with the parser's formula (parse.odin), so the same bits.
+decode_position_q :: proc(q: [core.PLAYER_COUNT][core.JOINT_COUNT][3]int) -> (p: core.Position) {
+	for pl in 0 ..< core.PLAYER_COUNT {
+		for j in core.Joint {
+			for axis in 0 ..< 3 {
+				v := f64(q[pl][int(j)][axis]) / core.QUANT_SCALE
+				p[pl][j][axis] = v if axis == 1 else v - core.ENCODING_OFFSET_XZ
+			}
+		}
+	}
+	return
+}
+
+// expect_reorientation: `u` equals the oracle's `want` bit for bit (angle, translation, swap, mirror).
+expect_reorientation :: proc(
+	t: ^testing.T,
+	u: core.Position_Reorientation,
+	want: Oracle_Reorientation,
+	block: int,
+	loc := #caller_location,
+) -> bool {
+	r := u.reorientation
+	ok := expect_bits(t, r.angle, want.angle, "angle, block", block, loc)
+	for axis in 0 ..< 3 {
+		ok &= expect_bits(
+			t,
+			r.offset[axis],
+			want.translation[axis],
+			"translation, block",
+			block,
+			loc,
+		)
+	}
+	ok &= testing.expectf(t, u.swap_players == want.swap, "swap, block %d", block, loc = loc)
+	ok &= testing.expectf(t, u.mirror == want.mirror, "mirror, block %d", block, loc = loc)
+	return ok
 }
