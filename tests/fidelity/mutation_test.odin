@@ -167,13 +167,10 @@ test_load_graph_survives_mutations :: proc(t: ^testing.T) {
 			len(g.nodes) - g.named_count,
 			len(g.edges),
 		)
-		testing.expectf(
-			t,
-			len(g.edges) > 0 && len(g.nodes) > g.named_count,
-			"sample: %d edges, %d anonymous nodes",
-			len(g.edges),
-			len(g.nodes) - g.named_count,
-		)
+		// Exactly the sliced blocks (every named block is a node, every transition an edge), and anonymous nodes.
+		testing.expect_value(t, g.named_count, SAMPLE_NAMED_BLOCKS)
+		testing.expect_value(t, len(g.edges), SAMPLE_TRANSITION_BLOCKS)
+		testing.expectf(t, len(g.nodes) > g.named_count, "sample: no anonymous nodes")
 		in_out := 0
 		for n in g.nodes {
 			in_out += len(n.in_out)
