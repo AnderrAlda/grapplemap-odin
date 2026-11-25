@@ -276,12 +276,19 @@ decode_position :: proc(
 			for axis in 0 ..< len(V3) {
 				q := BASE62 * digits[n] + digits[n + 1]
 				n += 2
-				v := f64(q) / QUANT_SCALE
-				pos[p][j][axis] = v if axis == 1 else v - ENCODING_OFFSET_XZ
+				pos[p][j][axis] = dequantize(q, axis)
 			}
 		}
 	}
 	return pos, nil
+}
+
+// dequantize is the original's decode of one coordinate (`decodePosition`, src/persistence.cpp:43-53): `q / 1000`,
+// minus 2 on x and z. Shared with the JSON reader (ADR 0005 d6).
+@(private)
+dequantize :: proc(q: int, axis: int) -> f64 {
+	v := f64(q) / QUANT_SCALE
+	return v if axis == 1 else v - ENCODING_OFFSET_XZ
 }
 
 @(private = "file")
