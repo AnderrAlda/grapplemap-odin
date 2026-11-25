@@ -15,6 +15,9 @@ test_lookups_db :: proc(t: ^testing.T) {
 	// §10.2 duplicate_description: 249 and 477 share the lookup name `spiderweb w/o leg over head`; the lower wins.
 	n, found := core.node_by_desc(g, "spiderweb w/o leg over head")
 	testing.expectf(t, found && n == 249, "spiderweb: %v, %v", n, found)
+	if testing.expect(t, len(g.nodes) > 477 && len(g.nodes[477].description) > 0) {
+		testing.expect_value(t, g.nodes[477].description[0], "spiderweb\\nw/o leg\\nover head")
+	}
 	n, found = core.node_by_desc(g, "¼ clinch")
 	testing.expectf(t, found && n == 200, "¼ clinch: %v, %v", n, found)
 

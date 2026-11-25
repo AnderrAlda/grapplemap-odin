@@ -3,7 +3,8 @@ package core
 // Lookups by name of the original (§2.8; `src/metadata.cpp:66-124`, `src/util.hpp:70-86`), over a built `Graph`,
 // quirks included. Pure: nothing is allocated. Two deliberate divergences, both of undefined behaviour of the
 // original: an index that is out of range is "not found" (never handed out), and a `p<N>` that does not fit a
-// `u64` is "not found" (the original's `stoul` throws `out_of_range` and the program dies).
+// `u64` is "not found" (the original's `stoul` throws `out_of_range` and the program dies). A third, in
+// `named_entity`: an `l<N>` that does not fit a `u64` is not an `l` name (the original dies likewise).
 
 // Entity_Node is the `NodeNum` alternative of the original's `variant<NodeNum, Step>`: a struct so that a bare
 // `int` member is not mistaken for something else at call sites.
@@ -77,7 +78,10 @@ node_by_desc :: proc(g: ^Graph, desc: string) -> (node: int, ok: bool) {
 			return 0, false
 		}
 		idx := int(u16(n))
-		return idx, idx < len(g.nodes)
+		if idx >= len(g.nodes) {
+			return 0, false
+		}
+		return idx, true
 	}
 	for nd, i in g.nodes {
 		if len(nd.description) != 0 && first_line_matches(nd.description[0], desc) {

@@ -256,7 +256,7 @@ test_named_entity :: proc(t: ^testing.T) {
 	}
 	defer graph_destroy(&g)
 	expect_entity(t, &g, "last-trans", Step{8, false})
-	expect_entity(t, &g, "l100", Entity_Node{0}) // a node before an edge: none here shares it, node line 100
+	expect_entity(t, &g, "l100", Entity_Node{0}) // the node on line 100
 	expect_entity(t, &g, "l200", Step{8, false}) // no node on that line: the edge
 	expect_entity(t, &g, "l103", Step{0, false})
 	expect_entity(t, &g, "l999", Step{7, false}) // no line 999: falls through to the transition named "l999"
@@ -281,6 +281,18 @@ test_named_entity_line_on_node_and_edge :: proc(t: ^testing.T) {
 	defer graph_destroy(&g)
 	expect_entity(t, &g, "l7", Entity_Node{0}) // nodes before edges
 	expect_entity(t, &g, "l4294967303", Entity_Node{0}) // 2^32 + 7 truncated to u32: line 7
+}
+
+@(test)
+test_named_entity_line_overflow_is_a_name :: proc(t: ^testing.T) {
+	name := "l9999999999999999999999999"
+	seqs := []Sequence{mk({"A"}, 1, false, gp(1)), mk({name}, 2, false, gp(1), gp(2))}
+	g, ok := build_lookup(t, seqs)
+	if !ok {
+		return
+	}
+	defer graph_destroy(&g)
+	expect_entity(t, &g, name, Step{0, false}) // does not fit a u64: not an `l` name, found as a transition name
 }
 
 @(test)
