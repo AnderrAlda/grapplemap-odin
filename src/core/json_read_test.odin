@@ -195,8 +195,11 @@ json_read_strings :: proc(t: ^testing.T) {
 		raw, want: string,
 	}
 	cases := [?]Case {
-		{`"\"\\\/\b\f\n\r\té"`, "\"\\/\b\f\n\r\té"},
-		{`"😀"`, "😀"},
+		{`"\"\\\/\b\f\n\r\t"`, "\"\\/\b\f\n\r\t"},
+		{`"\u00e9"`, "é"},
+		{`"\u00E9"`, "é"},
+		{`"\ud83d\ude00"`, "😀"},
+		{`"\uD83D\uDE00"`, "😀"},
 		{`"\\n"`, "\\n"},
 		{`"é😀"`, "é😀"},
 		{`"\u0000"`, "\x00"},
@@ -223,7 +226,7 @@ json_read_strings :: proc(t: ^testing.T) {
 		{`"\ud83d"`, .Syntax},
 		{`"\ude00"`, .Syntax},
 		{`"\ud83dx"`, .Syntax},
-		{`"\ud83dA"`, .Syntax},
+		{`"\ud83d\u0041"`, .Syntax},
 		{"\"a\x01\"", .Syntax},
 		{`"abc`, .Syntax},
 		{`"\q"`, .Syntax},
@@ -240,8 +243,8 @@ json_read_strings :: proc(t: ^testing.T) {
 			`}],"transitions":[]}`,
 		)
 		g, err := load_graph_json(transmute([]byte)doc)
-		e, _ := err.(Json_Error)
-		testing.expectf(t, e.kind == c.kind && err != nil, "%q: got %v", c.raw, err)
+		e, is_json := err.(Json_Error)
+		testing.expectf(t, is_json && e.kind == c.kind, "%q: got %v", c.raw, err)
 		graph_destroy(&g)
 	}
 }
@@ -309,6 +312,19 @@ json_read_errors :: proc(t: ^testing.T) {
 			),
 			.Duplicate_Description,
 			6,
+			1,
+		},
+		{"next_id 0", sub(doc, `"next_id":5`, `"next_id":0`), .Syntax, 3, NO_BLOCK},
+		{"next_id -1", sub(doc, `"next_id":5`, `"next_id":-1`), .Syntax, 3, NO_BLOCK},
+		{
+			"error on the third line of an entry",
+			sub(
+				doc,
+				`{"id":2,"description":["B"],`,
+				"{\"id\":2,\n\"description\":[\"B\"],\n\"x\":",
+			),
+			.Unknown_Key,
+			8,
 			1,
 		},
 		{"id 0", sub(doc, `{"id":2,`, `{"id":0,`), .Duplicate_Id, 6, 1},
