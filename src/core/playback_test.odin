@@ -338,6 +338,56 @@ test_follow_carries_reorientation :: proc(t: ^testing.T) {
 	}
 }
 
+// Another stored frame, for the `from` end of the backwards edge (so entry and exit reorientations differ).
+@(private = "file")
+TILT :: Position_Reorientation {
+	reorientation = {offset = {-0.4, 0, 0.15}, angle = -0.7},
+}
+
+@(test)
+test_follow_backwards_carries_reorientation :: proc(t: ^testing.T) {
+	// Edge 1 is stored 2 → 1 with 3 positions in TURN's frame at its `to` end and TILT at its `from` end; walked
+	// from node 1 it goes backwards: entry = `to` (TURN), exit = `from` (TILT), segments C→B, B→A.
+	n1 := varied(0.4)
+	ps := []Position{reorient(TURN, varied(1.2)), reorient(TURN, varied(0.8)), reorient(TURN, n1)}
+	g := hand_graph(
+		anon_nodes(3),
+		{
+			seq_edge(desc("one"), at(0), at(1), varied(0), n1),
+			seq_edge(desc("back"), at(2, TILT), at(1, TURN), ..ps),
+		},
+	)
+	start := Position_Reorientation {
+		reorientation = {offset = {0.1, 0, 0.05}, angle = 0.3},
+	}
+	f, next, err := follow(&g, at(1, start), 1, 1, context.temp_allocator)
+	testing.expect_value(t, err, nil)
+	r := compose(inverse(TURN), start)
+	testing.expect_value(t, next.node, 2)
+	expect_same_reorientation(t, next.reorientation, compose(TILT, r))
+	if !testing.expect_value(t, len(f), 4) {
+		return
+	}
+	testing.expect(t, basically_same(f[0], reorient(start, n1)), "walk starts where the node is")
+	ra, rb, rc := reorient(r, ps[2]), reorient(r, ps[1]), reorient(r, ps[0])
+	expect_same_bits(t, f[0], between(ra, rb, 0))
+	expect_same_bits(t, f[1], between(ra, rb, 1))
+	expect_same_bits(t, f[2], between(rb, rc, 0))
+	expect_same_bits(t, f[3], between(rb, rc, 1))
+
+	// Through `frames` (step 2 listed forwards, walked backwards): same frames minus the last, and it continues step 1.
+	steps, ferr := frames(&g, {{seq = 0}, {seq = 1}}, 1, context.temp_allocator)
+	testing.expect_value(t, ferr, nil)
+	if testing.expect_value(t, len(steps), 2) && testing.expect_value(t, len(steps[1].frames), 3) {
+		testing.expect(t, basically_same(steps[1].frames[0], n1), "step 2 continues step 1")
+		testing.expect(
+			t,
+			basically_same(steps[1].frames[2], varied(0.8)),
+			"C→B→A order in step 1's frame",
+		)
+	}
+}
+
 @(test)
 test_frames_captions :: proc(t: ^testing.T) {
 	nodes := anon_nodes(3)
