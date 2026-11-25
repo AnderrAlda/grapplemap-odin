@@ -117,5 +117,9 @@ position lines, as in §2.1). The DB is valid UTF-8 (`iconv -f UTF-8 -t UTF-8`) 
 - Re-importing an updated upstream `GrappleMap.txt` assigns IDs by block number again, so identities are not carried
   over to a JSON that was already edited; matching entries across versions (by name, content or both) is a phase-6
   question.
-- Pretty-printing and key order of the written JSON (for small git diffs): a detail of the phase-2 writer, not of
-  the schema.
+- ~~Pretty-printing and key order of the written JSON~~: closed by the writer (`src/core/json.odin`, #146). Fixed key
+  order `schema_version`, `next_id`, `positions`, `transitions`; inside an entry `id`, `description`, then `position` /
+  `positions`; compact (no spaces) with one entry per line, entries separated by `,\n`, an empty array on one line
+  (`"positions":[]`), one final `\n`. Strings are escaped per RFC 8259 (`\u00xx` lowercase for other control bytes).
+  Changing this layout is an amendment.
+- Anonymous nodes carry `NO_ID` (0) in `Node.id`; real ids start at 1.
