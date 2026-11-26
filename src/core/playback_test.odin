@@ -539,6 +539,19 @@ test_caption_public :: proc(t: ^testing.T) {
 		testing.expect_value(t, s, want)
 		delete(s, alloc)
 	}
+	{
+		// The default allocator is `context.allocator`.
+		context.allocator = alloc
+		s, err := caption(&g, 0)
+		testing.expect_value(t, err, nil)
+		testing.expect_value(t, s, "a b")
+		delete(s)
+	}
+	for seq in ([]int{-1, 3}) {
+		s, err := caption(&g, seq, alloc)
+		expect_not_connected(t, err, seq)
+		testing.expect_value(t, s, "")
+	}
 	testing.expect_value(t, len(track.allocation_map), 0)
 	testing.expect_value(t, len(track.bad_free_array), 0)
 }

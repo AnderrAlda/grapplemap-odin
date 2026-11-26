@@ -66,7 +66,7 @@ test_chase :: proc(t: ^testing.T) {
 
 	dt := 1.0 / f64(CHASER_REFERENCE_HZ)
 	got = chase(a, b, dt)
-	want := between(a, b, per_second_factor(CHASER_FACTOR, dt))
+	want := between(a, b, transmute(f64)u64(0x3fc9999999999998)) // 1 − 0.8
 	testing.expect(
 		t,
 		transmute([size_of(Position) / 8]u64)got == transmute([size_of(Position) / 8]u64)want,
