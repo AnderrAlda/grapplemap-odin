@@ -94,4 +94,13 @@ For the reference path:
 - OSMesa's channel order (§7.6) and the lighting defaults (§7.3), once the oracle PNGs exist.
 - The pixel tolerance (decision 5): Ander's call, with the prototype's measurements.
 - Whether a pillar basis ever degenerates on the DB (`docs/original.md` §7.1, section 10).
-- Per-frame mesh rebuild vs instanced spheres (decision 2): by measurement, if either matters at all.
+- Per-frame mesh rebuild vs instanced spheres (decision 2): by measurement, if either matters at all. **#199
+  prototype:** per-frame rebuild with `rlUpdateVertexBuffer` into our own VAO (one VBO per attribute) is what
+  `src/render/reference.odin` does; with the real DB's node 0 it draws without visible cost on llvmpipe, so instancing
+  is not pursued unless a later measurement says otherwise.
+- `GL_LESS` (decision 3) is set with `vendor:OpenGL` loaded through `rlgl.GetProcAddress` (raylib's own GLFW
+  context); `draw_scene` saves and restores raylib's depth function, depth test and culling around the 3D pass.
+- Grid of the interactive path (#199, epic #5 point 10): drawn as the original's shader-path quads, 0.02 m wide in
+  world space (`src/rendering.cpp:267-289`), not `GL_LINES`, because a core-profile context only guarantees 1-px
+  lines. The oracle images use 2-px aliased `GL_LINES` at 2× (≈ 1 px after the 2×2 mean); the difference is measured
+  in #204, not tuned here.
