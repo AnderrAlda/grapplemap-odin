@@ -1,2 +1,0 @@
-### Added
-- ADRs 0004 (axes and units: the original's meters, `y` up, right-handed coordinates used as-is in raylib, camera matrices from the original's formulas), 0005 (own JSON format: schema version, stable IDs, positions in the original's quantization, byte-exact round trip with the original's writer) and 0006 (body rendering: the original's meshes rebuilt on the CPU with per-vertex fixed-function lighting for the reference path, a separate modern path, pixel tolerance left to Ander), linked from `docs/architecture.md`, proposed for acceptance (#44).
