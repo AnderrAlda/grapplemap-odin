@@ -52,8 +52,8 @@ eye looking down `−z`, OpenGL clip space. raylib has no unit; meters are a cho
    (`src/camera.hpp:18`). They are not rebuilt from a `Camera3D`: `BeginMode3D` would use the true π, raylib's
    near/far (0.05/4000 instead of 0.01/15) and `f32` throughout, which changes the projection, the depth range
    and hence pixels (ADR 0006). Converting the original's column-major `M` (`m[4·c + r]`, `src/math.hpp:91-98,197-204`)
-   to raylib's `Matrix` is element `(r, c) = f32(M[4·c + r])`, one conversion per element. Whether the interactive
-   UX camera (phase 3) may use `Camera3D` instead is left to phase 3: it is not compared with the oracle. First-person
+   to raylib's `Matrix` is element `(r, c) = f32(M[4·c + r])`, one conversion per element. The interactive camera
+   uses the same matrices ([ADR 0007](0007-timed-playback.md) decision 7). First-person
    views use `gluLookAt(Head, (LeftHand + RightHand)/2, Head − Neck)` (`src/rendering.cpp:346-352`); if a phase needs
    them, that matrix is rebuilt with the `gluLookAt` formula in `f64` too.
 4. **Axis-dependent constants are kept verbatim in `core`** (`docs/original.md` §4.4): the `−2` offset on `x` and

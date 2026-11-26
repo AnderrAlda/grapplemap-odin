@@ -78,3 +78,4 @@ GrappleMap.txt (bytes) ──► parser ──► graph (arena) ──► transf
 - [0004](adr/0004-axes-and-units.md) Axes and units.
 - [0005](adr/0005-json-format.md) Own JSON format.
 - [0006](adr/0006-body-rendering.md) Body rendering technique.
+- [0007](adr/0007-timed-playback.md) Timed playback, chaser and interactive camera.
