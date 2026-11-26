@@ -366,6 +366,32 @@ test_timed_progress_reversed :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_timed_progress_reversed_into_next :: proc(t: ^testing.T) {
+	g := steps_graph()
+	// Reversed detailed step (0.2 s), then a normal one: the leftover is consumed at 5 segments per second.
+	path := slice.clone(
+		[]Reoriented_Step{{step = {seq = 1, reverse = true}}, {step = {seq = 0}}},
+		context.temp_allocator,
+	)
+	p, _ := timed_init(&g, path)
+	timed_progress(&p, &g, 0.23)
+	expect_state(t, p, 1, 0, 0x3fc3333333333338) // 0.15000000000000013
+}
+
+@(test)
+test_timed_init_bad_seq :: proc(t: ^testing.T) {
+	g := steps_graph()
+	for seq in ([]int{-1, len(g.edges)}) {
+		path := slice.clone(
+			[]Reoriented_Step{{step = {seq = 0}}, {step = {seq = seq}}},
+			context.temp_allocator,
+		)
+		_, err := timed_init(&g, path)
+		expect_unconnected(t, err, seq)
+	}
+}
+
+@(test)
 test_timed_progress_end_and_loop :: proc(t: ^testing.T) {
 	g := steps_graph()
 	p, _ := timed_init(&g, one_step(0))
@@ -400,7 +426,8 @@ test_timed_progress_no_loop_and_huge :: proc(t: ^testing.T) {
 	}
 	expect_state(t, p, 0, 2, B_1, B_0, true)
 
-	// A huge step over a multi-step path never leaves `how_far` outside [0, 1].
+	// A huge step over a multi-step path never leaves `how_far` outside [0, 1] (`progress` does not need the steps
+	// to be connected).
 	path := slice.clone(
 		[]Reoriented_Step {
 			{step = {seq = 0}},
@@ -428,9 +455,17 @@ test_timed_at :: proc(t: ^testing.T) {
 	p.segment, p.how_far = 1, 1
 	expect_position_bits(t, timed_at(&p, &g), reorient(SPIN, between(ps[1], ps[2], 1)))
 
-	// Interpolate, then reorient (src/graph_util.hpp:260-268).
+	// Interpolate, then reorient (src/graph_util.hpp:260-268); the other order differs in some bit here, so this
+	// case catches a swap.
 	p.segment, p.how_far = 2, 0.5
-	expect_position_bits(t, timed_at(&p, &g), reorient(SPIN, between(ps[2], ps[3], 0.5)))
+	got := timed_at(&p, &g)
+	expect_position_bits(t, got, reorient(SPIN, between(ps[2], ps[3], 0.5)))
+	other := between(reorient(SPIN, ps[2]), reorient(SPIN, ps[3]), 0.5)
+	testing.expect(
+		t,
+		transmute([size_of(Position) / 8]u64)got != transmute([size_of(Position) / 8]u64)other,
+		"both orders agree bit for bit: pick another case",
+	)
 }
 
 @(private = "file")

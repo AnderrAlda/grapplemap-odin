@@ -60,11 +60,11 @@ step_ends :: proc(g: ^Graph, s: Step) -> (start, exit: Reoriented_Node) {
 	return e.from, e.to
 }
 
-// Timed_Playback is the original's `Playback` minus its chaser (chaser.odin): the location is step `path[i]`,
+// Timed_Playback is the original's `Playback` minus its chaser: the location is step `path[i]`,
 // segment `segment` (`positions[segment] → positions[segment + 1]`) at `how_far` ∈ [0, 1], always in stored order (a
 // reversed step runs `how_far` down from 1 and `segment` down to 0). `wait` is the pause left (seconds); `at_end`
 // holds the end. `loop` (default true, the original) restarts after the end pause; false holds the end forever.
-// `path` is borrowed: the caller owns it and keeps it alive; every step comes from `connect` (valid `seq`).
+// `path` is borrowed: the caller owns it and keeps it alive; `timed_init` checks every `seq` is an edge index.
 Timed_Playback :: struct {
 	path:       []Reoriented_Step,
 	i, segment: int,
@@ -75,7 +75,8 @@ Timed_Playback :: struct {
 }
 
 // timed_init is the `Playback` constructor (src/playback.cpp:96-100) minus the chaser: `timed_reset`. An empty path
-// is `Graph_Error{.Empty_Path}` (the original reads `path.front()`).
+// is `Graph_Error{.Empty_Path}` (the original reads `path.front()`); a `seq` out of range is
+// `Graph_Error{.Step_Not_Connected, block = seq}` (consecutive steps are not checked to be connected).
 timed_init :: proc(
 	g: ^Graph,
 	path: []Reoriented_Step,
@@ -86,6 +87,11 @@ timed_init :: proc(
 ) {
 	if len(path) == 0 {
 		return {}, Graph_Error{kind = .Empty_Path, line = 0, block = NO_BLOCK}
+	}
+	for r in path {
+		if r.step.seq < 0 || r.step.seq >= len(g.edges) {
+			return {}, Graph_Error{kind = .Step_Not_Connected, line = 0, block = r.step.seq}
+		}
 	}
 	p = {
 		path = path,
@@ -134,7 +140,8 @@ speed :: proc(g: ^Graph, seq: int) -> f64 {
 // `(how_far − 1) / speed` goes to the next segment (`how_far = 0`) or, past the last one, the step is finished
 // (`how_far = 1`). Reversed mirrors it (`how_far −= …`, stays above 0, leftover `−how_far / speed`). A finished last
 // step sets `at_end` and `wait = PAUSE_AFTER` (the leftover discarded); another one moves to the next step's start and
-// carries the leftover at that step's speed.
+// carries the leftover at that step's speed. `seconds ≥ 0` keeps `how_far` in [0, 1] (a negative one moves back
+// and can leave it, as in the original).
 timed_progress :: proc(p: ^Timed_Playback, g: ^Graph, seconds: f64) {
 	seconds := seconds
 	for {
