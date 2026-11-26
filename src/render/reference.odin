@@ -202,6 +202,10 @@ reference_init :: proc(r: ^Reference_Renderer, allocator := context.allocator) -
 		rawptr(gl.impl_GetFloatv),
 		rawptr(gl.impl_LineWidth),
 		rawptr(gl.impl_DrawArrays),
+		rawptr(gl.impl_GenRenderbuffers),
+		rawptr(gl.impl_BindRenderbuffer),
+		rawptr(gl.impl_RenderbufferStorage),
+		rawptr(gl.impl_DeleteRenderbuffers),
 	}
 	for p in procs {
 		if p == nil {

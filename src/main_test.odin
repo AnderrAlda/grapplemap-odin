@@ -162,6 +162,7 @@ test_parse_args_image :: proc(t: ^testing.T) {
 	testing.expect_value(t, img.height, render.IMAGE_DEFAULT_HEIGHT)
 	testing.expect_value(t, img.heading, 0)
 	testing.expect(t, !img.mirror && !img.swap)
+	testing.expect_value(t, img.opts, render.IMAGE_OPTIONS_DEFAULT)
 
 	s, ok = parse_args(
 		{
@@ -184,6 +185,18 @@ test_parse_args_image :: proc(t: ^testing.T) {
 	testing.expect_value(t, img.height, 240)
 	testing.expect_value(t, img.heading, 1)
 	testing.expect(t, img.mirror && img.swap)
+
+	s, ok = parse_args({"app", "--image", "p1", "a.png", "--grid", "lines", "--depth", "16"})
+	testing.expect(t, ok)
+	img = s.image.? or_else {}
+	testing.expect_value(t, img.opts, render.Image_Options{grid = .Lines, depth = .Bits16})
+	s, ok = parse_args({"app", "--image", "p1", "a.png", "--grid", "quads", "--depth", "raylib"})
+	testing.expect(t, ok)
+	testing.expect_value(
+		t,
+		(s.image.? or_else {}).opts,
+		render.Image_Options{grid = .Quads, depth = .Raylib},
+	)
 
 	for h, i in ([]string{"N", "E", "S", "W"}) {
 		s, ok = parse_args({"app", "--image", "p1", "a.png", "--heading", h})
@@ -214,6 +227,9 @@ test_parse_args_image_errors :: proc(t: ^testing.T) {
 		{"app", "--image", "p96", "out.png", "--heading"},
 		{"app", "--image", "p96", "out.png", "--headless"},
 		{"app", "--headless", "--image", "p96", "out.png"},
+		{"app", "--image", "p96", "out.png", "--grid", "dots"},
+		{"app", "--image", "p96", "out.png", "--grid"},
+		{"app", "--image", "p96", "out.png", "--depth", "24"},
 		{"app", "--mirror"},
 		{"app", "--size", "320x240"},
 	}

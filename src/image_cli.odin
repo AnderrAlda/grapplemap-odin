@@ -8,7 +8,9 @@ import "core:strings"
 import rl "vendor:raylib"
 
 // `--image <entity> <out.png> [--size WxH] [--heading N|E|S|W] [--mirror] [--swap] [--load <file>]`: the
-// reference-path image of a named position, as `tools/oracle/images/images.cpp` (spec phase 3, "UX").
+// reference-path image of a named position, as `tools/oracle/images/images.cpp` (spec phase 3, "UX"). Two options
+// are left out of the usage line, for `./build.sh golden-measure` (tools/golden/README.md): `--grid quads|lines` and
+// `--depth raylib|16` (render.Image_Options; default render.IMAGE_OPTIONS_DEFAULT).
 
 DEFAULT_DB_PATH :: "reference/GrappleMap/GrappleMap.txt" // the database when there is no `--load`
 IMAGE_MAX_SIDE :: 4096 // largest `--size` side: the 2× render texture stays within common GL limits
@@ -23,6 +25,7 @@ Image_Args :: struct {
 	heading:  int, // 0..3 = N, E, S, W
 	mirror:   bool,
 	swap:     bool,
+	opts:     render.Image_Options,
 }
 
 // parse_image_arg handles `args[i^]` if it is one of the image options, advancing `i` past its values. `handled` is
@@ -49,6 +52,24 @@ parse_image_arg :: proc(args: []string, i: ^int, img: ^Image_Args) -> (handled, 
 		h := value(args, i) or_return
 		img.heading = strings.index(HEADING_CODES, h)
 		return true, len(h) == 1 && img.heading >= 0
+	case "--grid":
+		switch value(args, i) or_return {
+		case "quads":
+			img.opts.grid = .Quads
+		case "lines":
+			img.opts.grid = .Lines
+		case:
+			return true, false
+		}
+	case "--depth":
+		switch value(args, i) or_return {
+		case "raylib":
+			img.opts.depth = .Raylib
+		case "16":
+			img.opts.depth = .Bits16
+		case:
+			return true, false
+		}
 	case "--mirror":
 		img.mirror = true
 	case "--swap":
@@ -123,8 +144,22 @@ run_image :: proc(state: ^App_State, img: Image_Args) -> int {
 		return EXIT_RENDER_ERROR
 	}
 	defer render.reference_destroy(&scene)
-	if err := render.render_image(&scene, pos, img.heading, img.width, img.height, .Quads, pixels);
-	   err != .None {
+	if used := render.effective_grid_style(&scene, img.opts.grid); used != img.opts.grid {
+		fmt.eprintfln(
+			"warning: --image: this GL context has no %d-px lines; grid drawn as %v",
+			render.GRID_LINE_WIDTH_PX,
+			used,
+		)
+	}
+	if err := render.render_image(
+		&scene,
+		pos,
+		img.heading,
+		img.width,
+		img.height,
+		img.opts,
+		pixels,
+	); err != .None {
 		fmt.eprintfln("error: --image: %v", err)
 		return EXIT_RENDER_ERROR
 	}
