@@ -97,7 +97,7 @@ For the reference path:
 - Per-frame mesh rebuild vs instanced spheres (decision 2): by measurement, if either matters at all. **#199
   prototype:** per-frame rebuild with `rlUpdateVertexBuffer` into our own VAO (one VBO per attribute) is what
   `src/render/reference.odin` does. Measured on the real DB's node 0 (`-o:speed`, Mesa llvmpipe under Xvfb, 300
-  frames): `build_body` 0.28 ms per frame (22 740 vertices) against 14.8 ms for the whole frame at 1280×720, so
+  frames, two runs): `build_body` 0.28–0.43 ms per frame (22 740 vertices) against 15–18 ms for the whole frame at 1280×720, so
   instancing is not pursued unless a later measurement says otherwise.
 - `GL_LESS` (decision 3) is set with `vendor:OpenGL` loaded through `rlgl.GetProcAddress` (raylib's own GLFW
   context); `draw_scene` saves and restores raylib's depth function, depth test and culling around the 3D pass.
