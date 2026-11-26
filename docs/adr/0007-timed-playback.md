@@ -28,8 +28,9 @@ has two ways of playing a path:
   `3.141593`, near/far 0.01/15) and left open whether the interactive camera may use raylib's `Camera3D` instead.
 
 Odin's `math.pow_f64` (`core/math/math_basic.odin:26-27,79` in the pinned distribution, `.odin-version`) is the LLVM
-intrinsic `llvm.pow.f64`, i.e. the platform's libm `pow`; on `js`/wasm it is a foreign import
-(`core/math/math_basic_js.odin`).
+intrinsic `llvm.pow.f64`, i.e. the platform's libm `pow`; on `js` targets it is a foreign import of the host's `Math.pow`
+(`core/math/math_basic_js.odin`). ADR 0003's amendment (#161) made `core` compute `atan2`/`sin`/`cos` with its own
+correctly rounded functions and never call the platform libm for them.
 
 ## Decision
 1. **Interactive playback is a port of `Playback` into `core`**: `Timed_Playback` in `src/core/timed.odin`, with the
@@ -37,7 +38,8 @@ intrinsic `llvm.pow.f64`, i.e. the platform's libm `pow`; on `js`/wasm it is a f
    towards `segment + 1` in both directions; direction by `Step.reverse`; leftover seconds carried across segments
    and steps at the new step's speed; `PAUSE_BEFORE = PAUSE_AFTER = 0.8` s; leftover discarded at the end and at the
    restart; shown target = interpolate then reorient. Each step's reorientation comes from `connect` (= `gp_connect`:
-   `compose(inverse(E), n.reorientation)`, with `E` the stored reorientation of the step's own start end). For
+   `compose(inverse(E), n.reorientation)`, with `E` the stored reorientation of the end of `s` that is the node `n`:
+   `from(s)` tested first, then `to(s)`, so an incoming step can also be placed relative to the node it ends at). For
    `seconds ≥ 0`, `how_far ∈ [0, 1]` whenever `progress` returns, so `between` never extrapolates. It is unit-tested
    against the cases of §6.4, not bit-checked (there is no dump).
 2. **Loop toggle**: `loop = true` is the original (hold the end 0.8 s, `reset`, hold the start 0.8 s, play again).
@@ -45,26 +47,36 @@ intrinsic `llvm.pow.f64`, i.e. the platform's libm `pow`; on `js`/wasm it is a f
    restarts. No ping-pong (the original has none).
 3. **Speed** ∈ {0.25, 0.5, 1, 1.5, 2}: the viewer multiplies every `seconds` it passes to `progress` by the speed,
    pauses included (at 0.25× a 0.8 s pause lasts 3.2 s). `Timed_Playback` itself knows nothing about speed.
-4. **Scrub**: `timed_duration` is the sum over the path's steps of `segments / speed` of each step, in `f64`, pauses
+4. **Scrub**: `timed_duration` is the sum over the path's steps of each step's segments divided by its segments per second, in `f64`, pauses
    excluded; it is not the original's `duration` (`src/editor.cpp:33-62`), which truncates in integer arithmetic
    (§6.6: 7 segments → 1 s instead of 1.4 s). `timed_seek(t)` places `segment`/`how_far` directly for time `t`. While
-   paused or scrubbing the chaser is bypassed: the exact target is shown.
+   paused or scrubbing the chaser is bypassed: the exact target is shown and `chaser = target`, so resuming does not
+   glide from a stale pose.
 5. **The chaser is time-based**: per frame,
    `chaser = between(chaser, target, 1 − (1 − CHASER_FACTOR)^(CHASER_REFERENCE_HZ·dt))` with
    `CHASER_FACTOR = 0.2` and `CHASER_REFERENCE_HZ = 60`, the target sampled before `progress` as in the original.
    - At 60 Hz this is the original's filter up to the rounding of the factor: `1 − 0.8` is `0.19999999999999996` in
      `f64`, not `0.2`. At any other rate the error decays by the same amount per second (×0.8 per 1/60 s).
-   - `dt` is clamped to a named `CHASER_MAX_DT` (of the order of 0.1 s) **for the smoothing filters only**
-     (decisions 5 and 6), so a stalled frame does not snap the body to the target; `progress` always receives the
-     full scaled `dt` (decision 1 keeps `how_far ∈ [0, 1]` for any `dt`).
-   - `pow` is the platform libm (`math.pow_f64` → `llvm.pow.f64`): its last bits may differ between targets (native,
-     wasm). This is accepted because nothing compares the chaser with the oracle. It is **not** an exception to
-     ADR 0003: its bit-for-bit (decision 4) and tolerance (decision 5) rules apply to oracle-checked values, and the
-     chaser is not one. Its unit tests use inputs where `pow` is exact (`dt = 0`, exponent 1, exponent 2).
+   - `dt` here is the **wall-clock** frame time, not scaled by the speed of decision 3: the smoothing looks the
+     same at every playback speed.
+   - `dt` is clamped to a named `CHASER_MAX_DT` (of the order of 0.1 s) **for the smoothing filters only**, so a
+     stalled frame (e.g. 5 s) does not snap the body to the target in one step; `progress` always receives the full
+     scaled `dt` (decision 1 keeps `how_far ∈ [0, 1]` for any `dt`). The spec states the clamp for the chaser; this
+     ADR applies the same constant to the camera smoothing of decision 6 too, for the same reason.
+   - `pow` is the platform libm (`math.pow_f64` → `llvm.pow.f64`; the host's `Math.pow` on `js`): its last bits may
+     differ between targets. This is accepted because nothing compares the chaser with the oracle. It is **not** an
+     exception to ADR 0003: its bit-for-bit (decision 4) and tolerance (decision 5) rules, and the amendment's
+     "never the platform libm" for `atan2`/`sin`/`cos`, apply to oracle-checked values, and the chaser is not one.
+     `chase` is the one libm call in `core`, outside that scope; `src/core/CLAUDE.md` says so when `chaser.odin` is
+     added. Its unit tests use only inputs where the exponent is exactly 0 or 1 (`dt = 0`, `dt = 1/60`, for which
+     `60·dt == 1` in `f64`), so `pow` returns `1` or the base exactly; other `dt` are checked for properties
+     (monotone, in `[0, 1]`), never for bits.
 6. **Camera target smoothing is time-based** in the same way:
    `offset = between(offset, target, 1 − (1 − CAMERA_OFFSET_FACTOR)^(CHASER_REFERENCE_HZ·dt))` with
    `CAMERA_OFFSET_FACTOR = 0.03`, equal to `setOffset` at 60 Hz up to rounding (`between`'s `a + (b − a)·s` instead
-   of `a·0.97 + b·0.03`; not oracle-checked either), with the same `dt` clamp.
+   of `a·0.97 + b·0.03`; not oracle-checked either), with the same wall-clock `dt` and clamp. It lives with the
+   camera in `src/render/camera.odin` (`CAMERA_OFFSET_FACTOR` there), reusing `core`'s `CHASER_REFERENCE_HZ` and
+   `CHASER_MAX_DT`.
 7. **The interactive camera uses the original's `f64` matrices** (ADR 0004 decision 3), never
    `Camera3D`/`BeginMode3D`: one camera module (`src/render/camera.odin`) serves the interactive view and the
    images. Any raylib helper bound to a `Camera3D` (picking, `GetWorldToScreen`) is either not used or fed the same
@@ -77,14 +89,15 @@ intrinsic `llvm.pow.f64`, i.e. the platform's libm `pow`; on `js`/wasm it is a f
 - **No chaser.** The exact target jumps visibly at the loop restart (the `reset` jump back to the start, which the
   original smooths with the chaser) and at any residual mismatch between two steps (§6.6).
 - **Frame-based playback with `frames()`** for the viewer. Speed would be tied to the frame rate, or need
-  resampling, and scrubbing could not land between two frames. It stays for fidelity tests and the images.
+  resampling, and scrubbing could not land between two frames. It stays for the fidelity tests.
 - **`Camera3D` for the interactive view.** Two camera code paths, the true π instead of `3.141593`, near/far
   0.05/4000 instead of 0.01/15, and `f32` throughout (ADR 0004): the interactive view would not match the images.
 
 ## Consequences
 - `core` gets `src/core/timed.odin` (`Timed_Playback`, `connect`, `timed_reset`, `timed_progress`, `timed_at`,
   `timed_duration`, `timed_seek`, `loop`) and `src/core/chaser.odin` (`chase`), both TDD. The frame-based playback
-  of phase 2 is unchanged and remains the oracle-checked path for the images.
+  of phase 2 is unchanged and remains the oracle-checked path. `render/camera.odin` gets the camera smoothing of
+  decision 6.
 - At 60 Hz the viewer behaves as the original's editor playback; at other rates it keeps the same timing and the
   same smoothing per second.
 - Closes §6.8's first bullet (chaser) and the open point of ADR 0004 decision 3 (interactive camera), which now
