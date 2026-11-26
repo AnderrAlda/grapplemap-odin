@@ -169,9 +169,9 @@ frames_destroy :: proc(steps: []Frame_Step, allocator := context.allocator) {
 	delete(steps, allocator)
 }
 
-// caption is the lambda `d` of `frames` (src/paths.cpp:27-34), always a fresh string on `allocator`. Public for the
-// HUD; `seq` must be a valid edge index.
-caption :: proc(g: ^Graph, seq: int, allocator := context.allocator) -> (s: string, err: Error) {
+// caption is the lambda `d` of `frames` (src/paths.cpp:27-34), always a fresh string on `allocator`.
+@(private = "file")
+caption :: proc(g: ^Graph, seq: int, allocator: mem.Allocator) -> (s: string, err: Error) {
 	e := &g.edges[seq]
 	assert(len(e.sequence.description) > 0, "a sequence has a description")
 	desc := e.sequence.description[0]
