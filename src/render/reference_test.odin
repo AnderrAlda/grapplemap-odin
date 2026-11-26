@@ -71,6 +71,25 @@ test_grid_mesh :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_grid_lines_mesh :: proc(t: ^testing.T) {
+	m := body_mesh_make()
+	defer body_mesh_destroy(&m)
+	testing.expect(t, grid_lines_mesh(GRID_SIZE, {0.8, 0.8, 0.8}, &m) == nil)
+	// Two segments (four vertices) per i = −4 … 4, in the order of src/rendering.cpp:258-261.
+	testing.expect_value(t, len(m.positions), 4 * (4 * GRID_SIZE + 1))
+	testing.expect_value(t, len(m.normals), len(m.positions))
+	testing.expect_value(t, len(m.colors), len(m.positions))
+	testing.expect_value(t, m.positions[0], [3]f32{-2, 0, -2})
+	testing.expect_value(t, m.positions[1], [3]f32{-2, 0, 2})
+	testing.expect_value(t, m.positions[2], [3]f32{-2, 0, -2})
+	testing.expect_value(t, m.positions[3], [3]f32{2, 0, -2})
+	testing.expect_value(t, m.positions[4], [3]f32{-1.5, 0, -2})
+	testing.expect_value(t, m.positions[len(m.positions) - 1], [3]f32{2, 0, 2})
+	testing.expect_value(t, m.normals[5], [3]f32{0, 1, 0})
+	testing.expect_value(t, m.colors[5], [3]f32{0.8, 0.8, 0.8})
+}
+
+@(test)
 test_shader_names_match :: proc(t: ^testing.T) {
 	// The names `reference.odin` binds must be the ones the GLSL declares (guard against drift).
 	vs := string(REFERENCE_VS)

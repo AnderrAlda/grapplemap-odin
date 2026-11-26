@@ -241,6 +241,7 @@ run :: proc(state: ^App_State, g: ^core.Graph) {
 					cam,
 					aspect,
 					render.COLOR_BACKGROUND_WHITE,
+					.Quads,
 				); err != nil {
 					fmt.eprintfln("error: draw: %v", err)
 					draw = false
