@@ -1,6 +1,7 @@
 package main
 
 import "app:core"
+import "app:render"
 import "core:fmt"
 import "core:mem"
 import "core:os"
@@ -62,40 +63,44 @@ run_app :: proc(args: []string) -> int {
 		fmt.eprintln("error: --load needs a file")
 		return EXIT_USAGE_ERROR
 	}
-	if state.load_path != "" {
-		if code := load_summary(state.load_path); code != 0 {
-			return code
-		}
-		// The viewer comes in phase 3: the graph is not kept. Headless stops here, before any raylib call.
-		if state.headless {
-			return 0
-		}
+	if state.load_path == "" {
+		run(&state, nil)
+		return 0
 	}
-	run(&state)
+	g, code := load_summary(state.load_path)
+	if code != 0 {
+		return code
+	}
+	defer core.graph_destroy(&g)
+	// `--headless --load` stops here, before any raylib call (`--headless` alone opens a hidden window).
+	if !state.headless {
+		run(&state, &g)
+	}
 	return 0
 }
 
-// load_summary loads the database at `path`, prints its summary line to stdout and frees the graph. On failure it
-// prints the error to stderr and returns EXIT_IO_ERROR or EXIT_LOAD_ERROR.
+// load_summary loads the database at `path` and prints its summary line to stdout; the caller frees the graph with
+// `core.graph_destroy`. On failure it prints the error to stderr and returns EXIT_IO_ERROR or EXIT_LOAD_ERROR (and
+// no graph).
 @(private)
-load_summary :: proc(path: string) -> int {
+load_summary :: proc(path: string) -> (g: core.Graph, code: int) {
 	data, read_err := os.read_entire_file(path, context.allocator)
 	if read_err != nil {
 		fmt.eprintfln("error: cannot read %s: %s", path, os.error_string(read_err))
-		return EXIT_IO_ERROR
+		return {}, EXIT_IO_ERROR
 	}
 	defer delete(data)
 
 	// `load_graph` leaves its scratch in the temp allocator for the caller to free.
 	defer free_all(context.temp_allocator)
-	g, err := core.load_graph(data)
+	err: core.Error
+	g, err = core.load_graph(data)
 	if err != nil {
 		fmt.eprintln(format_load_error(err, context.temp_allocator))
-		return EXIT_LOAD_ERROR
+		return {}, EXIT_LOAD_ERROR
 	}
-	defer core.graph_destroy(&g)
 	fmt.println(summary_line(&g, context.temp_allocator))
-	return 0
+	return g, 0
 }
 
 // summary_line is the one-line `--load` report (docs/original.md §10.1 counts): `blocks` = named positions +
@@ -191,8 +196,10 @@ parse_args :: proc(args: []string) -> (state: App_State, ok: bool) {
 	return state, true
 }
 
+// run opens the window. With a graph it shows node 0 through the reference path (render/reference.odin) with the
+// interactive viewer's camera; without one, the placeholder screen (the viewer shell is #201).
 @(private)
-run :: proc(state: ^App_State) {
+run :: proc(state: ^App_State, g: ^core.Graph) {
 	rl.SetConfigFlags({.MSAA_4X_HINT})
 	if state.headless {
 		rl.SetConfigFlags({.WINDOW_HIDDEN})
@@ -201,11 +208,48 @@ run :: proc(state: ^App_State) {
 	defer rl.CloseWindow()
 	rl.SetTargetFPS(TARGET_FPS)
 
+	scene: render.Reference_Renderer
+	show := g != nil && len(g.nodes) > 0
+	if show {
+		if err := render.reference_init(&scene); err != .None {
+			fmt.eprintfln("error: reference renderer: %v", err)
+			show = false
+		}
+	}
+	defer if show {
+		render.reference_destroy(&scene)
+	}
+	pos: core.Position
+	cam: render.Camera
+	if show {
+		pos = g.nodes[0].position
+		cam = render.viewer_camera(pos)
+	}
+
+	// `draw` turns off after a failed frame (placeholder from then on); `show` still decides the destroy above.
+	draw := show
 	frame := 0
 	for !rl.WindowShouldClose() {
 		rl.BeginDrawing()
-		rl.ClearBackground(BACKGROUND)
-		rl.DrawText(fmt.ctprintf("%s", frames_label(frame)), 32, 32, 24, rl.RAYWHITE)
+		if draw {
+			// A minimised window can report a zero height: keep the last frame instead of a NaN projection.
+			if w, h := rl.GetRenderWidth(), rl.GetRenderHeight(); w > 0 && h > 0 {
+				aspect := f64(w) / f64(h)
+				if err := render.draw_scene(
+					&scene,
+					pos,
+					cam,
+					aspect,
+					render.COLOR_BACKGROUND_WHITE,
+				); err != nil {
+					fmt.eprintfln("error: draw: %v", err)
+					draw = false
+				}
+			}
+		} else {
+			rl.ClearBackground(BACKGROUND)
+			rl.DrawText(fmt.ctprintf("%s", frames_label(frame)), 32, 32, 24, rl.RAYWHITE)
+		}
 		rl.EndDrawing()
 		free_all(context.temp_allocator)
 		frame += 1

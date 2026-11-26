@@ -125,3 +125,18 @@ test_format_load_error :: proc(t: ^testing.T) {
 	EXIT_MEMORY_ERROR != EXIT_IO_ERROR &&
 	EXIT_MEMORY_ERROR != EXIT_USAGE_ERROR,
 )
+
+@(test)
+test_load_summary :: proc(t: ^testing.T) {
+	// The caller owns the graph: destroying it leaves nothing behind (the test's tracking allocator checks).
+	g, code := load_summary(#directory + "/../tests/fixtures/canonical.txt")
+	testing.expect_value(t, code, 0)
+	core.graph_destroy(&g)
+}
+
+@(test)
+test_load_summary_io_error :: proc(t: ^testing.T) {
+	g, code := load_summary(#directory + "/../tests/fixtures/does-not-exist.txt")
+	testing.expect_value(t, code, EXIT_IO_ERROR)
+	testing.expect_value(t, len(g.nodes), 0)
+}
