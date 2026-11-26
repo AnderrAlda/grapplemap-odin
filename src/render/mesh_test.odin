@@ -67,6 +67,7 @@ test_icosphere_levels :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(two.triangles), 320)
 	testing.expect_value(t, two.triangles[0], [3]int{0, 42, 44})
 	testing.expect_value(t, two.triangles[3], [3]int{42, 43, 44})
+	expect_v3(t, two.vertices[42], {0hbfdbc4d481537ce2, 0h3fd0a211b773712c, 0h3feb9afaef2e7158})
 	expect_v3(t, two.vertices[161], {0hbfe605a90da2ea21, 0hbfe2cf23031c5fcb, 0hbfdb38880b2a3148})
 }
 
@@ -144,7 +145,6 @@ test_emit_sphere :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(m.normals), 0)
 	testing.expect_value(t, len(m.colors), 0)
 }
-
 
 BODY_JSON :: #load("../../tests/fixtures/oracle/body.json")
 

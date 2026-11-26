@@ -10,26 +10,29 @@ import "core:mem"
 // component, like `BasicV3`); each vertex becomes f32 only when written out, as the original's `V3f` conversion.
 
 // normalize is `normalize` (src/math.hpp:186): `v / norm2(v)`, a division per component.
+@(private)
 normalize :: proc(v: core.V3) -> core.V3 {
 	n := math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
 	return {v.x / n, v.y / n, v.z / n}
 }
 
 // cross is `cross` (src/math.hpp:100-106).
+@(private)
 cross :: proc(a, b: core.V3) -> core.V3 {
 	return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}
 }
 
-// Icosphere is `icosphere::IndexedMesh` (src/icosphere.hpp): unit vertices and index triangles.
+// Icosphere is `icosphere::IndexedMesh` (src/icosphere.hpp): unit vertices and index triangles. Dynamic arrays, so
+// they are freed with the allocator and capacity they were made with.
 Icosphere :: struct {
-	vertices:  []core.V3,
-	triangles: [][3]int,
-	allocator: mem.Allocator,
+	vertices:  [dynamic]core.V3,
+	triangles: [dynamic][3]int,
 }
 
 // icosphere_make is `make_icosphere` (src/icosphere.cpp:76-85): the icosahedron (its `float` tables widened) split
 // `subdivisions` times. Each pass visits the triangles in order and their edges 0→1, 1→2, 2→0; the midpoint of an
-// edge is `normalize(e0 + e1)`, appended on first use (`vertex_for_edge`, src/icosphere.cpp:33-48).
+// edge is `normalize(e0 + e1)`, appended on first use (`vertex_for_edge`, src/icosphere.cpp:33-48). Nothing leaks
+// on an allocation error.
 icosphere_make :: proc(
 	subdivisions: int,
 	allocator := context.allocator,
@@ -37,57 +40,75 @@ icosphere_make :: proc(
 	ico: Icosphere,
 	err: mem.Allocator_Error,
 ) {
-	vertices := make([dynamic]core.V3, 0, len(ICO_VERTICES), allocator) or_return
-	triangles := make([dynamic][3]int, 0, len(ICO_TRIANGLES), allocator) or_return
-	for v in ICO_VERTICES {
-		append(&vertices, core.V3{f64(v.x), f64(v.y), f64(v.z)}) or_return
-	}
-	append(&triangles, ..ICO_TRIANGLES[:]) or_return
+	ico.vertices = make([dynamic]core.V3, 0, len(ICO_VERTICES), allocator)
+	ico.triangles = make([dynamic][3]int, 0, len(ICO_TRIANGLES), allocator)
 	defer if err != nil {
-		delete(vertices)
-		delete(triangles)
+		icosphere_destroy(ico)
+		ico = {}
 	}
+	for v in ICO_VERTICES {
+		append(&ico.vertices, core.V3{f64(v.x), f64(v.y), f64(v.z)}) or_return
+	}
+	append(&ico.triangles, ..ICO_TRIANGLES[:]) or_return
 
 	for _ in 0 ..< subdivisions {
-		lookup := make(map[[2]int]int, allocator)
-		defer delete(lookup)
-		// Every edge is shared by two triangles: reserving them all makes the insertions below allocation-free.
-		reserve(&lookup, 3 * len(triangles) / 2) or_return
-		result := make([dynamic][3]int, 0, 4 * len(triangles), allocator) or_return
-		for tri in triangles {
-			mid: [3]int
-			for edge in 0 ..< 3 {
-				first, second := tri[edge], tri[(edge + 1) % 3]
-				key := [2]int{min(first, second), max(first, second)}
-				if index, found := lookup[key]; found {
-					mid[edge] = index
-				} else {
-					mid[edge] = len(vertices)
-					lookup[key] = mid[edge]
-					append(&vertices, normalize(vertices[first] + vertices[second])) or_return
-				}
-			}
-			append(
-				&result,
-				[3]int{tri[0], mid[0], mid[2]},
-				[3]int{tri[1], mid[1], mid[0]},
-				[3]int{tri[2], mid[2], mid[1]},
-				[3]int{mid[0], mid[1], mid[2]},
-			) or_return
-		}
-		delete(triangles)
-		triangles = result
+		ico.triangles = subdivide(&ico.vertices, ico.triangles, allocator) or_return
 	}
-	return {vertices[:], triangles[:], allocator}, nil
+	return
 }
 
+// subdivide is `subdivide` (src/icosphere.cpp:50-72): one pass, appending the new vertices to `vertices`. Consumes
+// `triangles` (freed on success, kept on error so the caller frees it).
+@(private = "file")
+subdivide :: proc(
+	vertices: ^[dynamic]core.V3,
+	triangles: [dynamic][3]int,
+	allocator: mem.Allocator,
+) -> (
+	result: [dynamic][3]int,
+	err: mem.Allocator_Error,
+) {
+	lookup := make(map[[2]int]int, allocator)
+	defer delete(lookup)
+	result = make([dynamic][3]int, 0, 4 * len(triangles), allocator)
+	defer if err != nil {
+		delete(result)
+		result = nil
+	}
+	for tri in triangles {
+		mid: [3]int
+		for edge in 0 ..< 3 {
+			first, second := tri[edge], tri[(edge + 1) % 3]
+			key := [2]int{min(first, second), max(first, second)}
+			if index, found := lookup[key]; found {
+				mid[edge] = index
+			} else {
+				mid[edge] = len(vertices)
+				map_insert(&lookup, key, mid[edge]) or_return
+				append(vertices, normalize(vertices[first] + vertices[second])) or_return
+			}
+		}
+		append(
+			&result,
+			[3]int{tri[0], mid[0], mid[2]},
+			[3]int{tri[1], mid[1], mid[0]},
+			[3]int{tri[2], mid[2], mid[1]},
+			[3]int{mid[0], mid[1], mid[2]},
+		) or_return
+	}
+	delete(triangles)
+	return
+}
+
+// icosphere_destroy frees both arrays.
 icosphere_destroy :: proc(ico: Icosphere) {
-	delete(ico.vertices, ico.allocator)
-	delete(ico.triangles, ico.allocator)
+	delete(ico.vertices)
+	delete(ico.triangles)
 }
 
 // pillar_angles is the `angles` table of `PlayerDrawer()` (src/playerdrawer.cpp:178-184): `(sin(i·s), cos(i·s))`
 // with `s = 2·pi() / faces`, i = 0…faces. Entry `faces` is not (0, 1): the seam is left as in the original.
+@(private)
 pillar_angles :: proc() -> (angles: [PILLAR_FACES + 1][2]f64) {
 	pi: f64 = core.PI // a run-time value: `2 * core.PI / 10` would fold with more precision than f64
 	s := 2 * pi / f64(PILLAR_FACES)
@@ -104,6 +125,7 @@ Mesh_Builder :: struct {
 	angles:       [PILLAR_FACES + 1][2]f64,
 }
 
+// mesh_builder_init builds both icospheres on `allocator` and the pillar angles. On error nothing is kept.
 mesh_builder_init :: proc(
 	b: ^Mesh_Builder,
 	allocator := context.allocator,
@@ -114,12 +136,14 @@ mesh_builder_init :: proc(
 	b.coarse, err = icosphere_make(SPHERE_COARSE, allocator)
 	if err != nil {
 		icosphere_destroy(b.fine)
+		b.fine = {}
 		return
 	}
 	b.angles = pillar_angles()
 	return
 }
 
+// mesh_builder_destroy frees the icospheres and zeroes the builder.
 mesh_builder_destroy :: proc(b: ^Mesh_Builder) {
 	icosphere_destroy(b.fine)
 	icosphere_destroy(b.coarse)
@@ -132,6 +156,7 @@ Body_Mesh :: struct {
 	positions, normals, colors: [dynamic][3]f32,
 }
 
+// body_mesh_make makes an empty mesh whose arrays grow on `allocator` (per frame: `context.temp_allocator`).
 body_mesh_make :: proc(allocator := context.allocator) -> Body_Mesh {
 	return {
 		positions = make([dynamic][3]f32, allocator),
@@ -140,12 +165,14 @@ body_mesh_make :: proc(allocator := context.allocator) -> Body_Mesh {
 	}
 }
 
+// body_mesh_clear empties the mesh, keeping its capacity.
 body_mesh_clear :: proc(m: ^Body_Mesh) {
 	clear(&m.positions)
 	clear(&m.normals)
 	clear(&m.colors)
 }
 
+// body_mesh_destroy frees the three arrays.
 body_mesh_destroy :: proc(m: ^Body_Mesh) {
 	delete(m.positions)
 	delete(m.normals)
@@ -188,6 +215,7 @@ emit_sphere :: proc(
 
 // pillar_basis is the `a`, `b` of `drawPillar` (src/playerdrawer.cpp:225-226). Degenerate (NaN) when `to = from` or
 // (1, 1, 1) lies on the axis; never on the database (docs/original.md §10.3).
+@(private)
 pillar_basis :: proc(from, to: core.V3) -> (a, b: core.V3) {
 	a = normalize(cross(to - from, PILLAR_SIDE_REFERENCE - from))
 	b = normalize(cross(to - from, a))
