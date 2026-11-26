@@ -77,6 +77,10 @@ test_shader_names_match :: proc(t: ^testing.T) {
 	for name in ([]string{ATTRIB_POSITION, ATTRIB_NORMAL, ATTRIB_COLOR, UNIFORM_MVP, UNIFORM_LIGHT_DIR_0, UNIFORM_LIGHT_DIR_1, UNIFORM_LIGHT_DIFFUSE, UNIFORM_LIGHT_AMBIENT}) {
 		testing.expectf(t, strings.contains(vs, string(name)), "vertex shader lacks %s", name)
 	}
+	// The formula light_factor/shade mirror (docs/original.md §7.3).
+	for frag in ([]string{"max(0.0, dot(vertexNormal, lightDir0))", "max(0.0, dot(vertexNormal, lightDir1))", "lightAmbient + lightDiffuse * (", "clamp(vertexColor * lit, 0.0, 1.0)", "mvp * vec4(vertexPosition, 1.0)"}) {
+		testing.expectf(t, strings.contains(vs, frag), "vertex shader lacks %q", frag)
+	}
 	testing.expect(t, strings.has_prefix(vs, "#version 330"))
 	testing.expect(t, strings.has_prefix(string(REFERENCE_FS), "#version 330"))
 	// No numeric light constant in the GLSL: they all come from the Odin constants as uniforms.

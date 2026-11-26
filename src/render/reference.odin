@@ -10,21 +10,33 @@ import "vendor:raylib/rlgl"
 // Reference render path (ADR 0006 d1-d3; docs/original.md §7.2-§7.4): the original's meshes, lit per vertex by a
 // GLSL 330 copy of its fixed-function lights, no culling, depth test `GL_LESS`, the grid drawn first.
 
+@(private)
 REFERENCE_VS :: #load("shaders/reference.vs", cstring)
+@(private)
 REFERENCE_FS :: #load("shaders/reference.fs", cstring)
 
 // Names shared with the GLSL (test_shader_names_match keeps them in sync).
+@(private)
 ATTRIB_POSITION :: "vertexPosition"
+@(private)
 ATTRIB_NORMAL :: "vertexNormal"
+@(private)
 ATTRIB_COLOR :: "vertexColor"
+@(private)
 UNIFORM_MVP :: "mvp"
+@(private)
 UNIFORM_LIGHT_DIR_0 :: "lightDir0"
+@(private)
 UNIFORM_LIGHT_DIR_1 :: "lightDir1"
+@(private)
 UNIFORM_LIGHT_DIFFUSE :: "lightDiffuse"
+@(private)
 UNIFORM_LIGHT_AMBIENT :: "lightAmbient"
 
 // GL_MAJOR/GL_MINOR: the core profile raylib's desktop backend creates (ADR 0006, "Context").
+@(private)
 GL_MAJOR :: 3
+@(private)
 GL_MINOR :: 3
 
 // dot is `dot` (src/math.hpp): left-to-right sum of the three products.
@@ -34,7 +46,9 @@ dot :: proc(a, b: core.V3) -> f64 {
 }
 
 // light_factor is the CPU mirror of reference.vs in f64: `LIGHT_AMBIENT_TOTAL + LIGHT_DIFFUSE·(max(0, n·l0) +
-// max(0, n·l1))`, light directions normalised from LIGHT_DIRS. Never below LIGHT_AMBIENT_TOTAL.
+// max(0, n·l1))`, light directions normalised from LIGHT_DIRS. Never below LIGHT_AMBIENT_TOTAL. Pins the constants and
+// the formula in tests; the GPU output itself is checked by the golden images (#200, #204).
+@(private)
 light_factor :: proc(n: core.V3) -> f64 {
 	l0 := normalize(LIGHT_DIRS[0])
 	l1 := normalize(LIGHT_DIRS[1])
@@ -42,6 +56,7 @@ light_factor :: proc(n: core.V3) -> f64 {
 }
 
 // shade is the lit colour of reference.vs: `color · light_factor(n)` clamped to [0, 1] per channel.
+@(private)
 shade :: proc(color, n: core.V3) -> core.V3 {
 	f := light_factor(n)
 	return {clamp(color.x * f, 0, 1), clamp(color.y * f, 0, 1), clamp(color.z * f, 0, 1)}
@@ -127,6 +142,7 @@ Reference_Error :: enum {
 	None,
 	Shader_Compile, // the GLSL did not compile or link (raylib fell back to its default shader)
 	Shader_Interface, // an attribute or uniform of the GLSL is missing
+	Gl_Procs, // raylib's context gave no address for a GL function draw_scene calls directly
 	Out_Of_Memory,
 }
 
@@ -140,6 +156,18 @@ gl_set_proc_address :: proc(p: rawptr, name: cstring) {
 reference_init :: proc(r: ^Reference_Renderer, allocator := context.allocator) -> Reference_Error {
 	r^ = {}
 	gl.load_up_to(GL_MAJOR, GL_MINOR, gl_set_proc_address)
+	procs := [?]rawptr {
+		rawptr(gl.impl_ClearColor),
+		rawptr(gl.impl_Clear),
+		rawptr(gl.impl_IsEnabled),
+		rawptr(gl.impl_GetIntegerv),
+		rawptr(gl.impl_DepthFunc),
+	}
+	for p in procs {
+		if p == nil {
+			return .Gl_Procs
+		}
+	}
 	r.shader = rl.LoadShaderFromMemory(REFERENCE_VS, REFERENCE_FS)
 	if r.shader.id == rlgl.GetShaderIdDefault() || !rl.IsShaderValid(r.shader) {
 		r.shader = {}
@@ -252,7 +280,7 @@ to_f32 :: proc(v: core.V3) -> [3]f32 {
 	return {f32(v.x), f32(v.y), f32(v.z)}
 }
 
-// draw_scene draws `pos` as the original's `renderBasic` (src/rendering.cpp:321-363): clear to `background`, grid
+// draw_scene draws `pos` as the original's `renderBasic` (src/rendering.cpp:311-363): clear to `background`, grid
 // (GRID_FACTOR·background) then bodies, no culling, depth test `GL_LESS`. Call between `BeginDrawing` and
 // `EndDrawing`; raylib's batch is flushed before and its state (culling, depth test and function) restored after,
 // so 2D overlays drawn later work as usual. The body mesh is rebuilt every call (ADR 0006, open points).
@@ -263,6 +291,7 @@ draw_scene :: proc(
 	aspect: f64,
 	background: core.V3,
 ) -> mem.Allocator_Error {
+	rlgl.DrawRenderBatchActive()
 	if bg, ok := r.grid_built_bg.?; !ok || bg != background {
 		body_mesh_clear(&r.grid)
 		grid_mesh(GRID_SIZE, GRID_FACTOR * background, &r.grid) or_return
@@ -273,9 +302,8 @@ draw_scene :: proc(
 	build_body(&r.builder, pos, nil, &r.body) or_return
 	gpu_mesh_upload(&r.gpu_body, &r.body, r.attribs)
 
-	rlgl.DrawRenderBatchActive()
 	bg := to_f32(background)
-	gl.ClearColor(bg.x, bg.y, bg.z, 0)
+	gl.ClearColor(bg.x, bg.y, bg.z, 0) // alpha 0 as glClearColor in src/rendering.cpp:337
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
 	culling := gl.IsEnabled(gl.CULL_FACE)

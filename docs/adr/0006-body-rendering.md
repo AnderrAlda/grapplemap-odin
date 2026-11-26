@@ -96,8 +96,9 @@ For the reference path:
 - Whether a pillar basis ever degenerates on the DB (`docs/original.md` §7.1, section 10).
 - Per-frame mesh rebuild vs instanced spheres (decision 2): by measurement, if either matters at all. **#199
   prototype:** per-frame rebuild with `rlUpdateVertexBuffer` into our own VAO (one VBO per attribute) is what
-  `src/render/reference.odin` does; with the real DB's node 0 it draws without visible cost on llvmpipe, so instancing
-  is not pursued unless a later measurement says otherwise.
+  `src/render/reference.odin` does. Measured on the real DB's node 0 (`-o:speed`, Mesa llvmpipe under Xvfb, 300
+  frames): `build_body` 0.28 ms per frame (22 740 vertices) against 14.8 ms for the whole frame at 1280×720, so
+  instancing is not pursued unless a later measurement says otherwise.
 - `GL_LESS` (decision 3) is set with `vendor:OpenGL` loaded through `rlgl.GetProcAddress` (raylib's own GLFW
   context); `draw_scene` saves and restores raylib's depth function, depth test and culling around the 3D pass.
 - Grid of the interactive path (#199, epic #5 point 10): drawn as the original's shader-path quads, 0.02 m wide in
