@@ -7,7 +7,7 @@ COLLECTION="-collection:app=src"
 VET="-vet -strict-style -warnings-as-errors"
 OUT="build"
 BIN="$OUT/grapplemap"
-TEST_PKGS=(src src/core src/ui src/editor tests/fidelity)
+TEST_PKGS=(src src/core src/render src/ui src/editor tests/fidelity)
 # Odin dirs formatted and fmt-checked besides src/ (bench/ only once it exists).
 FMT_DIRS=(src tests/fidelity bench)
 
@@ -73,6 +73,7 @@ cmd_check() {
 	cmd_changelog_check
 	cmd_core_trig_check
 	odin check src $COLLECTION $VET
+	odin check src/render $COLLECTION $VET -no-entry-point
 	odin check tests/fidelity $COLLECTION $VET -no-entry-point
 	[ -d bench ] && ls bench/*.odin >/dev/null 2>&1 && odin check bench $COLLECTION $VET
 	return 0
