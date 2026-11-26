@@ -516,3 +516,42 @@ test_smoothen_empty :: proc(t: ^testing.T) {
 	smoothen(later)
 	testing.expect_value(t, bits(later[2].frames[0][0][.Head].x), 0x3fe2b851eb851eb8)
 }
+
+@(test)
+test_caption_public :: proc(t: ^testing.T) {
+	nodes := anon_nodes(2)
+	nodes[1].description = desc(`end\nnode`)
+	g := hand_graph(
+		nodes,
+		{
+			seq_edge(desc(`a\nb`), at(0), at(1), uniform(0.2), uniform(0.9)),
+			seq_edge(desc("..."), at(0), at(1), uniform(0.2), uniform(0.9)),
+			seq_edge(desc("plain"), at(1), at(0), uniform(0.9), uniform(0.2)),
+		},
+	)
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, context.allocator)
+	defer mem.tracking_allocator_destroy(&track)
+	alloc := mem.tracking_allocator(&track)
+	for want, seq in ([]string{"a b", "end node", "plain"}) {
+		s, err := caption(&g, seq, alloc)
+		testing.expect_value(t, err, nil)
+		testing.expect_value(t, s, want)
+		delete(s, alloc)
+	}
+	{
+		// The default allocator is `context.allocator`.
+		context.allocator = alloc
+		s, err := caption(&g, 0)
+		testing.expect_value(t, err, nil)
+		testing.expect_value(t, s, "a b")
+		delete(s)
+	}
+	for seq in ([]int{-1, 3}) {
+		s, err := caption(&g, seq, alloc)
+		expect_not_connected(t, err, seq)
+		testing.expect_value(t, s, "")
+	}
+	testing.expect_value(t, len(track.allocation_map), 0)
+	testing.expect_value(t, len(track.bad_free_array), 0)
+}
