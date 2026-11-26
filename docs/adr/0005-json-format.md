@@ -123,3 +123,4 @@ position lines, as in §2.1). The DB is valid UTF-8 (`iconv -f UTF-8 -t UTF-8`) 
   (`"positions":[]`), one final `\n`. Strings are escaped per RFC 8259 (`\u00xx` lowercase for other control bytes).
   Changing this layout is an amendment.
 - Anonymous nodes carry `NO_ID` (0) in `Node.id`; real ids start at 1.
+  The reader (`src/core/json_read.odin`, #182) accepts any RFC 8259 whitespace and key order: the layout binds the writer only.
