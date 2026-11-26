@@ -89,10 +89,12 @@ For the reference path:
 - The modern path (phase 4) can change looks freely without touching the golden tests.
 
 ### Open points (need the phase-3 prototype or the oracle images, #35)
-- Whether per-vertex lighting in GLSL, `f32` vertices and raylib's depth buffer reproduce OSMesa's pixels, and how
-  closely; OSMesa's own rasterisation and float precision are [unverified] (`docs/original.md` §7.3).
-- OSMesa's channel order (§7.6) and the lighting defaults (§7.3), once the oracle PNGs exist.
-- The pixel tolerance (decision 5): Ander's call, with the prototype's measurements.
+- **Resolved, #204 ("Measurement" below):**
+  - Per-vertex lighting in GLSL with `f32` vertices reproduces OSMesa's pixels on the bodies to within a few edge
+    pixels, provided the depth buffer is 16-bit like the original's.
+  - OSMesa's channel order is BGR, as §7.6 says.
+  - The lighting defaults hold: body pixels away from the edges are equal.
+- **Pending: the pixel tolerance (decision 5).** It is Ander's call, with the measurement below. Not set here.
 - Whether a pillar basis ever degenerates on the DB (`docs/original.md` §7.1, section 10).
 - Per-frame mesh rebuild vs instanced spheres (decision 2): by measurement, if either matters at all. **#199
   prototype:** per-frame rebuild with `rlUpdateVertexBuffer` into our own VAO (one VBO per attribute) is what
@@ -105,3 +107,56 @@ For the reference path:
   world space (`src/rendering.cpp:267-289`), not `GL_LINES`, because a core-profile context only guarantees 1-px
   lines. The oracle images use 2-px aliased `GL_LINES` at 2× (≈ 1 px after the 2×2 mean); the difference is measured
   in #204, not tuned here.
+  - **#204, interactive path:** it keeps the quads on Linux and macOS alike, so its grid looks the same everywhere.
+  - **#204, images (`--image`, golden):** they draw `GL_LINES` 2 px wide (`Grid_Style.Lines`), lit by the reference
+    shader like the original's lit lines (normal `(0, 1, 0)` gives a light factor of 1.0106, so `0.8·bg` becomes
+    0.808, not 0.8).
+  - **macOS:** a forward-compatible context (`GL_CONTEXT_FLAGS`) or an aliased line range below 2 px makes
+    `effective_grid_style` fall back to quads with a warning. `--image` on macOS is therefore not the golden image;
+    the golden images are rendered on Linux in `tools/golden/Dockerfile`.
+
+### Measurement (#204)
+**Method:** `./build.sh golden-measure <grid> <depth>` in `tools/golden/Dockerfile` (Mesa 25.2.8, softpipe), against
+the 6 oracle PNGs (OSMesa 20.0.8, softpipe), with the oracle's BGR swapped back. Images are 480×360 (172 800 px),
+heading N, white background.
+
+**Columns:** `differing` = pixels with any channel different; `region` = the largest 4-connected blob of differing
+pixels; `Δ` = the largest channel difference.
+
+**Options compared:**
+- `quads` = the 0.02 m quads of the interactive grid; `lines` = `GL_LINES` 2 px wide.
+- `raylib` = raylib's unsized depth renderbuffer (24 bits on Mesa); `16` = `GL_DEPTH_COMPONENT16`, like
+  `OSMesaCreateContextExt(OSMESA_RGB, 16, 0, 16)`.
+
+| image | quads, raylib | quads, 16 | lines, raylib | **lines, 16** |
+|---|---|---|---|---|
+| p96  | 7785 / 3948 / 149 | 5966 / 3948 / 49 | 5978 / 957 / 149 | **4159 / 957 / 25** |
+| p165 | 9566 / 3230 / 123 | 7879 / 3226 / 49 | 2625 / 325 / 123 | **936 / 324 / 25** |
+| p223 | 9788 / 6171 / 240 | 7592 / 6159 / 49 | 2967 / 239 / 240 | **768 / 239 / 25** |
+| p267 | 9415 / 3908 / 141 | 7312 / 3866 / 49 | 2946 / 251 / 141 | **839 / 251 / 25** |
+| p288 | 9408 / 3226 / 200 | 8163 / 3224 / 49 | 2116 / 315 / 200 | **869 / 313 / 25** |
+| p304 | 9555 / 3244 / 180 | 7192 / 3240 / 49 | 3104 / 284 / 180 | **736 / 284 / 25** |
+
+Each cell is differing / region / Δ.
+
+- **Choice:** `lines` + `16` is what `--image` and the golden images use (`render.IMAGE_OPTIONS_DEFAULT`).
+- **The 16-bit depth** removes the large Δ: 123–240 with raylib's depth, 25 with 16 bits. With the deeper buffer,
+  surfaces that touch resolve differently from the original.
+- **`lines`** removes the large regions of the quads, whose grid is a different shape.
+- **What remains with `lines` + `16`**, split by whether both pixels are grey (grid or background) or not (body):
+
+  | image | grid/background | body | body Δ |
+  |---|---|---|---|
+  | p96  | 4129 | 30 | 25 |
+  | p165 | 918  | 18 | 15 |
+  | p223 | 742  | 26 | 25 |
+  | p267 | 800  | 39 | 25 |
+  | p288 | 855  | 14 | 18 |
+  | p304 | 717  | 19 | 25 |
+
+  - **Grid:** the difference is whole grid lines rasterised one pixel row apart, mostly near-horizontal ones. In p96
+    four lines differ, hence its larger count and its region of 957. The cause, wide-line rasterisation in Mesa 20
+    vs Mesa 25 or `f32` vs `double` in the vertex transform, is [unverified] and was not tuned.
+  - **Bodies:** they differ in at most 39 edge pixels per image.
+- **Determinism:** with `lines` + `16`, two invocations of `golden-measure`, each rendering every image twice, gave
+  identical bytes for all 6 images. The other three settings were also identical across their two runs.

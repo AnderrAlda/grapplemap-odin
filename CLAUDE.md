@@ -5,7 +5,7 @@ Visor/editor moderno de grafos de posiciones de grappling (reimplementación en 
 render moderno; UX simple; base para editar mi propio grafo. Nativo primero, wasm después.
 
 ## Comandos
-`./build.sh setup|check|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <rama>|worktree-remove <rama>|oracle [--sample]|--full|--update-full-hashes|--test|--images`
+`./build.sh setup|check|fmt|fmt-check|debug|release|run|test|test-golden|golden-measure [lines|quads] [16|raylib]|bench|ci|worktree <rama>|worktree-remove <rama>|oracle [--sample]|--full|--update-full-hashes|--test|--images`
 Toolchain: Odin fijado en `.odin-version`; `odinfmt`/`ols` en `~/.local/bin`; `jq` requerido por los hooks.
 App: `grapplemap [--headless] [--frames N] [--load <file>]`; `--load` imprime el resumen del grafo (`--headless`: sin ventana).
 `grapplemap --image <entidad> <out.png> [--size WxH] [--heading N|E|S|W] [--mirror] [--swap] [--load <file>]` escribe la imagen (ventana oculta; BD por defecto `reference/GrappleMap/GrappleMap.txt`). Salidas: 3 fugas · 4 BD inválida · 5 E/S · 6 uso · 7 render.
@@ -17,6 +17,7 @@ Tras clonar: `git submodule update --init` (lo hace `./build.sh setup`) para ten
 - `bench/` paquete `bench`: tiempo de carga de la BD completa (`./build.sh bench`; necesita el submódulo)
 - `tests/fidelity` paquete `fidelity`: `core` contra el oráculo (muestra; `GM_ORACLE_DIR=<dump completo>` para el completo); necesita el submódulo
 - `tools/oracle` Dockerfile que compila el original (oráculo, amd64) · `sample.tsv` (muestra) · `images.tsv` (imágenes) · ver su README
+- `tools/golden` Dockerfile con Mesa (softpipe) y Odin fijados para renderizar nuestras imágenes · `measure/` (paquete `measure`: diferencia con las PNG del oráculo) · `./build.sh golden-measure` (necesita Docker y el submódulo) · ver su README
 - `docs/` (`original.md`, `architecture.md`, `ai-workflow.md`, `ASSETS.md`, `adr/`, `specs/`, `plans/`)
 - ADR clave: [0002 oráculo](docs/adr/0002-oracle.md) (el original en Docker es la verdad) · [0003 precisión](docs/adr/0003-numeric-precision.md) (`f64` en `core`, `f32` solo en render, tolerancias solo con mi OK)
 - Import con collection: `import "app:core"`.
