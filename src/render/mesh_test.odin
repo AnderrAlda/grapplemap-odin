@@ -212,10 +212,12 @@ test_build_body :: proc(t: ^testing.T) {
 	}
 	fine_triangles := 20 * 4 * 4
 	coarse_triangles := 20 * 4
+	FINE :: len(FINE_JOINTS)
+	COARSE :: core.JOINT_COUNT - FINE
 	want :=
 		3 *
 		(2 * pillars * 2 * PILLAR_FACES +
-				2 * (6 * fine_triangles + 17 * coarse_triangles) +
+				2 * (FINE * fine_triangles + COARSE * coarse_triangles) +
 				2 * 5 * 14)
 
 	m := body_mesh_make()
@@ -254,7 +256,8 @@ test_build_body :: proc(t: ^testing.T) {
 	testing.expect_value(t, build_body(&b, pos, &overrides, &o), nil)
 	testing.expect_value(t, len(o.positions), want)
 	limbs := 3 * 2 * pillars * 2 * PILLAR_FACES
-	head_start := limbs + 3 * (2 * (6 * fine_triangles + 17 * coarse_triangles) - fine_triangles)
+	head_start :=
+		limbs + 3 * (2 * (FINE * fine_triangles + COARSE * coarse_triangles) - fine_triangles)
 	head_end := head_start + 3 * fine_triangles
 	sphere := body_mesh_make()
 	defer body_mesh_destroy(&sphere)
@@ -284,6 +287,86 @@ test_build_body_clear :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(m.positions), 0)
 	testing.expect_value(t, build_body(&b, curved_position(), nil, &m), nil)
 	testing.expect_value(t, len(m.positions), n)
+}
+
+// expect_block checks that `got` holds all of `want`, from vertex `start` on: positions, normals and colours.
+@(private = "file")
+expect_block :: proc(
+	t: ^testing.T,
+	got: Body_Mesh,
+	start: int,
+	want: Body_Mesh,
+	loc := #caller_location,
+) {
+	testing.expect(
+		t,
+		start + len(want.positions) <= len(got.positions),
+		"block out of range",
+		loc = loc,
+	)
+	for i in 0 ..< min(len(want.positions), len(got.positions) - start) {
+		expect_f32(t, got.positions[start + i], want.positions[i], loc = loc)
+		expect_f32(t, got.normals[start + i], want.normals[i], loc = loc)
+		expect_f32(t, got.colors[start + i], want.colors[i], loc = loc)
+	}
+}
+
+// The order of build_body, block by block: the midpoint branch of the limbs, the player-major joint order and
+// each fat triangle for player 0 then 1.
+@(test)
+test_build_body_order :: proc(t: ^testing.T) {
+	b: Mesh_Builder
+	testing.expect_value(t, mesh_builder_init(&b), nil)
+	defer mesh_builder_destroy(&b)
+	pos := curved_position()
+	m := body_mesh_make()
+	defer body_mesh_destroy(&m)
+	testing.expect_value(t, build_body(&b, pos, nil, &m), nil)
+	red := core.PLAYER_COLORS[0]
+	PILLAR :: 6 * PILLAR_FACES
+
+	// Second visible segment of player 0: LeftAnkle–LeftKnee with midpoint radius 0.055, two pillars.
+	ankle, knee := pos[0][.LeftAnkle], pos[0][.LeftKnee]
+	mid := (ankle + knee) / 2
+	w := body_mesh_make()
+	defer body_mesh_destroy(&w)
+	testing.expect_value(t, emit_pillar(&b, ankle, mid, 0.03, 0.055, red, &w), nil)
+	testing.expect_value(t, emit_pillar(&b, mid, knee, 0.055, 0.05, red, &w), nil)
+	expect_block(t, m, PILLAR, w)
+
+	// Joints: player 0 LeftToe, then player 0 RightToe (player-major, not joint-major).
+	limbs := 0
+	for s in core.SEGMENTS {
+		if s.visible {
+			_, has_mid := s.mid_radius.?
+			limbs += 2 if has_mid else 1
+		}
+	}
+	limbs *= core.PLAYER_COUNT * PILLAR
+	body_mesh_clear(&w)
+	testing.expect_value(t, emit_sphere(&b, pos[0][.LeftToe], 0.025, false, red, &w), nil)
+	testing.expect_value(t, emit_sphere(&b, pos[0][.RightToe], 0.025, false, red, &w), nil)
+	expect_block(t, m, limbs, w)
+
+	// Last fat triangle (RightAnkle, RightHeel, RightToe): player 0, then player 1.
+	body_mesh_clear(&w)
+	for p in 0 ..< core.PLAYER_COUNT {
+		testing.expect_value(
+			t,
+			emit_fat_triangle(
+				pos[p][.RightAnkle],
+				0.03,
+				pos[p][.RightHeel],
+				0.03,
+				pos[p][.RightToe],
+				0.025,
+				core.PLAYER_COLORS[p],
+				&w,
+			),
+			nil,
+		)
+	}
+	expect_block(t, m, len(m.positions) - len(w.positions), w)
 }
 
 BODY_JSON :: #load("../../tests/fixtures/oracle/body.json")

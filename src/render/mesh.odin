@@ -364,7 +364,8 @@ is_fine :: proc(j: core.Joint) -> bool {
 // build_body is the shader `drawPlayers` (src/playerdrawer.cpp:380-390) without the first-person skip: limbs (per
 // player, each visible segment; with a midpoint radius, two pillars through `(a + b) / 2`), joints (in
 // `playerJoints` order, player-major, src/positions.cpp:65-73; an override colour adds 0.005 to the radius), then
-// the five fat triangles, each for player 0 then 1. `overrides = nil` is the normal case. Appends to `out`.
+// the five fat triangles, each for player 0 then 1. `overrides = nil` is the normal case. Appends to `out`; after an error
+// `out` is partial (its arrays may differ in length): clear it with `body_mesh_clear` before reusing it.
 build_body :: proc(
 	b: ^Mesh_Builder,
 	pos: core.Position,
