@@ -7,9 +7,9 @@ COLLECTION="-collection:app=src"
 VET="-vet -strict-style -warnings-as-errors"
 OUT="build"
 BIN="$OUT/grapplemap"
-TEST_PKGS=(src src/core src/render src/ui src/editor tests/fidelity)
+TEST_PKGS=(src src/core src/render src/ui src/editor tests/fidelity tools/golden/measure)
 # Odin dirs formatted and fmt-checked besides src/ (bench/ only once it exists).
-FMT_DIRS=(src tests/fidelity bench)
+FMT_DIRS=(src tests/fidelity bench tools/golden/measure)
 
 # AddressSanitizer: Linux and macOS. Skipped on macOS CI runners, where the Odin-bundled
 # LLVM and Apple's ASan runtime disagree on the ASan ABI version (link error).
@@ -75,6 +75,7 @@ cmd_check() {
 	odin check src $COLLECTION $VET
 	odin check src/render $COLLECTION $VET -no-entry-point
 	odin check tests/fidelity $COLLECTION $VET -no-entry-point
+	odin check tools/golden/measure $VET
 	[ -d bench ] && ls bench/*.odin >/dev/null 2>&1 && odin check bench $COLLECTION $VET
 	return 0
 }
@@ -140,6 +141,41 @@ cmd_test() {
 cmd_test_golden() {
 	[ -d tests/golden_runner ] || { echo "golden tests arrive in phase 3; nothing to run."; return 0; }
 	odin test tests/golden_runner $COLLECTION $VET -define:GOLDEN_UPDATE="${1:-}" -out:"$OUT/test-golden"
+}
+
+GOLDEN_IMAGE="grapplemap-golden"
+ORACLE_IMAGES="tests/fixtures/oracle/images"
+
+# golden-measure [lines|quads] [16|raylib] (default: lines 16, as render.IMAGE_OPTIONS_DEFAULT): renders the oracle's images (one per $ORACLE_IMAGES/p<N>-480x360.png) in
+# the pinned Mesa image (tools/golden/Dockerfile) with that grid style and depth, twice, and prints per image the
+# difference against the oracle and whether both runs are identical. Outputs: build/golden-measure/<grid>-<depth>/.
+cmd_golden_measure() {
+	local grid="${1:-lines}" depth="${2:-16}"
+	docker build -q --platform linux/amd64 -t "$GOLDEN_IMAGE" -f tools/golden/Dockerfile tools/golden >/dev/null
+	docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" -v "$PWD":/repo "$GOLDEN_IMAGE" \
+		./build.sh golden-measure-inner "$grid" "$depth"
+}
+
+# golden-measure-inner: the part of golden-measure that runs inside the image.
+cmd_golden_measure_inner() {
+	local grid="$1" depth="$2" out="$OUT/golden-measure/$1-$2" f base n run det stats
+	[ -f /opt/VERSIONS ] || { echo "golden-measure-inner runs inside tools/golden/Dockerfile (./build.sh golden-measure)"; return 1; }
+	mkdir -p "$out"
+	odin build src $COLLECTION $VET -o:speed -out:"$out/grapplemap"
+	odin build tools/golden/measure $VET -o:speed -out:"$out/measure"
+	cat /opt/VERSIONS
+	echo "grid=$grid depth=$depth GALLIUM_DRIVER=$GALLIUM_DRIVER"
+	for f in "$ORACLE_IMAGES"/p*-480x360.png; do
+		base="$(basename "$f" .png)"
+		n="${base%%-*}"
+		for run in 1 2; do
+			xvfb-run -a "$out/grapplemap" --load reference/GrappleMap/GrappleMap.txt --image "$n" "$out/$base-run$run.png" \
+				--grid "$grid" --depth "$depth" >/dev/null
+		done
+		cmp -s "$out/$base-run1.png" "$out/$base-run2.png" && det=identical || det=DIFFERENT
+		stats="$("$out/measure" "$out/$base-run1.png" "$f" "$out/$base")"
+		printf '%s\t%s\truns=%s\n' "$base" "$stats" "$det"
+	done
 }
 
 cmd_bench() {
@@ -403,13 +439,15 @@ run) cmd_run "$@" ;;
 test) cmd_test ;;
 test-golden) cmd_test_golden "$@" ;;
 bench) cmd_bench ;;
+golden-measure) cmd_golden_measure "$@" ;;
+golden-measure-inner) cmd_golden_measure_inner "$@" ;;
 ci) cmd_ci ;;
 worktree) cmd_worktree "$@" ;;
 worktree-remove) cmd_worktree_remove "$@" ;;
 space-id) cmd_space_id "$@" ;;
 oracle) cmd_oracle "$@" ;;
 *)
-	echo "usage: ./build.sh {setup|check|changelog-check [dir]|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <branch>|worktree-remove <branch>|space-id <branch>|oracle [--sample]|--full|--update-full-hashes|--test|--images}"
+	echo "usage: ./build.sh {setup|check|changelog-check [dir]|fmt|fmt-check|debug|release|run|test|test-golden|golden-measure [lines|quads] [16|raylib]|bench|ci|worktree <branch>|worktree-remove <branch>|space-id <branch>|oracle [--sample]|--full|--update-full-hashes|--test|--images}"
 	exit 2
 	;;
 esac
