@@ -172,7 +172,7 @@ Reference_Renderer :: struct {
 	gpu_grid:       Gpu_Mesh,
 	gpu_lines:      Gpu_Mesh,
 	grid_built_bg:  Maybe(core.V3), // the background both grids were built for
-	line_width_max: f32, // GL_ALIASED_LINE_WIDTH_RANGE's upper end
+	line_width_max: f32, // GL_ALIASED_LINE_WIDTH_RANGE's upper end; 1 in a forward-compatible context
 }
 
 Reference_Error :: enum {
@@ -251,6 +251,12 @@ reference_init :: proc(r: ^Reference_Renderer, allocator := context.allocator) -
 	line_range: [2]f32
 	gl.GetFloatv(gl.ALIASED_LINE_WIDTH_RANGE, &line_range[0])
 	r.line_width_max = line_range[1]
+	// A forward-compatible context (macOS core profile) rejects widths > 1 whatever range it reports.
+	flags: i32
+	gl.GetIntegerv(gl.CONTEXT_FLAGS, &flags)
+	if flags & gl.CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT != 0 {
+		r.line_width_max = 1
+	}
 	return .None
 }
 
@@ -342,8 +348,9 @@ to_f32 :: proc(v: core.V3) -> [3]f32 {
 }
 
 // draw_scene draws `pos` as the original's `renderBasic` (src/rendering.cpp:311-363): clear to `background`, grid
-// (GRID_FACTOR·background, drawn as `effective_grid_style(r, grid)`) then bodies, no culling, depth test `GL_LESS`. Call between `BeginDrawing` and
-// `EndDrawing`; raylib's batch is flushed before and its state (culling, depth test and function) restored after,
+// (GRID_FACTOR·background, drawn as `effective_grid_style(r, grid)`) then bodies, no culling, depth test
+// `GL_LESS`. Call between `BeginDrawing` and `EndDrawing`, or `BeginTextureMode` and `EndTextureMode` (render_image);
+// raylib's batch is flushed before and its state (culling, depth test and function) restored after,
 // so 2D overlays drawn later work as usual. The body mesh is rebuilt every call (ADR 0006, open points).
 draw_scene :: proc(
 	r: ^Reference_Renderer,

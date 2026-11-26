@@ -90,6 +90,18 @@ test_grid_lines_mesh :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_effective_grid_style :: proc(t: ^testing.T) {
+	r := Reference_Renderer {
+		line_width_max = GRID_LINE_WIDTH_PX,
+	}
+	testing.expect_value(t, effective_grid_style(&r, .Lines), Grid_Style.Lines)
+	testing.expect_value(t, effective_grid_style(&r, .Quads), Grid_Style.Quads)
+	r.line_width_max = 1 // macOS core profile: 1-px lines only
+	testing.expect_value(t, effective_grid_style(&r, .Lines), Grid_Style.Quads)
+	testing.expect_value(t, effective_grid_style(&r, .Quads), Grid_Style.Quads)
+}
+
+@(test)
 test_shader_names_match :: proc(t: ^testing.T) {
 	// The names `reference.odin` binds must be the ones the GLSL declares (guard against drift).
 	vs := string(REFERENCE_VS)

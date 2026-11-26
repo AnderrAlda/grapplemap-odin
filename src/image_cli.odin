@@ -111,11 +111,12 @@ run_image :: proc(state: ^App_State, img: Image_Args) -> int {
 	rl.SetTraceLogLevel(.WARNING)
 	rl.SetConfigFlags({.WINDOW_HIDDEN})
 	rl.InitWindow(i32(img.width), i32(img.height), WINDOW_TITLE)
-	defer rl.CloseWindow()
 	if !rl.IsWindowReady() {
+		// No CloseWindow here: raylib never set up rlgl, and closing would dereference its null GL procs.
 		fmt.eprintln("error: --image: no GL context")
 		return EXIT_RENDER_ERROR
 	}
+	defer rl.CloseWindow()
 	scene: render.Reference_Renderer
 	if err := render.reference_init(&scene); err != .None {
 		fmt.eprintfln("error: reference renderer: %v", err)
