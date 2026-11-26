@@ -31,8 +31,8 @@ Icosphere :: struct {
 
 // icosphere_make is `make_icosphere` (src/icosphere.cpp:76-85): the icosahedron (its `float` tables widened) split
 // `subdivisions` times. Each pass visits the triangles in order and their edges 0→1, 1→2, 2→0; the midpoint of an
-// edge is `normalize(e0 + e1)`, appended on first use (`vertex_for_edge`, src/icosphere.cpp:33-48). Nothing leaks
-// on an allocation error.
+// edge is `normalize(e0 + e1)`, appended on first use (`vertex_for_edge`, src/icosphere.cpp:33-48). On an allocation
+// error nothing leaks and the zero `Icosphere` is returned.
 icosphere_make :: proc(
 	subdivisions: int,
 	allocator := context.allocator,
@@ -40,25 +40,24 @@ icosphere_make :: proc(
 	ico: Icosphere,
 	err: mem.Allocator_Error,
 ) {
-	ico.vertices = make([dynamic]core.V3, 0, len(ICO_VERTICES), allocator)
-	ico.triangles = make([dynamic][3]int, 0, len(ICO_TRIANGLES), allocator)
-	defer if err != nil {
-		icosphere_destroy(ico)
-		ico = {}
-	}
+	// Locals, assigned to `ico` only on success: a `defer` cannot change a result after `return` has captured it.
+	vertices := make([dynamic]core.V3, 0, len(ICO_VERTICES), allocator) or_return
+	defer if err != nil {delete(vertices)}
+	triangles := make([dynamic][3]int, 0, len(ICO_TRIANGLES), allocator) or_return
+	defer if err != nil {delete(triangles)}
 	for v in ICO_VERTICES {
-		append(&ico.vertices, core.V3{f64(v.x), f64(v.y), f64(v.z)}) or_return
+		append(&vertices, core.V3{f64(v.x), f64(v.y), f64(v.z)}) or_return
 	}
-	append(&ico.triangles, ..ICO_TRIANGLES[:]) or_return
+	append(&triangles, ..ICO_TRIANGLES[:]) or_return
 
 	for _ in 0 ..< subdivisions {
-		ico.triangles = subdivide(&ico.vertices, ico.triangles, allocator) or_return
+		triangles = subdivide(&vertices, triangles, allocator) or_return
 	}
-	return
+	return {vertices, triangles}, nil
 }
 
 // subdivide is `subdivide` (src/icosphere.cpp:50-72): one pass, appending the new vertices to `vertices`. Consumes
-// `triangles` (freed on success, kept on error so the caller frees it).
+// `triangles` on success; on error `triangles` is kept for the caller to free and nil is returned.
 @(private = "file")
 subdivide :: proc(
 	vertices: ^[dynamic]core.V3,
@@ -70,11 +69,8 @@ subdivide :: proc(
 ) {
 	lookup := make(map[[2]int]int, allocator)
 	defer delete(lookup)
-	result = make([dynamic][3]int, 0, 4 * len(triangles), allocator)
-	defer if err != nil {
-		delete(result)
-		result = nil
-	}
+	out := make([dynamic][3]int, 0, 4 * len(triangles), allocator) or_return
+	defer if err != nil {delete(out)}
 	for tri in triangles {
 		mid: [3]int
 		for edge in 0 ..< 3 {
@@ -89,7 +85,7 @@ subdivide :: proc(
 			}
 		}
 		append(
-			&result,
+			&out,
 			[3]int{tri[0], mid[0], mid[2]},
 			[3]int{tri[1], mid[1], mid[0]},
 			[3]int{tri[2], mid[2], mid[1]},
@@ -97,7 +93,7 @@ subdivide :: proc(
 		) or_return
 	}
 	delete(triangles)
-	return
+	return out, nil
 }
 
 // icosphere_destroy frees both arrays.
@@ -132,13 +128,13 @@ mesh_builder_init :: proc(
 ) -> (
 	err: mem.Allocator_Error,
 ) {
-	b.fine = icosphere_make(SPHERE_FINE, allocator) or_return
-	b.coarse, err = icosphere_make(SPHERE_COARSE, allocator)
-	if err != nil {
-		icosphere_destroy(b.fine)
-		b.fine = {}
-		return
+	fine := icosphere_make(SPHERE_FINE, allocator) or_return
+	coarse, coarse_err := icosphere_make(SPHERE_COARSE, allocator)
+	if coarse_err != nil {
+		icosphere_destroy(fine)
+		return coarse_err
 	}
+	b.fine, b.coarse = fine, coarse
 	b.angles = pillar_angles()
 	return
 }
