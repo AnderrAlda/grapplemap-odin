@@ -72,7 +72,7 @@ run_app :: proc(args: []string) -> int {
 		return code
 	}
 	defer core.graph_destroy(&g)
-	// Headless stops here, before any raylib call.
+	// `--headless --load` stops here, before any raylib call (`--headless` alone opens a hidden window).
 	if !state.headless {
 		run(&state, &g)
 	}
@@ -226,14 +226,25 @@ run :: proc(state: ^App_State, g: ^core.Graph) {
 		cam = render.viewer_camera(pos)
 	}
 
+	// `draw` turns off after a failed frame (placeholder from then on); `show` still decides the destroy above.
+	draw := show
 	frame := 0
 	for !rl.WindowShouldClose() {
 		rl.BeginDrawing()
-		if show {
-			aspect := f64(rl.GetRenderWidth()) / f64(rl.GetRenderHeight())
-			if err := render.draw_scene(&scene, pos, cam, aspect, render.COLOR_BACKGROUND_WHITE);
-			   err != nil {
-				fmt.eprintfln("error: draw: %v", err)
+		if draw {
+			// A minimised window can report a zero height: keep the last frame instead of a NaN projection.
+			if w, h := rl.GetRenderWidth(), rl.GetRenderHeight(); w > 0 && h > 0 {
+				aspect := f64(w) / f64(h)
+				if err := render.draw_scene(
+					&scene,
+					pos,
+					cam,
+					aspect,
+					render.COLOR_BACKGROUND_WHITE,
+				); err != nil {
+					fmt.eprintfln("error: draw: %v", err)
+					draw = false
+				}
 			}
 		} else {
 			rl.ClearBackground(BACKGROUND)
