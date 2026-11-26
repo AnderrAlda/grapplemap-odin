@@ -247,3 +247,181 @@ emit_pillar :: proc(
 	}
 	return nil
 }
+
+// Fat_Triangle_Points are the four directions and twelve points of `fatTriangle` (src/playerdrawer.cpp:17-38).
+Fat_Triangle_Points :: struct {
+	ab, bc, ca, fwd:                                                                   core.V3,
+	aleft, adown, cright, cdown, bleft, bright, afwd, aback, bfwd, bback, cfwd, cback: core.V3,
+}
+
+fat_triangle_points :: proc(
+	a: core.V3,
+	arad: f64,
+	b: core.V3,
+	brad: f64,
+	c: core.V3,
+	crad: f64,
+) -> (
+	f: Fat_Triangle_Points,
+) {
+	f.ab = normalize(b - a)
+	f.bc = normalize(c - b)
+	f.ca = normalize(a - c)
+	f.fwd = normalize(cross(b - a, c - a))
+	f.aleft = a + f.ca * arad
+	f.adown = a - f.ab * arad
+	f.cright = c - f.ca * crad
+	f.cdown = c + f.bc * crad
+	f.bleft = b - f.bc * brad
+	f.bright = b + f.ab * brad
+	f.afwd = a + f.fwd * arad
+	f.aback = a - f.fwd * arad
+	f.bfwd = b + f.fwd * brad
+	f.bback = b - f.fwd * brad
+	f.cfwd = c + f.fwd * crad
+	f.cback = c - f.fwd * crad
+	return
+}
+
+// emit_fat_triangle is `fatTriangle` (src/playerdrawer.cpp:14-100): 14 triangles, 42 vertices, in the code order.
+emit_fat_triangle :: proc(
+	a: core.V3,
+	arad: f64,
+	b: core.V3,
+	brad: f64,
+	c: core.V3,
+	crad: f64,
+	color: core.V3,
+	out: ^Body_Mesh,
+) -> mem.Allocator_Error {
+	f := fat_triangle_points(a, arad, b, brad, c, crad)
+	vertices := [42][2]core.V3 {
+		// front
+		{f.afwd, f.fwd},
+		{f.bfwd, f.fwd},
+		{f.cfwd, f.fwd},
+		// front left
+		{f.afwd, f.fwd},
+		{f.aleft, f.ca},
+		{f.bleft, -f.bc},
+		{f.afwd, f.fwd},
+		{f.bleft, -f.bc},
+		{f.bfwd, f.fwd},
+		// front right
+		{f.bfwd, f.fwd},
+		{f.bright, f.ab},
+		{f.cright, -f.ca},
+		{f.bfwd, f.fwd},
+		{f.cright, -f.ca},
+		{f.cfwd, f.fwd},
+		// front bottom
+		{f.cfwd, f.fwd},
+		{f.cdown, f.bc},
+		{f.adown, -f.ab},
+		{f.cfwd, f.fwd},
+		{f.adown, -f.ab},
+		{f.afwd, f.fwd},
+		// back
+		{f.cback, -f.fwd},
+		{f.bback, -f.fwd},
+		{f.aback, -f.fwd},
+		// back left
+		{f.aback, -f.fwd},
+		{f.bback, -f.fwd},
+		{f.bleft, -f.bc},
+		{f.aback, -f.fwd},
+		{f.bleft, -f.bc},
+		{f.aleft, f.ca},
+		// back right
+		{f.bback, -f.fwd},
+		{f.cback, -f.fwd},
+		{f.cright, -f.ca},
+		{f.bback, -f.fwd},
+		{f.cright, -f.ca},
+		{f.bright, f.ab},
+		// back bottom
+		{f.cback, -f.fwd},
+		{f.aback, -f.fwd},
+		{f.adown, -f.ab},
+		{f.cback, -f.fwd},
+		{f.adown, -f.ab},
+		{f.cdown, f.bc},
+	}
+	for v in vertices {
+		emit(out, v[0], v[1], color) or_return
+	}
+	return nil
+}
+
+@(private = "file")
+is_fine :: proc(j: core.Joint) -> bool {
+	for f in FINE_JOINTS {
+		if f == j {return true}
+	}
+	return false
+}
+
+// build_body is the shader `drawPlayers` (src/playerdrawer.cpp:380-390) without the first-person skip: limbs (per
+// player, each visible segment; with a midpoint radius, two pillars through `(a + b) / 2`), joints (in
+// `playerJoints` order, player-major, src/positions.cpp:65-73; an override colour adds 0.005 to the radius), then
+// the five fat triangles, each for player 0 then 1. `overrides = nil` is the normal case. Appends to `out`; after an error
+// `out` is partial (its arrays may differ in length): clear it with `body_mesh_clear` before reusing it.
+build_body :: proc(
+	b: ^Mesh_Builder,
+	pos: core.Position,
+	overrides: ^[core.PLAYER_COUNT][core.Joint]Maybe(core.V3),
+	out: ^Body_Mesh,
+) -> mem.Allocator_Error {
+	for p in 0 ..< core.PLAYER_COUNT {
+		color := core.PLAYER_COLORS[p]
+		player := pos[p]
+		for l in core.SEGMENTS {
+			if !l.visible {continue}
+			ja, jb := l.ends[0], l.ends[1]
+			ra, rb := core.JOINT_DEFS[ja].radius, core.JOINT_DEFS[jb].radius
+			if mid_radius, has_mid := l.mid_radius.?; has_mid {
+				mid := (player[ja] + player[jb]) / 2
+				emit_pillar(b, player[ja], mid, ra, mid_radius, color, out) or_return
+				emit_pillar(b, mid, player[jb], mid_radius, rb, color, out) or_return
+			} else {
+				emit_pillar(b, player[ja], player[jb], ra, rb, color, out) or_return
+			}
+		}
+	}
+	for p in 0 ..< core.PLAYER_COUNT {
+		for j in core.Joint {
+			extra_big := 0.0
+			cc := core.PLAYER_COLORS[p]
+			if overrides != nil {
+				if override, ok := overrides[p][j].?; ok {
+					extra_big = OVERRIDE_RADIUS_DELTA
+					cc = override
+				}
+			}
+			emit_sphere(
+				b,
+				pos[p][j],
+				core.JOINT_DEFS[j].radius + extra_big,
+				is_fine(j),
+				cc,
+				out,
+			) or_return
+		}
+	}
+	for tri in FAT_TRIANGLES {
+		for p in 0 ..< core.PLAYER_COUNT {
+			x, y, z := tri[0], tri[1], tri[2]
+			emit_fat_triangle(
+				pos[p][x],
+				core.JOINT_DEFS[x].radius,
+				pos[p][y],
+				core.JOINT_DEFS[y].radius,
+				pos[p][z],
+				core.JOINT_DEFS[z].radius,
+				core.PLAYER_COLORS[p],
+				out,
+			) or_return
+		}
+	}
+	return nil
+}
