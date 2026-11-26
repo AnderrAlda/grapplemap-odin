@@ -40,7 +40,8 @@ Parse_Error :: struct {
 // May grow.
 Graph_Error_Kind :: enum u8 {
 	Duplicate_Position_Description,
-	Step_Not_Connected, // `follow` on a step that does not touch the node (src/graph_util.cpp:101-102)
+	Step_Not_Connected, // `follow`/`connect` on a step that does not touch the node, or `seq` out of range (src/graph_util.cpp:101-102, 242)
+	Empty_Path, // `timed_init` of no step (the original reads `path.front()`: UB, src/playback.cpp:104)
 }
 
 Graph_Error :: struct {
