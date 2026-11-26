@@ -72,3 +72,25 @@ FAT_TRIANGLES := [5][3]core.Joint {
 	{.LeftAnkle, .LeftHeel, .LeftToe},
 	{.RightAnkle, .RightHeel, .RightToe},
 }
+
+// Lights of `setupLights` (src/rendering.cpp:229-247; docs/original.md §7.3): two directional lights toward
+// LIGHT_DIRS (world space, normalised at run time with `normalize`), diffuse and ambient per light, plus OpenGL's
+// default global ambient (spec, not code). Per vertex: `color · (LIGHT_AMBIENT_TOTAL + LIGHT_DIFFUSE·Σ max(0, n·l))`.
+@(rodata)
+LIGHT_DIRS := [2]core.V3{{2, 2, 2}, {-2, 2, -2}} // light_position0/1, src/rendering.cpp:237-238 (GLfloat)
+LIGHT_DIFFUSE :: 0.65 // light_diffuse, src/rendering.cpp:235 (GLfloat; the shader gets it as f32)
+LIGHT_AMBIENT :: 0.03 // light_ambient, src/rendering.cpp:236 (GLfloat)
+GLOBAL_AMBIENT :: 0.2 // GL_LIGHT_MODEL_AMBIENT default (OpenGL 1.x spec)
+LIGHT_AMBIENT_TOTAL :: GLOBAL_AMBIENT + 2 * LIGHT_AMBIENT // 0.26
+
+// Floor grid (src/rendering.cpp:249-289; docs/original.md §7.2, §7.4).
+COLOR_BACKGROUND_WHITE :: core.V3{1, 1, 1} // WhiteBg, src/images.hpp:182
+GRID_FACTOR :: 0.8 // grid colour = 0.8 · background, src/images.cpp:71
+GRID_SIZE :: 2 // Style::grid_size, src/rendering.hpp:30
+GRID_SPACING :: 0.5 // i/2, src/rendering.cpp:256-261
+GRID_NORMAL :: core.V3{0, 1, 0} // glNormal3d(0, 1, 0), src/rendering.cpp:251
+GRID_LINE_WIDTH :: 0.02 // ±.01f quads of the shader path, src/rendering.cpp:273-287 (m, world space)
+
+// Interactive viewer camera: as `glfw_playback` (src/glfw_playback.cpp:46,94; docs/original.md §7.5).
+VIEWER_FOV :: 50
+VIEWER_ZOOM :: 1.2 // camera.zoom(1.2): distance 1.7 → 2.9
