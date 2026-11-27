@@ -94,3 +94,10 @@ GRID_LINE_WIDTH :: 0.02 // ±.01f quads of the shader path, src/rendering.cpp:27
 // Interactive viewer camera: as `glfw_playback` (src/glfw_playback.cpp:46,94; docs/original.md §7.5).
 VIEWER_FOV :: 50
 VIEWER_ZOOM :: 1.2 // camera.zoom(1.2): distance 1.7 → 2.9
+
+// Offscreen images: the `ImageMaker` view of `mkpospages` (src/images.cpp:55-112,302-316; docs/original.md §7.6).
+IMAGE_YMAX_MIN :: 0.8 // ymax = max(.8, both heads' y), src/mkpospages.cpp:579
+IMAGE_SUPERSAMPLE :: 2 // rendered at width*2 × height*2, then the 2×2 mean, src/images.cpp:63-106
+IMAGE_DEFAULT_WIDTH :: 480 // ctx.mkimg.png(…, 480, 360, …), src/mkpospages.cpp:583-584
+IMAGE_DEFAULT_HEIGHT :: 360
+GRID_LINE_WIDTH_PX :: 2 // Style::grid_line_width, src/rendering.hpp:31 (pixels of the 2× render, `GL_LINES`)

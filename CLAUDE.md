@@ -7,7 +7,8 @@ render moderno; UX simple; base para editar mi propio grafo. Nativo primero, was
 ## Comandos
 `./build.sh setup|check|fmt|fmt-check|debug|release|run|test|test-golden|bench|ci|worktree <rama>|worktree-remove <rama>|oracle [--sample]|--full|--update-full-hashes|--test|--images`
 Toolchain: Odin fijado en `.odin-version`; `odinfmt`/`ols` en `~/.local/bin`; `jq` requerido por los hooks.
-App: `grapplemap [--headless] [--frames N] [--load <file>]`; `--load` imprime el resumen del grafo (`--headless`: sin ventana). Salidas: 3 fugas · 4 BD inválida · 5 E/S · 6 uso.
+App: `grapplemap [--headless] [--frames N] [--load <file>]`; `--load` imprime el resumen del grafo (`--headless`: sin ventana).
+`grapplemap --image <entidad> <out.png> [--size WxH] [--heading N|E|S|W] [--mirror] [--swap] [--load <file>]` escribe la imagen (ventana oculta; BD por defecto `reference/GrappleMap/GrappleMap.txt`). Salidas: 3 fugas · 4 BD inválida · 5 E/S · 6 uso · 7 render.
 Tras clonar: `git submodule update --init` (lo hace `./build.sh setup`) para tener `reference/GrappleMap`.
 
 ## Mapa

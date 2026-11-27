@@ -104,6 +104,40 @@ grid_mesh :: proc(size: int, color: core.V3, out: ^Body_Mesh) -> mem.Allocator_E
 	return nil
 }
 
+// Grid_Style picks how draw_scene draws the floor grid: `.Quads` = the shader path's 0.02 m quads (grid_mesh), the
+// interactive default; `.Lines` = the fixed-function path of the oracle images, `GL_LINES` GRID_LINE_WIDTH_PX wide
+// in pixels (src/rendering.cpp:249-264), drawn only where the context allows that width (effective_grid_style).
+Grid_Style :: enum {
+	Quads,
+	Lines,
+}
+
+// grid_lines_mesh appends the fixed-function grid (src/rendering.cpp:249-264) to `out` as `GL_LINES` vertex pairs: for
+// `i = −2·size … 2·size` the segments `(i/2, 0, −size)–(i/2, 0, size)` and `(−size, 0, i/2)–(size, 0, i/2)`, normal
+// GRID_NORMAL, `color` unlit (the shader lights it, as the original's lit lines).
+grid_lines_mesh :: proc(size: int, color: core.V3, out: ^Body_Mesh) -> mem.Allocator_Error {
+	s := f64(size)
+	for i := -2 * size; i <= 2 * size; i += 1 {
+		v := f64(i) * GRID_SPACING
+		segment := [4]core.V3{{v, 0, -s}, {v, 0, s}, {-s, 0, v}, {s, 0, v}}
+		for p in segment {
+			append(&out.positions, to_f32(p)) or_return
+			append(&out.normals, to_f32(GRID_NORMAL)) or_return
+			append(&out.colors, to_f32(color)) or_return
+		}
+	}
+	return nil
+}
+
+// effective_grid_style is `want`, except `.Lines` when the context's widest aliased line is below
+// GRID_LINE_WIDTH_PX (e.g. macOS's core profile, 1 px): then `.Quads`.
+effective_grid_style :: proc(r: ^Reference_Renderer, want: Grid_Style) -> Grid_Style {
+	if want == .Lines && r.line_width_max < GRID_LINE_WIDTH_PX {
+		return .Quads
+	}
+	return want
+}
+
 // viewer_camera is the interactive view of `glfw_playback` (docs/original.md §7.5): fov VIEWER_FOV, distance
 // zoomed by VIEWER_ZOOM, default pitch, aimed at `camera_offset_for(pos)`.
 viewer_camera :: proc(pos: core.Position) -> Camera {
@@ -125,17 +159,20 @@ Gpu_Mesh :: struct {
 // Reference_Renderer owns the shader, the GPU buffers and the CPU meshes of the reference path. Needs a GL context
 // (after `rl.InitWindow`).
 Reference_Renderer :: struct {
-	shader:        rl.Shader,
-	attribs:       [3]c.int, // position, normal, colour
-	loc_mvp:       c.int,
-	loc_light:     [2]c.int,
-	loc_diffuse:   c.int,
-	loc_ambient:   c.int,
-	builder:       Mesh_Builder,
-	body, grid:    Body_Mesh,
-	gpu_body:      Gpu_Mesh,
-	gpu_grid:      Gpu_Mesh,
-	grid_built_bg: Maybe(core.V3), // the background the grid was built for
+	shader:         rl.Shader,
+	attribs:        [3]c.int, // position, normal, colour
+	loc_mvp:        c.int,
+	loc_light:      [2]c.int,
+	loc_diffuse:    c.int,
+	loc_ambient:    c.int,
+	builder:        Mesh_Builder,
+	body, grid:     Body_Mesh,
+	grid_lines:     Body_Mesh,
+	gpu_body:       Gpu_Mesh,
+	gpu_grid:       Gpu_Mesh,
+	gpu_lines:      Gpu_Mesh,
+	grid_built_bg:  Maybe(core.V3), // the background both grids were built for
+	line_width_max: f32, // GL_ALIASED_LINE_WIDTH_RANGE's upper end; 1 in a forward-compatible context
 }
 
 Reference_Error :: enum {
@@ -162,6 +199,9 @@ reference_init :: proc(r: ^Reference_Renderer, allocator := context.allocator) -
 		rawptr(gl.impl_IsEnabled),
 		rawptr(gl.impl_GetIntegerv),
 		rawptr(gl.impl_DepthFunc),
+		rawptr(gl.impl_GetFloatv),
+		rawptr(gl.impl_LineWidth),
+		rawptr(gl.impl_DrawArrays),
 	}
 	for p in procs {
 		if p == nil {
@@ -207,6 +247,16 @@ reference_init :: proc(r: ^Reference_Renderer, allocator := context.allocator) -
 	}
 	r.body = body_mesh_make(allocator)
 	r.grid = body_mesh_make(allocator)
+	r.grid_lines = body_mesh_make(allocator)
+	line_range: [2]f32
+	gl.GetFloatv(gl.ALIASED_LINE_WIDTH_RANGE, &line_range[0])
+	r.line_width_max = line_range[1]
+	// A forward-compatible context (macOS core profile) rejects widths > 1 whatever range it reports.
+	flags: i32
+	gl.GetIntegerv(gl.CONTEXT_FLAGS, &flags)
+	if flags & gl.CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT != 0 {
+		r.line_width_max = 1
+	}
 	return .None
 }
 
@@ -214,12 +264,14 @@ reference_init :: proc(r: ^Reference_Renderer, allocator := context.allocator) -
 reference_destroy :: proc(r: ^Reference_Renderer) {
 	gpu_mesh_destroy(&r.gpu_body)
 	gpu_mesh_destroy(&r.gpu_grid)
+	gpu_mesh_destroy(&r.gpu_lines)
 	if r.shader.id != 0 {
 		rl.UnloadShader(r.shader)
 	}
 	mesh_builder_destroy(&r.builder)
 	body_mesh_destroy(&r.body)
 	body_mesh_destroy(&r.grid)
+	body_mesh_destroy(&r.grid_lines)
 	r^ = {}
 }
 
@@ -275,14 +327,30 @@ gpu_mesh_draw :: proc(g: Gpu_Mesh) {
 	rlgl.DisableVertexArray()
 }
 
+// gpu_lines_draw draws `g` as `GL_LINES` GRID_LINE_WIDTH_PX wide, restoring the previous line width.
+@(private = "file")
+gpu_lines_draw :: proc(g: Gpu_Mesh) {
+	if g.count == 0 {
+		return
+	}
+	width: f32
+	gl.GetFloatv(gl.LINE_WIDTH, &width)
+	gl.LineWidth(GRID_LINE_WIDTH_PX)
+	rlgl.EnableVertexArray(g.vao)
+	gl.DrawArrays(gl.LINES, 0, i32(g.count))
+	rlgl.DisableVertexArray()
+	gl.LineWidth(width)
+}
+
 @(private = "file")
 to_f32 :: proc(v: core.V3) -> [3]f32 {
 	return {f32(v.x), f32(v.y), f32(v.z)}
 }
 
 // draw_scene draws `pos` as the original's `renderBasic` (src/rendering.cpp:311-363): clear to `background`, grid
-// (GRID_FACTOR·background) then bodies, no culling, depth test `GL_LESS`. Call between `BeginDrawing` and
-// `EndDrawing`; raylib's batch is flushed before and its state (culling, depth test and function) restored after,
+// (GRID_FACTOR·background, drawn as `effective_grid_style(r, grid)`) then bodies, no culling, depth test
+// `GL_LESS`. Call between `BeginDrawing` and `EndDrawing`, or `BeginTextureMode` and `EndTextureMode` (render_image);
+// raylib's batch is flushed before and its state (culling, depth test and function) restored after,
 // so 2D overlays drawn later work as usual. The body mesh is rebuilt every call (ADR 0006, open points).
 draw_scene :: proc(
 	r: ^Reference_Renderer,
@@ -290,12 +358,16 @@ draw_scene :: proc(
 	cam: Camera,
 	aspect: f64,
 	background: core.V3,
+	grid: Grid_Style,
 ) -> mem.Allocator_Error {
 	rlgl.DrawRenderBatchActive()
 	if bg, ok := r.grid_built_bg.?; !ok || bg != background {
 		body_mesh_clear(&r.grid)
+		body_mesh_clear(&r.grid_lines)
 		grid_mesh(GRID_SIZE, GRID_FACTOR * background, &r.grid) or_return
+		grid_lines_mesh(GRID_SIZE, GRID_FACTOR * background, &r.grid_lines) or_return
 		gpu_mesh_upload(&r.gpu_grid, &r.grid, r.attribs)
+		gpu_mesh_upload(&r.gpu_lines, &r.grid_lines, r.attribs)
 		r.grid_built_bg = background
 	}
 	body_mesh_clear(&r.body)
@@ -325,7 +397,12 @@ draw_scene :: proc(
 	rlgl.SetUniform(r.loc_light[1], &l1, c.int(rl.ShaderUniformDataType.VEC3), 1)
 	rlgl.SetUniform(r.loc_diffuse, &diffuse, c.int(rl.ShaderUniformDataType.FLOAT), 1)
 	rlgl.SetUniform(r.loc_ambient, &ambient, c.int(rl.ShaderUniformDataType.FLOAT), 1)
-	gpu_mesh_draw(r.gpu_grid)
+	switch effective_grid_style(r, grid) {
+	case .Quads:
+		gpu_mesh_draw(r.gpu_grid)
+	case .Lines:
+		gpu_lines_draw(r.gpu_lines)
+	}
 	gpu_mesh_draw(r.gpu_body)
 	rlgl.DisableShader()
 

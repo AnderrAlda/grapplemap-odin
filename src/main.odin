@@ -19,6 +19,8 @@ EXIT_MEMORY_ERROR :: 3 // the leak tracker found a leak or a bad free (debug bui
 EXIT_LOAD_ERROR :: 4 // `--load`: the file was read but is not a valid database
 EXIT_IO_ERROR :: 5 // `--load`: the file could not be read
 EXIT_USAGE_ERROR :: 6 // bad command line (e.g. `--load` without a file)
+EXIT_RENDER_ERROR :: 7 // `--image`: no GL context, the renderer failed to start or the render failed
+USAGE :: "usage: grapplemap [--headless] [--frames N] [--load <file>]\n       grapplemap --image <entity> <out.png> [--size WxH] [--heading N|E|S|W] [--mirror] [--swap] [--load <file>]"
 BACKGROUND :: rl.Color{24, 26, 32, 255}
 
 // App_State holds all mutable application state; it is passed explicitly.
@@ -26,6 +28,7 @@ App_State :: struct {
 	headless:   bool,
 	max_frames: int,
 	load_path:  string, // `--load <file>`; "" = none
+	image:      Maybe(Image_Args), // `--image …` (image_cli.odin); nil = the window
 }
 
 // frames_label returns the text shown on the placeholder screen.
@@ -60,8 +63,11 @@ main :: proc() {
 run_app :: proc(args: []string) -> int {
 	state, ok := parse_args(args)
 	if !ok {
-		fmt.eprintln("error: --load needs a file")
+		fmt.eprintln(USAGE)
 		return EXIT_USAGE_ERROR
+	}
+	if img, has_image := state.image.?; has_image {
+		return run_image(&state, img)
 	}
 	if state.load_path == "" {
 		run(&state, nil)
@@ -172,11 +178,24 @@ report_leaks :: proc(track: ^mem.Tracking_Allocator) -> bool {
 	return has_memory_problems(track)
 }
 
-// parse_args reads `--headless`, `--frames N` and `--load <file>` from the command line. `ok` is false for
-// `--load` without a file; the other flags are lenient.
+// parse_args reads `--headless`, `--frames N`, `--load <file>` and the image options (parse_image_arg) from the
+// command line. `ok` is false for `--load` without a file, a malformed image option, an image option without
+// `--image`, and `--image` with `--headless`; `--frames` is lenient.
 @(private)
 parse_args :: proc(args: []string) -> (state: App_State, ok: bool) {
+	img := Image_Args {
+		width  = render.IMAGE_DEFAULT_WIDTH,
+		height = render.IMAGE_DEFAULT_HEIGHT,
+	}
+	image_options := false
 	for i := 1; i < len(args); i += 1 {
+		if handled, valid := parse_image_arg(args, &i, &img); handled {
+			if !valid {
+				return state, false
+			}
+			image_options = true
+			continue
+		}
 		switch args[i] {
 		case "--headless":
 			state.headless = true
@@ -192,6 +211,12 @@ parse_args :: proc(args: []string) -> (state: App_State, ok: bool) {
 				state.max_frames, _ = strconv.parse_int(args[i])
 			}
 		}
+	}
+	if image_options {
+		if img.entity == "" || state.headless {
+			return state, false
+		}
+		state.image = img
 	}
 	return state, true
 }
@@ -241,6 +266,7 @@ run :: proc(state: ^App_State, g: ^core.Graph) {
 					cam,
 					aspect,
 					render.COLOR_BACKGROUND_WHITE,
+					.Quads,
 				); err != nil {
 					fmt.eprintfln("error: draw: %v", err)
 					draw = false
