@@ -151,6 +151,10 @@ ORACLE_IMAGES="tests/fixtures/oracle/images"
 # difference against the oracle and whether both runs are identical. Outputs: build/golden-measure/<grid>-<depth>/.
 cmd_golden_measure() {
 	local grid="${1:-lines}" depth="${2:-16}"
+	case "$grid $depth" in
+	"lines 16" | "lines raylib" | "quads 16" | "quads raylib") ;;
+	*) echo "usage: ./build.sh golden-measure [lines|quads] [16|raylib]"; return 2 ;;
+	esac
 	docker build -q --platform linux/amd64 -t "$GOLDEN_IMAGE" -f tools/golden/Dockerfile tools/golden >/dev/null
 	docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" -v "$PWD":/repo "$GOLDEN_IMAGE" \
 		./build.sh golden-measure-inner "$grid" "$depth"
@@ -158,8 +162,11 @@ cmd_golden_measure() {
 
 # golden-measure-inner: the part of golden-measure that runs inside the image.
 cmd_golden_measure_inner() {
-	local grid="$1" depth="$2" out="$OUT/golden-measure/$1-$2" f base n run det stats
+	local grid="${1:-lines}" depth="${2:-16}" out f base n run det stats
+	out="$OUT/golden-measure/$grid-$depth"
 	[ -f /opt/VERSIONS ] || { echo "golden-measure-inner runs inside tools/golden/Dockerfile (./build.sh golden-measure)"; return 1; }
+	[ "$(cat /opt/odin/RELEASE)" = "$(cat .odin-version)" ] ||
+		{ echo "tools/golden/Dockerfile has Odin $(cat /opt/odin/RELEASE), .odin-version says $(cat .odin-version)"; return 1; }
 	mkdir -p "$out"
 	odin build src $COLLECTION $VET -o:speed -out:"$out/grapplemap"
 	odin build tools/golden/measure $VET -o:speed -out:"$out/measure"

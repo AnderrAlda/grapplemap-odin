@@ -60,6 +60,18 @@ test_regions_four_connected :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_diagonal_not_joined :: proc(t: ^testing.T) {
+	// A diagonal staircase of 4 pixels: 8-connectivity would make one region of 4, 4-connectivity four of 1.
+	a, b := white(), white()
+	for k in 0 ..< 4 {
+		set(b[:], k, k, {0, 0, 0})
+	}
+	mask: [W * H]bool
+	s, _ := diff_stats(a[:], b[:], W, H, false, mask[:])
+	testing.expect_value(t, s, Diff_Stats{differing = 4, largest_region = 1, max_delta = 255})
+}
+
+@(test)
 test_bgr_swap :: proc(t: ^testing.T) {
 	a, b := white(), white()
 	set(a[:], 3, 3, {10, 20, 30})

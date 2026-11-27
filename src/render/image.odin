@@ -134,6 +134,9 @@ render_image :: proc(
 attach_depth16 :: proc(target: ^rl.RenderTexture2D) -> bool {
 	rb: u32
 	gl.GenRenderbuffers(1, &rb)
+	if rb == 0 {
+		return false // attaching 0 would detach the depth buffer and still leave the FBO complete
+	}
 	gl.BindRenderbuffer(gl.RENDERBUFFER, rb)
 	gl.RenderbufferStorage(
 		gl.RENDERBUFFER,

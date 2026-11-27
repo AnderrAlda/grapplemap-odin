@@ -51,11 +51,13 @@ rings/slices or a side count (`DrawSphereEx`, `DrawCylinderEx`, `DrawCapsule`,
    light directions are world-space constants (ADR 0004: no axis change). Back-face culling **off**, depth test on
    with `GL_LESS` as in the original (set through `vendor:OpenGL`, since raylib leaves `GL_LEQUAL`).
 4. **Camera and image pipeline**: the original's matrices (ADR 0004, decision 3), render at 2× into a render texture,
-   downsample with a truncating 2×2 mean, the grid as the original draws it (§7.4). Depth precision (16-bit vs
-   raylib's render-texture depth) and the channel order are set by what the oracle PNGs show.
+   downsample with a truncating 2×2 mean, the grid as the original draws it (§7.4). Depth precision: 16-bit, like
+   the original's OSMesa context; the grid: 2-px `GL_LINES`. Both were chosen by the measurement against the oracle
+   PNGs ("Measurement", #204). The oracle's channel order is BGR.
 5. **The pixel tolerance is not set here.** It is an **open question for Ander** (`CLAUDE.md`: tolerances only with
    his OK): the prototype measures, per test image, the differences against the oracle PNGs (count and size of
-   differing pixels, max channel delta) and the PR that adds the golden tests proposes a value with that evidence.
+   differing pixels, max channel delta), recorded under "Measurement" (#204), and the value is put to Ander with that
+   evidence (escalated in #204; pending).
    Until then the comparison reports differences and does not pass by tolerance. This measurement against the oracle
    PNGs is local and by hand, like their regeneration (ADR 0002, "Consequences": they depend on the Mesa version and
    CI does not compare them pixel by pixel). Once accepted, our own reference-path images become the golden images
@@ -140,10 +142,13 @@ pixels; `Δ` = the largest channel difference.
 Each cell is differing / region / Δ.
 
 - **Choice:** `lines` + `16` is what `--image` and the golden images use (`render.IMAGE_OPTIONS_DEFAULT`).
-- **The 16-bit depth** removes the large Δ: 123–240 with raylib's depth, 25 with 16 bits. With the deeper buffer,
-  surfaces that touch resolve differently from the original.
+- **The 16-bit depth** removes the large Δ: 123–240 with raylib's depth, 49 (quads) or 25 (lines) with 16 bits.
+  With the deeper buffer, surfaces that touch resolve differently from the original [unverified: inferred from where
+  the differences lie].
 - **`lines`** removes the large regions of the quads, whose grid is a different shape.
-- **What remains with `lines` + `16`**, split by whether both pixels are grey (grid or background) or not (body):
+- **What remains with `lines` + `16`**, split by whether the pixel is grey (`r = g = b`) in both images (grid or
+  background) or not (body). This split was computed with a one-off script over the `-run1.png` files; it is not part
+  of `measure`:
 
   | image | grid/background | body | body Δ |
   |---|---|---|---|

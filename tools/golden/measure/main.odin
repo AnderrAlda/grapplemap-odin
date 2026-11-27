@@ -3,12 +3,14 @@ package measure
 import "core:fmt"
 import "core:image"
 import "core:image/png"
+import "core:mem"
 import "core:os"
 
 // `measure <ours.png> <oracle.png> <out-prefix>`: compares our image with the oracle's (BGR, swapped back) and prints
 // one line `differing=… largest_region=… max_delta=…`; writes `<out-prefix>-diff.png` (differing pixels in
 // DIFF_MARK over a faded copy of ours) and `<out-prefix>-side.png` (ours | oracle in RGB | diff).
-// Exit codes: 0 compared (whatever the numbers), 1 an image could not be read or written, 2 sizes differ, 3 usage.
+// Exit codes: 0 compared (whatever the numbers), 1 an image could not be read or written, 2 sizes differ, 3 usage,
+// 4 out of memory, 5 a leak (the tracking allocator).
 
 DIFF_MARK :: [3]u8{255, 0, 255}
 FADE_BASE :: 192 // faded pixel = FADE_BASE + mean(r, g, b) / FADE_DIVISOR: light grey, so the marks stand out
@@ -20,7 +22,17 @@ main :: proc() {
 		fmt.eprintln("usage: measure <ours.png> <oracle.png> <out-prefix>")
 		os.exit(3)
 	}
-	os.exit(run(os.args[1], os.args[2], os.args[3]))
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, context.allocator)
+	context.allocator = mem.tracking_allocator(&track)
+	code := run(os.args[1], os.args[2], os.args[3])
+	free_all(context.temp_allocator)
+	for _, leak in track.allocation_map {
+		fmt.eprintfln("leak: %v bytes at %v", leak.size, leak.location)
+		code = 5
+	}
+	mem.tracking_allocator_destroy(&track)
+	os.exit(code)
 }
 
 @(private = "file")
@@ -45,9 +57,14 @@ run :: proc(ours_path, oracle_path, prefix: string) -> int {
 	mask := make([]bool, w * h)
 	defer delete(mask)
 	s, err := diff_stats(ours.pixels[:], oracle.pixels[:], w, h, true, mask)
-	if err != .None {
-		fmt.eprintfln("error: %v", err)
+	switch err {
+	case .None:
+	case .Size_Mismatch:
+		fmt.eprintln("error: buffer sizes do not match the image size")
 		return 2
+	case .Out_Of_Memory:
+		fmt.eprintln("error: out of memory")
+		return 4
 	}
 	fmt.printfln(
 		"differing=%d largest_region=%d max_delta=%d",

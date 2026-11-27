@@ -7,7 +7,6 @@
   (#204).
 - `render.Image_Options` (grid style, 16-bit depth), set from the hidden `--image` options `--grid` and `--depth`
   (#204).
-
-### Changed
-- `--image` now draws the grid as 2-px lines and uses a 16-bit depth buffer, the combination that is closest to the
-  oracle images (ADR 0006, "Measurement"). If the GL context cannot draw 2-px lines, it warns (#204).
+- By default `--image` draws the grid as 2-px lines and uses a 16-bit depth buffer: of the combinations measured, it
+  is the closest to the oracle images (ADR 0006, "Measurement"). If the GL context cannot draw 2-px lines, it warns
+  (#204).

@@ -7,7 +7,8 @@ ENV LC_ALL=C DEBIAN_FRONTEND=noninteractive
 
 # Ubuntu's snapshot service freezes the archive at SNAPSHOT, so the exact versions below stay installable. It is
 # served over https: ca-certificates comes first from the image's own archive (TLS trust only; apt still checks the
-# archive signatures). Every package that touches the pixels or the build is pinned to an exact version.
+# archive signatures; its version is not pinned and is recorded in /opt/VERSIONS). Every package that touches the
+# pixels or the build is pinned to an exact version.
 ARG SNAPSHOT=20261120T000000Z
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
@@ -20,6 +21,7 @@ RUN apt-get update \
     libgl1-mesa-dri=25.2.8-0ubuntu0.24.04.5 \
     libglx-mesa0=25.2.8-0ubuntu0.24.04.5 \
     mesa-libgallium=25.2.8-0ubuntu0.24.04.5 \
+    libllvm20=1:20.1.2-0ubuntu1~24.04.3 \
     libgl1-mesa-dev=25.2.8-0ubuntu0.24.04.5 \
     xvfb=2:21.1.12-1ubuntu1.9 \
     xauth=1:1.1.2-1build1 \
@@ -35,7 +37,7 @@ RUN apt-get update \
  && apt-get clean \
  && find /var/lib/apt/lists -type f -delete
 
-# The pinned Odin (.odin-version), the release archive CI installs (laytan/setup-odin, `release:`), checked by sha256.
+# The pinned Odin: bump together with .odin-version (golden-measure fails if they differ). The release archive CI installs (laytan/setup-odin, `release:`), checked by sha256.
 ARG ODIN_RELEASE=dev-2026-11a
 ARG ODIN_SHA256=65c9f6e97d6f8a30930e151f270ce5aeaa98fe8b2ba49fe067394e2af04f7618
 RUN curl -fsSL -o /tmp/odin.tar.gz \
@@ -52,7 +54,7 @@ RUN curl -fsSL -o /tmp/odin.tar.gz \
 ENV LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=softpipe HOME=/tmp
 
 RUN { odin version; clang --version | head -n1; \
-      dpkg-query -W -f='${Package} ${Version}\n' libgl1-mesa-dri mesa-libgallium xvfb | sort; \
+      dpkg-query -W -f='${Package} ${Version}\n' libgl1-mesa-dri mesa-libgallium libllvm20 xvfb ca-certificates | sort; \
     } > /opt/VERSIONS
 
 WORKDIR /repo
