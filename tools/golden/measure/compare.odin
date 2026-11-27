@@ -2,12 +2,26 @@ package measure
 
 // Pixel comparison of our images with the oracle's (tools/golden/README.md). Pure: no GL, no files.
 
+// Body tolerance against the oracle, decided by Ander (ADR 0006 d5, #204): per image at most BODY_MAX_DIFFERING body
+// pixels differ, none by more than BODY_MAX_DELTA in a channel. Grid and background pixels have no limit (known 1-px
+// shifts of the grid lines).
+BODY_MAX_DIFFERING :: 50
+BODY_MAX_DELTA :: 32
+
 // Diff_Stats summarises where two RGB8 images differ: `differing` pixels (any channel differs), the pixel count of the
-// `largest_region` of differing pixels (4-connected), and the `max_delta` of any channel.
+// `largest_region` of differing pixels (4-connected), and the `max_delta` of any channel. The `body_` fields count
+// only the differing pixels that are not grey (`r = g = b`) in both images: grey in both is grid or background.
 Diff_Stats :: struct {
 	differing:      int,
 	largest_region: int,
 	max_delta:      int,
+	body_differing: int,
+	body_max_delta: int,
+}
+
+// body_within_tolerance is whether the body differences are within the tolerance of ADR 0006 d5.
+body_within_tolerance :: proc(s: Diff_Stats) -> bool {
+	return s.body_differing <= BODY_MAX_DIFFERING && s.body_max_delta <= BODY_MAX_DELTA
 }
 
 Compare_Error :: enum {
@@ -39,20 +53,29 @@ diff_stats :: proc(
 		if oracle_bgr {
 			theirs = {o[2], o[1], o[0]}
 		}
-		mask[i] = false
+		mine := [3]u8{ours[3 * i], ours[3 * i + 1], ours[3 * i + 2]}
+		delta := 0
 		for ch in 0 ..< 3 {
-			d := abs(int(ours[3 * i + ch]) - int(theirs[ch]))
-			if d > 0 {
-				mask[i] = true
-				s.max_delta = max(s.max_delta, d)
-			}
+			delta = max(delta, abs(int(mine[ch]) - int(theirs[ch])))
 		}
-		if mask[i] {
-			s.differing += 1
+		mask[i] = delta > 0
+		if !mask[i] {
+			continue
+		}
+		s.differing += 1
+		s.max_delta = max(s.max_delta, delta)
+		if !(is_grey(mine) && is_grey(theirs)) {
+			s.body_differing += 1
+			s.body_max_delta = max(s.body_max_delta, delta)
 		}
 	}
 	s.largest_region, err = largest_region(mask, w, h, allocator)
 	return
+}
+
+@(private = "file")
+is_grey :: proc(c: [3]u8) -> bool {
+	return c[0] == c[1] && c[1] == c[2]
 }
 
 // largest_region is the size of the largest 4-connected set of `true` cells of `mask` (`w × h`), by flood fill with

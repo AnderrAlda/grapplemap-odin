@@ -42,11 +42,15 @@ For each `tests/fixtures/oracle/images/p<N>-480x360.png`:
 
 It prints one line per image:
 
-    p96-480x360	differing=… largest_region=… max_delta=…	runs=identical
+    p96-480x360	differing=… largest_region=… max_delta=… body=… body_delta=… body_ok	runs=identical
 
 - `differing`: pixels where any channel differs.
 - `largest_region`: the largest 4-connected blob of differing pixels.
 - `max_delta`: the largest channel difference.
+- `body` / `body_delta`: the same two counts, but only for pixels that are not grey (`r = g = b`) in at least one
+  image. Pixels grey in both are grid or background.
+- `body_ok` / `BODY_OVER`: whether the body is within the tolerance of ADR 0006 d5, which Ander decided: at most 50
+  pixels and Δ ≤ 32. Grid shifts are not limited.
 
 In `build/golden-measure/<grid>-<depth>/` it leaves:
 - `-run1.png` / `-run2.png`: our two renders;

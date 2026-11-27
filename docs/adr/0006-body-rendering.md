@@ -1,5 +1,5 @@
 # 0006. Body rendering technique
-Status: Proposed (the final choice needs the phase-3 prototype against the oracle PNGs)
+Status: Accepted (#204: prototype measured against the oracle PNGs; tolerance decided by Ander)
 Date: 2026-11-21
 
 ## Context
@@ -54,14 +54,19 @@ rings/slices or a side count (`DrawSphereEx`, `DrawCylinderEx`, `DrawCapsule`,
    downsample with a truncating 2×2 mean, the grid as the original draws it (§7.4). Depth precision: 16-bit, like
    the original's OSMesa context; the grid: 2-px `GL_LINES`. Both were chosen by the measurement against the oracle
    PNGs ("Measurement", #204). The oracle's channel order is BGR.
-5. **The pixel tolerance is not set here.** It is an **open question for Ander** (`CLAUDE.md`: tolerances only with
-   his OK): the prototype measures, per test image, the differences against the oracle PNGs (count and size of
-   differing pixels, max channel delta), recorded under "Measurement" (#204), and the value is put to Ander with that
-   evidence (escalated in #204; pending).
-   Until then the comparison reports differences and does not pass by tolerance. This measurement against the oracle
-   PNGs is local and by hand, like their regeneration (ADR 0002, "Consequences": they depend on the Mesa version and
-   CI does not compare them pixel by pixel). Once accepted, our own reference-path images become the golden images
-   in `tests/golden/` (`./build.sh test-golden`, `docs/architecture.md`), and CI compares against those.
+5. **Pixel tolerance against the oracle PNGs: decided by Ander (#204)**, with the measurement below as evidence. The
+   images are split into two kinds of pixels:
+   - **Bodies:** pixels that are not grey (`r = g = b`) in at least one of the two images. Per image, at most **50**
+     differing pixels, none by more than **32** in a channel.
+   - **Grid and background:** pixels grey in both images. 1-px shifts of the grid lines are a known, documented
+     difference; there is no limit on their count.
+
+   `./build.sh golden-measure` checks this per image (`body_ok` / `BODY_OVER`, `body_within_tolerance` in
+   `tools/golden/measure`). With `lines` + `16` all 6 oracle images pass, so our images become the base of the golden
+   images of #200. This comparison with the oracle is local and by hand, like the oracle's regeneration (ADR 0002,
+   "Consequences": its PNGs depend on the Mesa version). CI compares exactly, with no tolerance, against our own
+   golden images in `tests/golden/` (`./build.sh test-golden`, `docs/architecture.md`), rendered in
+   `tools/golden/Dockerfile`.
 
 ## Alternatives
 For the reference path:
@@ -96,7 +101,7 @@ For the reference path:
     pixels, provided the depth buffer is 16-bit like the original's.
   - OSMesa's channel order is BGR, as §7.6 says.
   - The lighting defaults hold: body pixels away from the edges are equal.
-- **Pending: the pixel tolerance (decision 5).** It is Ander's call, with the measurement below. Not set here.
+- **Resolved, #204: the pixel tolerance (decision 5).** Ander decided it with the measurement below.
 - Whether a pillar basis ever degenerates on the DB (`docs/original.md` §7.1, section 10).
 - Per-frame mesh rebuild vs instanced spheres (decision 2): by measurement, if either matters at all. **#199
   prototype:** per-frame rebuild with `rlUpdateVertexBuffer` into our own VAO (one VBO per attribute) is what
@@ -147,8 +152,7 @@ Each cell is differing / region / Δ.
   the differences lie].
 - **`lines`** removes the large regions of the quads, whose grid is a different shape.
 - **What remains with `lines` + `16`**, split by whether the pixel is grey (`r = g = b`) in both images (grid or
-  background) or not (body). This split was computed with a one-off script over the `-run1.png` files; it is not part
-  of `measure`:
+  background) or not (body), as `golden-measure` now reports it (`body=`, `body_delta=`):
 
   | image | grid/background | body | body Δ |
   |---|---|---|---|

@@ -7,8 +7,9 @@ import "core:mem"
 import "core:os"
 
 // `measure <ours.png> <oracle.png> <out-prefix>`: compares our image with the oracle's (BGR, swapped back) and prints
-// one line `differing=… largest_region=… max_delta=…`; writes `<out-prefix>-diff.png` (differing pixels in
-// DIFF_MARK over a faded copy of ours) and `<out-prefix>-side.png` (ours | oracle in RGB | diff).
+// one line `differing=… largest_region=… max_delta=… body=… body_delta=… body_ok|BODY_OVER` (the body tolerance of
+// ADR 0006 d5, body_within_tolerance); writes `<out-prefix>-diff.png` (differing pixels in DIFF_MARK over a faded copy
+// of ours) and `<out-prefix>-side.png` (ours | oracle in RGB | diff).
 // Exit codes: 0 compared (whatever the numbers), 1 an image could not be read or written, 2 sizes differ, 3 usage,
 // 4 out of memory, 5 a leak (the tracking allocator).
 
@@ -67,10 +68,13 @@ run :: proc(ours_path, oracle_path, prefix: string) -> int {
 		return 4
 	}
 	fmt.printfln(
-		"differing=%d largest_region=%d max_delta=%d",
+		"differing=%d largest_region=%d max_delta=%d body=%d body_delta=%d %s",
 		s.differing,
 		s.largest_region,
 		s.max_delta,
+		s.body_differing,
+		s.body_max_delta,
+		"body_ok" if body_within_tolerance(s) else "BODY_OVER",
 	)
 
 	// [dynamic] with its length set: png.save_to_file takes an image.Image, whose pixels are a [dynamic]byte.
