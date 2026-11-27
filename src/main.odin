@@ -186,6 +186,7 @@ parse_args :: proc(args: []string) -> (state: App_State, ok: bool) {
 	img := Image_Args {
 		width  = render.IMAGE_DEFAULT_WIDTH,
 		height = render.IMAGE_DEFAULT_HEIGHT,
+		opts   = render.IMAGE_OPTIONS_DEFAULT,
 	}
 	image_options := false
 	for i := 1; i < len(args); i += 1 {

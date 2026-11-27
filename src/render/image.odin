@@ -2,6 +2,7 @@ package render
 
 import "app:core"
 import "core:c"
+import gl "vendor:OpenGL"
 import rl "vendor:raylib"
 import "vendor:raylib/rlgl"
 
@@ -9,9 +10,30 @@ import "vendor:raylib/rlgl"
 // at IMAGE_SUPERSAMPLE× into a render texture, read back and reduced by a truncating 2×2 mean. Used by `--image` and
 // the golden images (#200).
 
+// Image_Depth is the render texture's depth buffer: `.Raylib` = raylib's unsized `GL_DEPTH_COMPONENT` renderbuffer
+// (24 bits on Mesa); `.Bits16` = `GL_DEPTH_COMPONENT16`, the depth of the original's OSMesa context
+// (`OSMesaCreateContextExt(OSMESA_RGB, 16, 0, 16)`, src/images.cpp:525).
+Image_Depth :: enum {
+	Raylib,
+	Bits16,
+}
+
+// Image_Options are the render settings an image can vary.
+Image_Options :: struct {
+	grid:  Grid_Style,
+	depth: Image_Depth,
+}
+
+// IMAGE_OPTIONS_DEFAULT is what `--image` and the golden images use: of the four combinations measured against the
+// oracle PNGs (`./build.sh golden-measure`, ADR 0006 "Measurement"), 2-px lines and a 16-bit depth differ least.
+IMAGE_OPTIONS_DEFAULT :: Image_Options {
+	grid  = .Lines,
+	depth = .Bits16,
+}
+
 Image_Error :: enum {
 	None,
-	Render_Texture, // raylib could not make the render texture (framebuffer incomplete)
+	Render_Texture, // raylib could not make the render texture, or the 16-bit depth left it incomplete
 	Readback, // reading the render texture back failed
 	Out_Of_Memory,
 }
@@ -69,7 +91,7 @@ render_image :: proc(
 	r: ^Reference_Renderer,
 	p: core.Position,
 	heading, w, h: int,
-	grid: Grid_Style,
+	opts: Image_Options,
 	out: []u8,
 ) -> Image_Error {
 	assert(w > 0 && h > 0 && len(out) == 3 * w * h, "render_image: size")
@@ -78,11 +100,15 @@ render_image :: proc(
 	if !rl.IsRenderTextureValid(target) {
 		return .Render_Texture
 	}
+	// Unloading deletes whatever depth renderbuffer is attached (rlUnloadFramebuffer), the 16-bit one included.
 	defer rl.UnloadRenderTexture(target)
+	if opts.depth == .Bits16 && !attach_depth16(&target) {
+		return .Render_Texture
+	}
 
 	rl.BeginTextureMode(target)
 	cam := image_camera(image_ymax(p), heading)
-	err := draw_scene(r, p, cam, f64(w2) / f64(h2), COLOR_BACKGROUND_WHITE, grid)
+	err := draw_scene(r, p, cam, f64(w2) / f64(h2), COLOR_BACKGROUND_WHITE, opts.grid)
 	rl.EndTextureMode()
 	if err != nil {
 		return .Out_Of_Memory
@@ -100,4 +126,34 @@ render_image :: proc(
 	defer rl.MemFree(pixels)
 	downsample_2x(([^]u8)(pixels)[:4 * w2 * h2], w2, h2, out)
 	return .None
+}
+
+// attach_depth16 replaces the render texture's depth renderbuffer by a `GL_DEPTH_COMPONENT16` one of the same size.
+// Returns whether the framebuffer is complete.
+@(private = "file")
+attach_depth16 :: proc(target: ^rl.RenderTexture2D) -> bool {
+	rb: u32
+	gl.GenRenderbuffers(1, &rb)
+	if rb == 0 {
+		return false // attaching 0 would detach the depth buffer and still leave the FBO complete
+	}
+	gl.BindRenderbuffer(gl.RENDERBUFFER, rb)
+	gl.RenderbufferStorage(
+		gl.RENDERBUFFER,
+		gl.DEPTH_COMPONENT16,
+		target.texture.width,
+		target.texture.height,
+	)
+	gl.BindRenderbuffer(gl.RENDERBUFFER, 0)
+	rlgl.FramebufferAttach(
+		target.id,
+		rb,
+		c.int(rlgl.FramebufferAttachType.DEPTH),
+		c.int(rlgl.FramebufferAttachTextureType.RENDERBUFFER),
+		0,
+	)
+	old := target.depth.id
+	gl.DeleteRenderbuffers(1, &old)
+	target.depth.id = rb
+	return rlgl.FramebufferComplete(target.id)
 }
